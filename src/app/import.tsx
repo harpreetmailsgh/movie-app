@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator,
+  View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator, Alert,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
+import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useStore } from '../lib/store';
 import { bestMatch, bestMatchKeyless, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
@@ -10,52 +10,65 @@ import { parseYouTubeId, fetchYouTubeTitle } from '../lib/youtube';
 import { posterUrl } from '../lib/types';
 
 const FIELD_BG = '#E9E9EE';
+const SEARCH_DEBOUNCE_MS = 500;
 
 export default function ImportScreen() {
-  const { importReel, importing, importMessage, settings, addMovie } = useStore();
+  const { importReel, importing, importMessage, settings, addMovie, movies } = useStore();
   const [url, setUrl] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TmdbMatch[]>([]);
   const [searching, setSearching] = useState(false);
-  const [searched, setSearched] = useState(false);
   const [ytUrl, setYtUrl] = useState('');
   const [ytWorking, setYtWorking] = useState(false);
   const [ytMessage, setYtMessage] = useState<string | null>(null);
+  const [fbFailed, setFbFailed] = useState(false);
 
-  const paste = async () => {
-    const text = await Clipboard.getStringAsync();
-    if (text) setUrl(text);
-  };
+  // Latest store movies, readable inside async completions.
+  const moviesRef = useRef(movies);
+  useEffect(() => { moviesRef.current = movies; }, [movies]);
 
-  const pasteYt = async () => {
-    const text = await Clipboard.getStringAsync();
-    if (text) setYtUrl(text);
-  };
+  // Run ids: editing a field mid-run cancels that run's completion UI.
+  const fbRunRef = useRef(0);
+  const ytRunRef = useRef(0);
 
-  const doImport = async () => {
-    const ok = await importReel(url);
-    if (ok) {
-      setUrl('');
-      setTimeout(() => router.back(), 1200);
-    }
-  };
+  // ---- Card 1: live search-as-you-type -------------------------------------
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queryRef = useRef('');
 
-  const doSearch = async () => {
-    if (!query.trim()) {
-      setResults([]);
-      setSearched(false);
-      return;
-    }
+  const runSearch = useCallback(async (q: string) => {
     setSearching(true);
     try {
       const hits = settings.tmdbKey
-        ? await searchTitles(query, settings.tmdbKey)
-        : await searchTitlesKeyless(query);
-      setResults(hits);
-      setSearched(true);
+        ? await searchTitles(q, settings.tmdbKey)
+        : await searchTitlesKeyless(q);
+      if (queryRef.current === q) setResults(hits);
     } finally {
-      setSearching(false);
+      if (queryRef.current === q) setSearching(false);
     }
+  }, [settings.tmdbKey]);
+
+  const onQueryChange = (text: string) => {
+    setQuery(text);
+    queryRef.current = text;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = text.trim();
+    if (!q) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => runSearch(q), SEARCH_DEBOUNCE_MS);
+  };
+
+  const submitSearch = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = queryRef.current.trim();
+    if (!q) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    runSearch(q);
   };
 
   const addManual = async (m: TmdbMatch) => {
@@ -85,17 +98,59 @@ export default function ImportScreen() {
     router.back();
   };
 
+  // ---- Card 2: Facebook / Instagram reel link --------------------------------
+  const onFbChange = (text: string) => {
+    setUrl(text);
+    fbRunRef.current += 1; // cancel any in-flight run's completion
+    setFbFailed(false);
+  };
+
+  const doFetchFb = async () => {
+    const link = url.trim();
+    if (!link) return;
+    const runId = ++fbRunRef.current;
+    const beforeIds = new Set(moviesRef.current.map((m) => m.id));
+    setFbFailed(false);
+    const ok = await importReel(link);
+    if (runId !== fbRunRef.current) return; // user edited mid-run — ignore stale completion
+    if (ok) {
+      setUrl('');
+      // Let React commit the newly added movie, then find what the run added.
+      await new Promise((r) => setTimeout(r, 150));
+      if (runId !== fbRunRef.current) return;
+      const added = moviesRef.current.filter((m) => !beforeIds.has(m.id));
+      const titles = added.filter((m) => !m.needsReview).map((m) => m.title).filter(Boolean);
+      const message = titles.length
+        ? `“${titles.join('”, “')}” added to watchlist.`
+        : 'Saved to your Watchlist — couldn\'t identify the movie.';
+      Alert.alert('Fetch complete', message, [{ text: 'OK', onPress: () => router.back() }]);
+    } else {
+      // Error case: show the store's specific message inline, keep the link for editing.
+      setFbFailed(true);
+    }
+  };
+
+  // ---- Card 3: YouTube link --------------------------------------------------
+  const onYtChange = (text: string) => {
+    setYtUrl(text);
+    ytRunRef.current += 1; // cancel any in-flight run's completion
+    setYtMessage(null);
+  };
+
   /** YouTube import: oEmbed title (caption-first step), then TMDB/keyless match. */
-  const doYouTube = async () => {
+  const doFetchYt = async () => {
     const link = ytUrl.trim();
+    if (!link) return;
+    const runId = ++ytRunRef.current;
+    setYtMessage(null);
     if (!parseYouTubeId(link)) {
       setYtMessage("That doesn't look like a YouTube link — use a watch, Shorts, or youtu.be link.");
       return;
     }
     setYtWorking(true);
-    setYtMessage(null);
     try {
       const info = await fetchYouTubeTitle(link);
+      if (runId !== ytRunRef.current) return;
       if (!info) {
         setYtMessage("Couldn't read that video (it may be private or removed).");
         return;
@@ -103,6 +158,7 @@ export default function ImportScreen() {
       const match = settings.tmdbKey
         ? await bestMatch(info.title, settings.tmdbKey)
         : await bestMatchKeyless(info.title);
+      if (runId !== ytRunRef.current) return;
       const caption = `${info.title} — ${info.author}`;
       if (match) {
         let imdbRating = 0, overview = match.overview, genres = match.genres;
@@ -128,9 +184,11 @@ export default function ImportScreen() {
           originalLanguage: match.originalLanguage, cast,
           needsReview: false,
         });
-        setYtMessage(`Added “${match.title}” to your Watchlist.`);
+        if (runId !== ytRunRef.current) return;
         setYtUrl('');
-        setTimeout(() => router.back(), 1200);
+        Alert.alert('Fetch complete', `“${match.title}” added to watchlist.`, [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
         return;
       }
       addMovie({
@@ -139,7 +197,11 @@ export default function ImportScreen() {
         caption, notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
         originalLanguage: '', cast: [], needsReview: true,
       });
-      setYtMessage('Saved, but I couldn’t identify the movie — tap it to fix the title.');
+      if (runId !== ytRunRef.current) return;
+      setYtUrl('');
+      Alert.alert('Fetch complete', 'Saved to your Watchlist — couldn\'t identify the movie.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
     } finally {
       setYtWorking(false);
     }
@@ -147,33 +209,28 @@ export default function ImportScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.title}>Add to your list</Text>
+      <Text style={styles.title}>Add movies</Text>
       <Text style={styles.subtitle}>
         Name a movie yourself, or paste a link and let the app identify it.
       </Text>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>🎬&nbsp; By title</Text>
+        <Text style={styles.heading}>🎬&nbsp; Search by title</Text>
         <Text style={styles.body}>
-          The fastest way. Type the name of the movie or series, tap{' '}
-          <Text style={styles.bold}>Search</Text>, then tap the right result to add it to your Watchlist.
+          The fastest way. Type the name of the movie or series — results appear as you type.
+          Tap the right result to add it to your Watchlist.
         </Text>
-        <View style={styles.row}>
-          <TextInput
-            style={[styles.input, styles.flex]}
-            value={query}
-            onChangeText={setQuery}
-            placeholder="e.g. Predestination"
-            placeholderTextColor="#8E8E93"
-            onSubmitEditing={doSearch}
-            returnKeyType="search"
-          />
-          <Pressable style={styles.sideBtn} onPress={doSearch}>
-            <Text style={styles.sideBtnText}>Search</Text>
-          </Pressable>
-        </View>
+        <TextInput
+          style={styles.input}
+          value={query}
+          onChangeText={onQueryChange}
+          placeholder="e.g. Predestination"
+          placeholderTextColor="#8E8E93"
+          onSubmitEditing={submitSearch}
+          returnKeyType="search"
+        />
         {searching && <ActivityIndicator color="#fff" style={styles.loader} />}
-        {!searching && searched && results.length === 0 && (
+        {!searching && query.trim().length > 0 && results.length === 0 && (
           <Text style={styles.body}>No matches — check the spelling, or try the original title.</Text>
         )}
         {results.map((m) => {
@@ -204,77 +261,67 @@ export default function ImportScreen() {
       <View style={styles.divider} />
 
       <View style={styles.section}>
-        <Text style={styles.heading}>🔗&nbsp; From a reel or video link</Text>
-        <Text style={styles.body}>
-          Paste a <Text style={styles.bold}>Facebook reel</Text>,{' '}
-          <Text style={styles.bold}>Instagram reel</Text> or{' '}
-          <Text style={styles.bold}>YouTube</Text> link. The app reads the post and
-          identifies the movie for you.
-        </Text>
-        <View style={styles.row}>
-          <TextInput
-            style={[styles.input, styles.flex]}
-            value={url}
-            onChangeText={setUrl}
-            placeholder="Paste link here"
-            placeholderTextColor="#8E8E93"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <Pressable style={styles.sideBtn} onPress={paste}>
-            <Text style={styles.sideBtnText}>Paste</Text>
-          </Pressable>
+        <View style={styles.headingRow}>
+          <View style={styles.fbBadge}>
+            <FontAwesome name="facebook-f" size={22} color="#fff" />
+          </View>
+          <Text style={styles.heading}>Facebook</Text>
         </View>
+        <Text style={styles.body}>Paste a Facebook or Instagram reel link.</Text>
+        <TextInput
+          style={styles.input}
+          value={url}
+          onChangeText={onFbChange}
+          placeholder="Paste link here"
+          placeholderTextColor="#8E8E93"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
         <Pressable
           style={[styles.button, importing && styles.buttonDisabled]}
-          onPress={doImport}
+          onPress={doFetchFb}
           disabled={importing || !url.trim()}
         >
           {importing ? (
             <ActivityIndicator color="#000" />
           ) : (
-            <Text style={styles.buttonText}>Identify & add to Watchlist</Text>
+            <Text style={styles.buttonText}>Fetch</Text>
           )}
         </Pressable>
-        {!!importMessage && <Text style={styles.message}>{importMessage}</Text>}
+        {fbFailed && !!importMessage && <Text style={styles.error}>{importMessage}</Text>}
       </View>
 
       <View style={styles.divider} />
 
       <View style={styles.section}>
-        <Text style={styles.heading}>▶️&nbsp; From a YouTube video</Text>
-        <Text style={styles.body}>
-          Paste a <Text style={styles.bold}>watch</Text>,{' '}
-          <Text style={styles.bold}>Shorts</Text> or{' '}
-          <Text style={styles.bold}>youtu.be</Text> link. The app reads the
-          video’s title and identifies the movie for you.
-        </Text>
-        <View style={styles.row}>
-          <TextInput
-            style={[styles.input, styles.flex]}
-            value={ytUrl}
-            onChangeText={setYtUrl}
-            placeholder="Paste YouTube link here"
-            placeholderTextColor="#8E8E93"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <Pressable style={styles.sideBtn} onPress={pasteYt}>
-            <Text style={styles.sideBtnText}>Paste</Text>
-          </Pressable>
+        <View style={styles.headingRow}>
+          <View style={styles.ytBadge}>
+            <Ionicons name="play" size={18} color="#fff" />
+          </View>
+          <Text style={styles.heading}>YouTube</Text>
         </View>
+        <Text style={styles.body}>Paste a watch, Shorts or youtu.be link.</Text>
+        <TextInput
+          style={styles.input}
+          value={ytUrl}
+          onChangeText={onYtChange}
+          placeholder="Paste YouTube link here"
+          placeholderTextColor="#8E8E93"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
         <Pressable
           style={[styles.button, ytWorking && styles.buttonDisabled]}
-          onPress={doYouTube}
+          onPress={doFetchYt}
           disabled={ytWorking || !ytUrl.trim()}
         >
           {ytWorking ? (
             <ActivityIndicator color="#000" />
           ) : (
-            <Text style={styles.buttonText}>Identify & add to Watchlist</Text>
+            <Text style={styles.buttonText}>Fetch</Text>
           )}
         </Pressable>
-        {!!ytMessage && <Text style={styles.message}>{ytMessage}</Text>}
+        {!!ytMessage && <Text style={styles.error}>{ytMessage}</Text>}
       </View>
     </ScrollView>
   );
@@ -283,31 +330,32 @@ export default function ImportScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   content: { padding: 20, paddingBottom: 48 },
-  title: { color: '#fff', fontSize: 26, fontWeight: '800', marginBottom: 6 },
+  title: { color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 6 },
   subtitle: { color: 'rgba(255,255,255,0.6)', fontSize: 14, lineHeight: 20, marginBottom: 8 },
   section: { marginTop: 20 },
   divider: { height: 1, backgroundColor: '#2c2c2e', marginTop: 28 },
-  heading: { color: '#fff', fontSize: 19, fontWeight: '800', marginBottom: 8 },
+  heading: { color: '#fff', fontSize: 19, fontWeight: '800' },
+  headingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  fbBadge: {
+    backgroundColor: '#1877F2', borderRadius: 10, width: 40, height: 40,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  ytBadge: {
+    backgroundColor: '#FF0000', borderRadius: 8, width: 42, height: 30,
+    alignItems: 'center', justifyContent: 'center',
+  },
   body: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 21, marginBottom: 14 },
-  bold: { fontWeight: '700', color: '#fff' },
-  row: { flexDirection: 'row', gap: 10 },
-  flex: { flex: 1 },
   input: {
     backgroundColor: FIELD_BG, color: '#111', borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 13, fontSize: 15,
   },
-  sideBtn: {
-    backgroundColor: FIELD_BG, borderRadius: 12, paddingHorizontal: 16,
-    justifyContent: 'center',
-  },
-  sideBtnText: { color: '#0a84ff', fontWeight: '700', fontSize: 15 },
   button: {
     backgroundColor: '#fff', borderRadius: 14, paddingVertical: 15,
     alignItems: 'center', marginTop: 14,
   },
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: '#000', fontSize: 16, fontWeight: '700' },
-  message: { color: '#30d158', fontSize: 14, marginTop: 12, lineHeight: 20 },
+  error: { color: '#ff453a', fontSize: 14, marginTop: 12, lineHeight: 20 },
   loader: { marginTop: 16 },
   result: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c1e',
