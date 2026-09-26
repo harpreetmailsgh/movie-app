@@ -72,6 +72,7 @@ def build(text):
         rows.append(r)
 
     countries = {}
+    country_names = {}
     for r in rows:
         if r[idx["week"]] != max_week:
             continue
@@ -89,8 +90,11 @@ def build(text):
             "weeks_in_top_10": int(r[idx["cumulative_weeks_in_top_10"]] or 0),
         }
         if kind == "tv":
-            entry["season"] = r[idx["season_title"]]
+            season = r[idx["season_title"]]
+            if season and season != "N/A":
+                entry["season"] = season
         countries.setdefault(cc, []).append((kind, entry))
+        country_names.setdefault(cc, r[idx["country_name"]])
 
     out = {}
     for cc, items in countries.items():
@@ -99,6 +103,7 @@ def build(text):
         out[cc] = {
             "week": max_week,
             "country_iso2": cc,
+            "country_name": country_names.get(cc, ""),
             "films": films,
             "tv": tv,
         }
