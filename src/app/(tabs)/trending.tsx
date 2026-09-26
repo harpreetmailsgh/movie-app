@@ -4,12 +4,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../lib/store';
 import { Movie } from '../../lib/types';
 import { fetchTrending, trendingToInput } from '../../lib/trending';
+import * as trendingLib from '../../lib/trending';
 import SwipeDeck, { SwipeDir } from '../../components/SwipeDeck';
 import ViewHeader from '../../components/ViewHeader';
 import { useSharedFilters, applyFilters } from '../../lib/sharedFilters';
 import FilterBar, { filtersActive } from '../../components/FilterBar';
 import TilesView from '../../components/TilesView';
 import ListView from '../../components/ListView';
+
+// Dev-1 adds getTrendingLabel(): Promise<string> to src/lib/trending in parallel.
+// This shim compiles until that lands, then resolves to the real export at
+// runtime (module namespace objects carry live bindings).
+const getTrendingLabel: () => Promise<string> =
+  (trendingLib as unknown as { getTrendingLabel?: () => Promise<string> }).getTrendingLabel ??
+  (async () => 'Trending 🔥');
 
 export default function TrendingScreen() {
   const {
@@ -18,6 +26,7 @@ export default function TrendingScreen() {
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Movie[] | null>(null);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+  const [headerTitle, setHeaderTitle] = useState('Trending 🔥');
   const [filters, setFilters] = useSharedFilters();
   // Tapping a tile/row jumps to the Cards view with that item on top.
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -27,7 +36,11 @@ export default function TrendingScreen() {
   useEffect(() => {
     let live = true;
     fetchTrending().then((t) => {
-      if (live) setItems(t);
+      if (!live) return;
+      setItems(t);
+      getTrendingLabel().then((label) => {
+        if (live) setHeaderTitle(label);
+      });
     });
     return () => { live = false; };
   }, []);
@@ -95,7 +108,7 @@ export default function TrendingScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ViewHeader title="Trending 🔥" value={view} onChange={changeView} />
+      <ViewHeader title={headerTitle} value={view} onChange={changeView} />
       <Text style={styles.sub}>Popular movies & series right now</Text>
       <FilterBar values={filters} onChange={setFilters} />
 
