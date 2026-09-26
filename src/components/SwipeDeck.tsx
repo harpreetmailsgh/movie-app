@@ -128,11 +128,12 @@ export default function SwipeDeck({ cards, onSwipe, onInfoTap, animation, deckSt
   const finishCommitRef = useRef<() => void>(() => {});
   // The bin "gulps" (quick scale pop) as the trashed card lands in it.
   const binScale = useRef(new Animated.Value(1)).current;
-  // The linger icon's lifecycle: it appears instantly at commit, holds
-  // while the card exits, then does the trash bin's gulp (delay 300ms,
-  // native spring to 1.3, spring back to 1) once the card has fully moved
-  // (in finishCommit), then hides instantly like the bin. A new swipe stops
-  // any in-flight gulp via lingerFor below.
+  // The linger icon's lifecycle (Seen / Next): appears at commit and starts
+  // its gulp immediately — same clock as the trash bin — so the icon doesn't
+  // lag behind the bin. Sequence: spring to 1.3 (friction 4), spring back to 1
+  // (friction 6), then hide. No leading delay (the bin keeps its 300ms delay
+  // so the card can reach it first; linger has nothing to wait for). A new
+  // swipe stops any in-flight gulp via lingerFor below.
   const lingerScale = useRef(new Animated.Value(1)).current;
   const lingerOpacity = useRef(new Animated.Value(0)).current;
   const lingerBounceRef = useRef<Animated.CompositeAnimation | null>(null);
@@ -140,12 +141,10 @@ export default function SwipeDeck({ cards, onSwipe, onInfoTap, animation, deckSt
     lingerBounceRef.current?.stop();
     lingerScale.setValue(1);
     lingerOpacity.setValue(1);
-    // The trash bin's gulp, exactly: delay 300ms, spring to 1.3 (friction 4),
-    // spring back to 1 (friction 6), all on the NATIVE driver — then hide
-    // instantly, like the bin. No fade-out: the bin doesn't fade, so the
-    // linger doesn't either. Timing matches the bin exactly.
+    // Same springs as the trash bin, but no 300ms delay — gulp starts at
+    // commit so Seen/Next icons finish in line with the bin. Native driver;
+    // hide instantly when the sequence completes.
     const seq = Animated.sequence([
-      Animated.delay(300),
       Animated.spring(lingerScale, { toValue: 1.3, friction: 4, useNativeDriver: true }),
       Animated.spring(lingerScale, { toValue: 1, friction: 6, useNativeDriver: true }),
     ]);
@@ -158,15 +157,15 @@ export default function SwipeDeck({ cards, onSwipe, onInfoTap, animation, deckSt
     });
   };
 
-  // Start the linger for a committed direction: the icon appears instantly
-  // at the deck's center and holds while the card flies out. The gulp
-  // (same as the trash bin's) comes in finishCommit, after the card has
-  // fully moved. Does NOT gate the commit.
+  // Start the linger for a committed direction: icon appears and gulps at
+  // commit (parallel with the card exit), matching the trash bin timeline.
+  // Does NOT gate the commit.
   const lingerFor = (dir: SwipeDir) => {
     lingerBounceRef.current?.stop();
     lingerScale.setValue(1);
     lingerOpacity.setValue(1);
     setLingerDir(dir);
+    bounceLinger();
   };
 
   // Completes a pending commit. The exiting card is already invisible at its
@@ -182,6 +181,8 @@ export default function SwipeDeck({ cards, onSwipe, onInfoTap, animation, deckSt
   // Called when the exit animation finishes, or instantly if the user grabs
   // the deck mid-exit, so the next card is draggable right away and the
   // deck never feels blocked.
+  // Linger gulp is started at commit (lingerFor), not here — so finishCommit
+  // only settles card state and notifies the parent.
   const finishCommit = () => {
     const p = pendingRef.current;
     if (!p) return;
@@ -191,9 +192,6 @@ export default function SwipeDeck({ cards, onSwipe, onInfoTap, animation, deckSt
     setExiting(false);
     setToBack(false);
     setTrashing(false);
-    // The card has fully moved: the linger icon bounces a little, then
-    // hides (the bounce hides it when it finishes).
-    if (lingerDir) bounceLinger();
     onSwipeRef.current(p.dir, p.movie);
   };
   finishCommitRef.current = finishCommit;
