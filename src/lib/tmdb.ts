@@ -33,6 +33,24 @@ export async function bestMatch(text: string, apiKey: string): Promise<TmdbMatch
   return best?.match ?? null;
 }
 
+/**
+ * Keyless version of bestMatch: runs candidates(text) through the Cinemeta
+ * catalog search and scores them with score() (popularity 0). Best at or
+ * above 60 wins, otherwise null.
+ */
+export async function bestMatchKeyless(text: string): Promise<TmdbMatch | null> {
+  if (!text) return null;
+  let best: { match: TmdbMatch; score: number } | null = null;
+  for (const candidate of candidates(text).slice(0, 6)) {
+    const results = await searchTitlesKeyless(candidate);
+    for (const r of results) {
+      const s = score(r.title, candidate, 0);
+      if (s >= 60 && (!best || s > best.score)) best = { match: r, score: s };
+    }
+  }
+  return best?.match ?? null;
+}
+
 /** Search TMDB and return raw matches (used by manual add). */
 export async function searchTitles(query: string, apiKey: string): Promise<TmdbMatch[]> {
   if (!apiKey || !query.trim()) return [];

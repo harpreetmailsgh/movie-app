@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Movie, EntryStatus, Settings, ViewMode } from './types';
 import { seedMovies, backfillSeedData, normalizeMovie } from './seed';
-import { bestMatch, fetchImdbRating, fetchReelText, searchTitlesKeyless, fetchKeylessMeta } from './tmdb';
+import { bestMatch, bestMatchKeyless, fetchImdbRating, fetchReelText, searchTitlesKeyless, fetchKeylessMeta } from './tmdb';
 import { pickRandomTitles } from './testMovies';
 import { useAuth } from './auth';
 import { getSupabase } from './supabase';
@@ -359,11 +359,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setImportMessage('Couldn’t read that reel (it may be private). You can add the title manually below.');
         return false;
       }
-      if (!settings.tmdbKey) {
-        setImportMessage('Reel caption read. Add your free TMDB key in Settings so I can identify the movie.');
-        return false;
-      }
-      const match = await bestMatch(text, settings.tmdbKey);
+      const match = settings.tmdbKey
+        ? await bestMatch(text, settings.tmdbKey)
+        : await bestMatchKeyless(text);
       if (match) {
         const imdbRating = await fetchImdbRating(match.tmdbID, match.mediaType, match.title, settings.tmdbKey);
         addMovie({

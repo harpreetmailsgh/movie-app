@@ -5,7 +5,8 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import { useStore } from '../lib/store';
-import { searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
+import { bestMatch, bestMatchKeyless, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
+import { parseYouTubeId, fetchYouTubeTitle } from '../lib/youtube';
 import { posterUrl } from '../lib/types';
 
 const FIELD_BG = '#E9E9EE';
@@ -17,10 +18,18 @@ export default function ImportScreen() {
   const [results, setResults] = useState<TmdbMatch[]>([]);
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [ytUrl, setYtUrl] = useState('');
+  const [ytWorking, setYtWorking] = useState(false);
+  const [ytMessage, setYtMessage] = useState<string | null>(null);
 
   const paste = async () => {
     const text = await Clipboard.getStringAsync();
     if (text) setUrl(text);
+  };
+
+  const pasteYt = async () => {
+    const text = await Clipboard.getStringAsync();
+    if (text) setYtUrl(text);
   };
 
   const doImport = async () => {
@@ -74,6 +83,66 @@ export default function ImportScreen() {
       needsReview: false,
     });
     router.back();
+  };
+
+  /** YouTube import: oEmbed title (caption-first step), then TMDB/keyless match. */
+  const doYouTube = async () => {
+    const link = ytUrl.trim();
+    if (!parseYouTubeId(link)) {
+      setYtMessage("That doesn't look like a YouTube link — use a watch, Shorts, or youtu.be link.");
+      return;
+    }
+    setYtWorking(true);
+    setYtMessage(null);
+    try {
+      const info = await fetchYouTubeTitle(link);
+      if (!info) {
+        setYtMessage("Couldn't read that video (it may be private or removed).");
+        return;
+      }
+      const match = settings.tmdbKey
+        ? await bestMatch(info.title, settings.tmdbKey)
+        : await bestMatchKeyless(info.title);
+      const caption = `${info.title} — ${info.author}`;
+      if (match) {
+        let imdbRating = 0, overview = match.overview, genres = match.genres;
+        let cast: string[] = [];
+        if (match.cinemetaId) {
+          try {
+            const meta = await fetchKeylessMeta(match.cinemetaId, match.mediaType);
+            if (meta) {
+              const r = parseFloat(meta.imdbRating ?? '');
+              if (Number.isFinite(r)) imdbRating = r;
+              if (meta.description) overview = meta.description;
+              if (meta.genres?.length) genres = meta.genres.slice(0, 3);
+              if (meta.cast?.length) cast = meta.cast.slice(0, 3);
+            }
+          } catch { /* keep the slim fields */ }
+        } else {
+          imdbRating = await fetchImdbRating(match.tmdbID, match.mediaType, match.title, settings.tmdbKey);
+        }
+        addMovie({
+          title: match.title, year: match.year, mediaType: match.mediaType, genres,
+          overview, posterPath: match.posterPath, reelURL: link,
+          caption, notes: '', status: 'watchlist', tmdbID: match.tmdbID, imdbRating,
+          originalLanguage: match.originalLanguage, cast,
+          needsReview: false,
+        });
+        setYtMessage(`Added “${match.title}” to your Watchlist.`);
+        setYtUrl('');
+        setTimeout(() => router.back(), 1200);
+        return;
+      }
+      addMovie({
+        title: 'Unknown title', year: 0, mediaType: 'movie', genres: [],
+        overview: '', posterPath: '', reelURL: link,
+        caption, notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
+        originalLanguage: '', cast: [], needsReview: true,
+      });
+      setYtMessage('Saved, but I couldn’t identify the movie — tap it to fix the title.');
+    } finally {
+      setYtWorking(false);
+    }
   };
 
   return (
@@ -168,6 +237,44 @@ export default function ImportScreen() {
           )}
         </Pressable>
         {!!importMessage && <Text style={styles.message}>{importMessage}</Text>}
+      </View>
+
+      <View style={styles.divider} />
+
+      <View style={styles.section}>
+        <Text style={styles.heading}>▶️&nbsp; From a YouTube video</Text>
+        <Text style={styles.body}>
+          Paste a <Text style={styles.bold}>watch</Text>,{' '}
+          <Text style={styles.bold}>Shorts</Text> or{' '}
+          <Text style={styles.bold}>youtu.be</Text> link. The app reads the
+          video’s title and identifies the movie for you.
+        </Text>
+        <View style={styles.row}>
+          <TextInput
+            style={[styles.input, styles.flex]}
+            value={ytUrl}
+            onChangeText={setYtUrl}
+            placeholder="Paste YouTube link here"
+            placeholderTextColor="#8E8E93"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable style={styles.sideBtn} onPress={pasteYt}>
+            <Text style={styles.sideBtnText}>Paste</Text>
+          </Pressable>
+        </View>
+        <Pressable
+          style={[styles.button, ytWorking && styles.buttonDisabled]}
+          onPress={doYouTube}
+          disabled={ytWorking || !ytUrl.trim()}
+        >
+          {ytWorking ? (
+            <ActivityIndicator color="#000" />
+          ) : (
+            <Text style={styles.buttonText}>Identify & add to Watchlist</Text>
+          )}
+        </Pressable>
+        {!!ytMessage && <Text style={styles.message}>{ytMessage}</Text>}
       </View>
     </ScrollView>
   );

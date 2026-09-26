@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import * as Haptics from 'expo-haptics';
 import * as Updates from 'expo-updates';
 import { useStore } from '../../lib/store';
 import { useAuth } from '../../lib/auth';
@@ -62,20 +61,10 @@ function AccountSection() {
 }
 
 export default function SettingsScreen() {
-  const { settings, setTmdbKey, setCardAnimation, setDeckStyle, enrichLibrary, importing, addTestMovies, clearLibrary } = useStore();
-  const [key, setKey] = useState(settings.tmdbKey);
-  const [saved, setSaved] = useState(false);
+  const { addTestMovies, clearLibrary } = useStore();
   const [addingTests, setAddingTests] = useState(false);
   const [testsAdded, setTestsAdded] = useState<number | null>(null);
   const insets = useSafeAreaInsets();
-
-  const save = async () => {
-    setTmdbKey(key);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-    // Fill in posters/descriptions for entries missing them.
-    await enrichLibrary();
-  };
 
   const addTests = async () => {
     setAddingTests(true);
@@ -90,104 +79,9 @@ export default function SettingsScreen() {
     }
   };
 
-  const testHaptics = async () => {
-    const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    try {
-      await Haptics.selectionAsync();
-      await pause(300);
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      await pause(300);
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await pause(300);
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    } catch {
-      Alert.alert('Haptics unavailable', 'The haptics module could not run on this device.');
-    }
-  };
-
   return (
     <ScrollView style={[styles.container, { paddingTop: insets.top }]} contentContainerStyle={styles.content}>
       <AccountSection />
-      <Text style={[styles.heading, styles.section]}>TMDB API key</Text>
-      <Text style={styles.body}>
-        The app uses TMDB (a free movie database) to identify movies from reels
-        and to fetch posters, genres and descriptions.
-      </Text>
-      <Text style={styles.body}>
-        Get a free key: themoviedb.org → sign up → Settings → API → copy the
-        "API Key (v3 auth)".
-      </Text>
-      <TextInput
-        style={styles.input}
-        value={key}
-        onChangeText={setKey}
-        placeholder="Paste your TMDB API key"
-        placeholderTextColor="rgba(255,255,255,0.35)"
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-      <Pressable style={styles.button} onPress={save}>
-        <Text style={styles.buttonText}>{importing ? 'Working…' : saved ? 'Saved ✓' : 'Save key'}</Text>
-      </Pressable>
-      <Text style={styles.hint}>
-        Saving the key also fills in missing posters and descriptions for your
-        current list. The key is stored only on this phone.
-      </Text>
-
-      <Text style={[styles.heading, styles.section]}>Card animation</Text>
-      <Text style={styles.body}>
-        How the swipe deck feels. Try both and keep the one you like.
-      </Text>
-      <View style={styles.optionRow}>
-        {(
-          [
-            { id: 'flick', title: 'Flick', desc: 'Throw cards with momentum' },
-            { id: 'peel', title: 'Peel', desc: 'Lift and peel cards away' },
-          ] as const
-        ).map((opt) => {
-          const active = settings.cardAnimation === opt.id;
-          return (
-            <Pressable
-              key={opt.id}
-              style={[styles.option, active && styles.optionActive]}
-              onPress={() => setCardAnimation(opt.id)}
-            >
-              <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>{opt.title}</Text>
-              <Text style={styles.optionDesc}>{opt.desc}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      <Pressable style={styles.hapticTest} onPress={testHaptics}>
-        <Text style={styles.hapticTestText}>Test haptics</Text>
-      </Pressable>
-      <Text style={styles.hint}>Tapping it should play four buzzes, each stronger than the last.</Text>
-
-      <Text style={[styles.heading, styles.section]}>Deck look</Text>
-      <Text style={styles.body}>
-        How the cards underneath peek out. Try all three and keep the one you like.
-      </Text>
-      <View style={styles.optionRow}>
-        {(
-          [
-            { id: 'stack', title: 'Stack', desc: 'Neat pile, clean edges' },
-            { id: 'sidepeek', title: 'Side peek', desc: 'Sliver on the left edge' },
-            { id: 'fan', title: 'Fan', desc: 'Subtle fanned hand' },
-          ] as const
-        ).map((opt) => {
-          const active = settings.deckStyle === opt.id;
-          return (
-            <Pressable
-              key={opt.id}
-              style={[styles.option, active && styles.optionActive]}
-              onPress={() => setDeckStyle(opt.id)}
-            >
-              <Text style={[styles.optionTitle, active && styles.optionTitleActive]}>{opt.title}</Text>
-              <Text style={styles.optionDesc}>{opt.desc}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
 
       <Text style={[styles.heading, styles.section]}>Test data</Text>
       <Text style={styles.body}>
@@ -217,17 +111,6 @@ export default function SettingsScreen() {
       >
         <Text style={[styles.hapticTestText, styles.clearBtnText]}>Clear all movies</Text>
       </Pressable>
-
-      <Text style={[styles.heading, styles.section]}>How adding works</Text>
-      <Text style={styles.body}>
-        1. In Facebook, tap Share on a reel → Copy link{'\n'}
-        2. Open this app → ＋ Add from a reel{'\n'}
-        3. Paste the link — the app reads the reel's caption and identifies the movie
-      </Text>
-      <Text style={styles.hint}>
-        Only public reels can be read. Private or friends-only reels can't be
-        identified automatically — add those by title instead.
-      </Text>
 
       <Pressable
         style={styles.dangerLink}
