@@ -107,7 +107,7 @@ async function getCountryCode(): Promise<string | null> {
 }
 
 // ---------------------------------------------------------------------------
-// Netflix top-10 source (top10.netflix.com TSV, keyless)
+// Netflix top-10 source (per-country JSON generated to our repo, keyless)
 // ---------------------------------------------------------------------------
 
 interface RankedTitle {
@@ -121,52 +121,54 @@ interface NetflixResult {
   countryName: string;
 }
 
-const NETFLIX_TSV = 'https://top10.netflix.com/data/all-weeks-countries.tsv';
+interface NetflixJsonEntry {
+  rank?: number;
+  title?: string;
+  weeks_in_top_10?: number;
+  season?: string;
+}
+
+interface NetflixJson {
+  week?: string;
+  country_iso2?: string;
+  films?: NetflixJsonEntry[];
+  tv?: NetflixJsonEntry[];
+}
 
 /**
- * Netflix top 10 for the country: filter lines by country_iso2 first
- * (cheap string scan before splitting), then keep the latest week.
+ * Per-country Netflix top 10 JSON. Returns null on any failure (non-200,
+ * parse error, missing films/tv arrays) so the existing fallback chain
+ * runs (Apple iTunes -> Cinemeta global).
  */
-async function fetchNetflix(cc: string): Promise<NetflixResult> {
-  const res = await fetch(NETFLIX_TSV);
-  if (!res.ok) throw new Error(`netflix tsv: ${res.status}`);
-  const text = await res.text();
-  const iso2 = cc.toUpperCase();
-  const needle = `\t${iso2}\t`;
+async function fetchNetflixCountry(cc: string): Promise<NetflixResult | null> {
+  try {
+    const res = await fetch(
+      `https://raw.githubusercontent.com/harpreetmailsgh/movie-app/trending-data/netflix/${cc.toLowerCase()}.json`
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as NetflixJson;
+    if (!data || !Array.isArray(data.films) || !Array.isArray(data.tv)) return null;
 
-  // First pass: collect this country's rows and find the latest week.
-  const rows: string[][] = [];
-  let countryName = iso2;
-  let latestWeek = '';
-  for (const line of text.split('\n')) {
-    if (!line.includes(needle)) continue;
-    // country_name, country_iso2, week, category, weekly_rank,
-    // show_title, season_title, cumulative_weeks_in_top_10
-    const cols = line.split('\t');
-    if (cols.length < 8) continue;
-    rows.push(cols);
-    if (cols[2] > latestWeek) latestWeek = cols[2];
-    if (cols[0]) countryName = cols[0];
+    const byRank = (a: NetflixJsonEntry, b: NetflixJsonEntry) => (a.rank ?? 0) - (b.rank ?? 0);
+    const items: RankedTitle[] = [];
+    for (const f of data.films.filter((e) => typeof e?.title === 'string' && e.title.trim()).sort(byRank)) {
+      const title = (f.title as string).trim();
+      items.push({ title, mediaType: 'movie', notes: '' });
+    }
+    for (const t of data.tv.filter((e) => typeof e?.title === 'string' && e.title.trim()).sort(byRank)) {
+      const title = (t.title as string).trim();
+      const season = typeof t.season === 'string' ? t.season.trim() : '';
+      items.push({
+        title,
+        mediaType: 'tv',
+        notes: season && season !== title ? season : '',
+      });
+    }
+    if (!items.length) return null;
+    return { items, countryName: cc.toUpperCase() };
+  } catch {
+    return null;
   }
-  if (!rows.length || !latestWeek) throw new Error('netflix: no rows for country');
-
-  // Second pass: latest week only, ordered by weekly_rank.
-  const items: RankedTitle[] = [];
-  for (const cols of rows
-    .filter((c) => c[2] === latestWeek)
-    .sort((a, b) => Number(a[4]) - Number(b[4]))) {
-    const title = cols[5].trim();
-    if (!title) continue;
-    const category = cols[3].trim().toLowerCase();
-    const seasonTitle = cols[6].trim();
-    items.push({
-      title,
-      mediaType: category === 'tv' ? 'tv' : 'movie',
-      notes: seasonTitle && seasonTitle !== 'N/A' && seasonTitle !== title ? seasonTitle : '',
-    });
-  }
-  if (!items.length) throw new Error('netflix: no titles for latest week');
-  return { items, countryName };
 }
 
 // ---------------------------------------------------------------------------
@@ -311,12 +313,15 @@ async function writeCache(entry: Omit<TrendingCache, 'at'>): Promise<void> {
 async function loadCountryTrending(): Promise<Movie[]> {
   const cc = await getCountryCode();
   if (!cc) throw new Error('no country');
-  const [netflix, apple] = await Promise.all([fetchNetflix(cc), fetchApple(cc)]);
-  const titles = mergeAndDedupe(netflix.items, apple);
+  const [netflix, apple] = await Promise.all([
+    fetchNetflixCountry(cc),
+    fetchApple(cc).catch(() => [] as RankedTitle[]),
+  ]);
+  const titles = mergeAndDedupe(netflix?.items ?? [], apple);
   if (!titles.length) throw new Error('no titles to enrich');
   const items = await enrichTitles(titles);
   if (!items.length) throw new Error('no enriched items');
-  const label = `Trending in ${netflix.countryName} 🔥`;
+  const label = netflix ? `Trending in ${netflix.countryName} 🔥` : `Trending in ${cc.toUpperCase()} 🔥`;
   lastLabel = label;
   await writeCache({ countryCode: cc, label, items });
   return items;
