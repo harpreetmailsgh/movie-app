@@ -4,7 +4,7 @@ import { Movie, posterUrl } from '../lib/types';
 
 const SCREEN_W = Dimensions.get('window').width;
 const GAP = 10;
-const COLS = 3;
+const COLS = 2;
 const TILE_W = (SCREEN_W - 32 - GAP * (COLS - 1)) / COLS;
 const TILE_H = TILE_W * 1.5;
 
