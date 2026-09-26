@@ -28,7 +28,7 @@ export default function MovieList({
   if (items.length === 0) {
     return (
       <View style={styles.center}>
-        <Text style={styles.dim}>Nothing here yet.</Text>
+        <Text style={styles.dim}>{emptyText ?? 'Nothing here yet.'}</Text>
       </View>
     );
   }
