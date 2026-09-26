@@ -1,0 +1,35 @@
+name: Netflix trending data
+
+on:
+  schedule:
+    - cron: '0 15 * * 2'  # Tuesdays 15:00 UTC, after Netflix's Tuesday publish
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Generate trending JSONs
+        run: python3 scripts/netflix-trending/update.py /tmp/netflix-staging
+
+      - name: Checkout trending-data branch
+        run: |
+          git checkout -B trending-data origin/trending-data 2>/dev/null || git checkout -B trending-data
+
+      - name: Copy JSONs and commit
+        run: |
+          rm -rf netflix
+          cp -r /tmp/netflix-staging/netflix netflix
+          git add netflix
+          WEEK=$(python3 -c "import json; print(json.load(open('netflix/us.json'))['week'])")
+          git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" \
+            commit -m "Netflix trending data: week $WEEK [skip ci]" || echo "no changes"
+
+      - name: Push to trending-data
+        run: git push origin trending-data
