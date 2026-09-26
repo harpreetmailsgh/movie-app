@@ -8,12 +8,8 @@ import SwipeDeck, { SwipeDir } from '../../components/SwipeDeck';
 import ViewHeader from '../../components/ViewHeader';
 import TilesView from '../../components/TilesView';
 import ListView from '../../components/ListView';
-import FilterBar, {
-  FilterValues,
-  EMPTY_FILTERS,
-  yearMatches,
-  ratingMatches,
-} from '../../components/FilterBar';
+import { useSharedFilters, applyFilters } from '../../lib/sharedFilters';
+import FilterBar from '../../components/FilterBar';
 
 export default function WatchlistScreen() {
   const {
@@ -21,7 +17,7 @@ export default function WatchlistScreen() {
     moveMovie, deleteMovie, cycleToBack,
   } = useStore();
   const insets = useSafeAreaInsets();
-  const [filters, setFilters] = useState<FilterValues>(EMPTY_FILTERS);
+  const [filters, setFilters] = useSharedFilters();
   // Tapping a tile/row jumps to the Cards view with that movie on top.
   const [focusId, setFocusId] = useState<string | null>(null);
 
@@ -32,17 +28,10 @@ export default function WatchlistScreen() {
     [movies]
   );
 
-  const filtered = useMemo(() => {
-    return watchlist.filter(
-      (m) =>
-        (filters.type === null ||
-          (filters.type === 'Movies' ? m.mediaType === 'movie' : m.mediaType === 'tv')) &&
-        (filters.genre.length === 0 || filters.genre.some((g) => m.genres.includes(g))) &&
-        (filters.language.length === 0 || filters.language.includes(m.originalLanguage)) &&
-        (filters.year === null || yearMatches(m.year, filters.year)) &&
-        (filters.rating === null || ratingMatches(m.imdbRating, filters.rating))
-    );
-  }, [watchlist, filters]);
+  const filtered = useMemo(
+    () => applyFilters(watchlist, filters),
+    [watchlist, filters]
+  );
 
   const deck = useMemo(() => {
     if (!focusId) return filtered;
@@ -84,34 +73,32 @@ export default function WatchlistScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ViewHeader title="Watchlist" value={view} onChange={changeView} />
+      <FilterBar values={filters} onChange={setFilters} />
 
       {view === 'cards' && (
-        <>
-          <FilterBar values={filters} onChange={setFilters} />
-          <View style={styles.deckArea}>
-            {deck.length === 0 ? (
-              <View style={styles.center}>
-                <Text style={styles.emptyIcon}>🎬</Text>
-                <Text style={styles.emptyTitle}>Nothing here yet</Text>
-                <Text style={styles.dim}>
-                  {watchlist.length === 0
-                    ? 'Save movies from Trending or add your own with +.'
-                    : 'No movies match these filters.'}
-                </Text>
-              </View>
-            ) : (
-              <SwipeDeck
-                cards={deck}
-                onSwipe={handleSwipe}
-                trashBin
-                toBackDirs={['left', 'right']}
-                onInfoTap={(m) => router.push(`/movie/${m.id}`)}
-                animation={settings.cardAnimation}
-                deckStyle={settings.deckStyle}
-              />
-            )}
-          </View>
-        </>
+        <View style={styles.deckArea}>
+          {deck.length === 0 ? (
+            <View style={styles.center}>
+              <Text style={styles.emptyIcon}>🎬</Text>
+              <Text style={styles.emptyTitle}>Nothing here yet</Text>
+              <Text style={styles.dim}>
+                {watchlist.length === 0
+                  ? 'Save movies from Trending or add your own with +.'
+                  : 'No movies match these filters.'}
+              </Text>
+            </View>
+          ) : (
+            <SwipeDeck
+              cards={deck}
+              onSwipe={handleSwipe}
+              trashBin
+              toBackDirs={['left', 'right']}
+              onInfoTap={(m) => router.push(`/movie/${m.id}`)}
+              animation={settings.cardAnimation}
+              deckStyle={settings.deckStyle}
+            />
+          )}
+        </View>
       )}
 
       {view === 'tiles' && (

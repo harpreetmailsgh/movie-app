@@ -6,6 +6,8 @@ import { Movie } from '../../lib/types';
 import { fetchTrending, trendingToInput } from '../../lib/trending';
 import SwipeDeck, { SwipeDir } from '../../components/SwipeDeck';
 import ViewHeader from '../../components/ViewHeader';
+import { useSharedFilters, applyFilters } from '../../lib/sharedFilters';
+import FilterBar, { filtersActive } from '../../components/FilterBar';
 import TilesView from '../../components/TilesView';
 import ListView from '../../components/ListView';
 
@@ -16,6 +18,7 @@ export default function TrendingScreen() {
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Movie[] | null>(null);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+  const [filters, setFilters] = useSharedFilters();
   // Tapping a tile/row jumps to the Cards view with that item on top.
   const [focusId, setFocusId] = useState<string | null>(null);
 
@@ -40,11 +43,14 @@ export default function TrendingScreen() {
   );
 
   const visible = useMemo(() => {
-    const list = (items ?? []).filter((t) => !hiddenIds.includes(t.id));
+    const list = applyFilters(
+      (items ?? []).filter((t) => !hiddenIds.includes(t.id)),
+      filters
+    );
     if (!focusId) return list;
     const m = list.find((t) => t.id === focusId);
     return m ? [m, ...list.filter((t) => t.id !== focusId)] : list;
-  }, [items, hiddenIds, focusId]);
+  }, [items, hiddenIds, focusId, filters]);
 
   const changeView = (v: 'cards' | 'tiles' | 'list') => {
     setFocusId(null);
@@ -91,6 +97,7 @@ export default function TrendingScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ViewHeader title="Trending 🔥" value={view} onChange={changeView} />
       <Text style={styles.sub}>Popular movies & series right now</Text>
+      <FilterBar values={filters} onChange={setFilters} />
 
       {view === 'cards' && (
         <View style={styles.deckArea}>
@@ -98,7 +105,11 @@ export default function TrendingScreen() {
             <View style={styles.center}>
               <Text style={styles.emptyIcon}>🔥</Text>
               <Text style={styles.emptyTitle}>All caught up</Text>
-              <Text style={styles.dim}>You've gone through today's trending feed.</Text>
+              <Text style={styles.dim}>
+                {filtersActive(filters)
+                  ? 'No matches — trending items do not carry language or rating data; try clearing those.'
+                  : "You've gone through today's trending feed."}
+              </Text>
             </View>
           ) : (
             <SwipeDeck
@@ -118,7 +129,15 @@ export default function TrendingScreen() {
       )}
 
       {view === 'tiles' && (
-        <TilesView movies={visible} onSelect={openInCards} emptyText="Nothing trending right now." />
+        <TilesView
+          movies={visible}
+          onSelect={openInCards}
+          emptyText={
+            filtersActive(filters)
+              ? 'No matches — trending items do not carry language or rating data; try clearing those.'
+              : 'Nothing trending right now.'
+          }
+        />
       )}
 
       {view === 'list' && (
@@ -126,7 +145,11 @@ export default function TrendingScreen() {
           movies={visible}
           onSelect={openInCards}
           actions={{ onAdd: addToWatchlist, addedIds }}
-          emptyText="Nothing trending right now."
+          emptyText={
+            filtersActive(filters)
+              ? 'No matches — trending items do not carry language or rating data; try clearing those.'
+              : 'Nothing trending right now.'
+          }
         />
       )}
     </View>

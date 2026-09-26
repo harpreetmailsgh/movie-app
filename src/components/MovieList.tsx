@@ -5,9 +5,15 @@ import { Movie, posterUrl } from '../lib/types';
 import { useStore } from '../lib/store';
 
 /** The Seen tab: simple rows, tap for detail, Remove deletes permanently. */
-export default function MovieList() {
+export default function MovieList({
+  movies: moviesProp,
+  emptyText,
+}: {
+  movies?: Movie[];
+  emptyText?: string;
+}) {
   const { movies, ready, moveMovie, deleteMovie } = useStore();
-  const items = movies
+  const items = moviesProp ?? movies
     .filter((m) => m.status === 'seen')
     .sort((a, b) => b.dateAdded - a.dateAdded);
 
