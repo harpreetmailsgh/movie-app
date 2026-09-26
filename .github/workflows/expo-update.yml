@@ -1,0 +1,46 @@
+name: Publish Expo update
+
+# Every push to master (by you, Grok, or the assistant) automatically
+# exports the app and publishes an EAS Update to the "production" channel,
+# in both runtime formats (exposdk:57.0.0 and 57.0.0) — exactly what the
+# manual publish flow did. Force-close + reopen Expo Go to pick it up.
+on:
+  push:
+    branches: [master]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write .env.production
+        run: |
+          printf 'EXPO_PUBLIC_SUPABASE_URL=%s\nEXPO_PUBLIC_SUPABASE_ANON_KEY=%s\n' \
+            "${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}" \
+            "${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}" > .env.production
+
+      - name: Export bundle
+        run: npx expo export --clear
+
+      - name: Publish update (exposdk:57.0.0 runtime)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_DIR: ${{ github.workspace }}
+          EAS_RUNTIME_VERSION: exposdk:57.0.0
+        run: python3 tools/eas-update/publish_update.py
+
+      - name: Publish update (57.0.0 runtime)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_DIR: ${{ github.workspace }}
+          EAS_RUNTIME_VERSION: 57.0.0
+        run: python3 tools/eas-update/publish_update.py
