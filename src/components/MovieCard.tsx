@@ -1,0 +1,145 @@
+import React from 'react';
+import { View, Text, Image, Pressable, StyleSheet, Linking } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Movie, posterUrl, tmdbUrl } from '../lib/types';
+import { resolveTrailerUrl } from '../lib/tmdb';
+import { useStore } from '../lib/store';
+
+export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTap?: () => void }) {
+  const { settings } = useStore();
+  const uri = posterUrl(movie.posterPath, 'w780');
+  const sourceUrl = tmdbUrl(movie.tmdbID, movie.mediaType);
+  const genres = movie.genres ?? [];
+  const cast = movie.cast ?? [];
+
+  const openTrailer = async () => {
+    const url = await resolveTrailerUrl(movie, settings.tmdbKey);
+    Linking.openURL(url);
+  };
+  const metaBits = [
+    movie.year > 0 ? String(movie.year) : null,
+    movie.mediaType === 'tv' ? 'Series' : 'Movie',
+    movie.imdbRating > 0 ? `★ ${movie.imdbRating.toFixed(1)}` : null,
+    movie.originalLanguage || null,
+  ].filter(Boolean);
+
+  return (
+    <LinearGradient
+      colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.10)', 'rgba(0,0,0,0.45)']}
+      locations={[0, 0.45, 1]}
+      style={styles.bezel}
+    >
+      <View style={styles.card}>
+      {uri ? (
+        <Image source={{ uri }} style={styles.poster} resizeMode="cover" />
+      ) : (
+        <View style={[styles.poster, styles.posterFallback]}>
+          <Text style={styles.fallbackIcon}>{movie.mediaType === 'tv' ? '📺' : '🎬'}</Text>
+        </View>
+      )}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.95)']}
+        locations={[0.3, 0.62, 1]}
+        style={styles.gradient}
+      />
+      <View style={styles.content}>
+        <View style={styles.titleRow}>
+          <Text style={styles.title} numberOfLines={2}>{movie.title}</Text>
+          {onInfoTap && (
+            <Pressable onPress={onInfoTap} hitSlop={12} style={styles.infoBtn}>
+              <Text style={styles.infoText}>ⓘ</Text>
+            </Pressable>
+          )}
+        </View>
+        {metaBits.length > 0 && (
+          <Text style={styles.meta}>{metaBits.join(' · ')}</Text>
+        )}
+        {genres.length > 0 && (
+          <View style={styles.chips}>
+            {genres.slice(0, 3).map((g) => (
+              <View key={g} style={styles.chip}>
+                <Text style={styles.chipText}>{g}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+        {!!movie.overview && (
+          <View>
+            <Text style={styles.overview} numberOfLines={3}>
+              {movie.overview}
+            </Text>
+            <View style={styles.linkRow}>
+              {!!sourceUrl && (
+                <Pressable onPress={() => Linking.openURL(sourceUrl)} hitSlop={8}>
+                  <Text style={styles.more}>More ↗</Text>
+                </Pressable>
+              )}
+              {!!sourceUrl && <Text style={styles.linkDot}>·</Text>}
+              <Pressable onPress={openTrailer} hitSlop={8}>
+                <Text style={styles.more}>Trailer ▶</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+        {cast.length > 0 && (
+          <Text style={styles.cast} numberOfLines={1}>
+            Starring {cast.slice(0, 3).join(', ')}
+          </Text>
+        )}
+        {movie.needsReview && (
+          <Text style={styles.review}>Needs a look — tap ⓘ to confirm the title</Text>
+        )}
+      </View>
+      </View>
+    </LinearGradient>
+  );
+}
+
+const styles = StyleSheet.create({
+  bezel: {
+    flex: 1,
+    borderRadius: 28,
+    padding: 2,
+    // NOTE: no iOS drop shadow here on purpose. A pathless shadow on a view
+    // whose transform animates forces Core Animation to re-render the shadow
+    // offscreen every frame (3 cards x full-bleed image + gradients) — that's
+    // what made every swipe stutter. The bezel gradient already gives the
+    // bevel; a black shadow on a black background would be invisible anyway.
+    // Android keeps its cheap elevation shadow.
+    elevation: 12,
+  },
+  card: {
+    flex: 1,
+    borderRadius: 26,
+    backgroundColor: '#1c1c1e',
+    overflow: 'hidden',
+  },
+  poster: { ...StyleSheet.absoluteFill, width: undefined, height: undefined },
+  posterFallback: {
+    backgroundColor: '#1c1c1e',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fallbackIcon: { fontSize: 64, opacity: 0.5 },
+  gradient: { ...StyleSheet.absoluteFill },
+  content: { flex: 1, justifyContent: 'flex-end', padding: 22 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  title: { flex: 1, color: '#fff', fontSize: 28, fontWeight: '800' },
+  infoBtn: { marginLeft: 8, marginTop: 4 },
+  infoText: { color: 'rgba(255,255,255,0.85)', fontSize: 24 },
+  meta: { color: 'rgba(255,255,255,0.75)', fontSize: 14, marginTop: 6 },
+  chips: { flexDirection: 'row', marginTop: 10, gap: 6 },
+  chip: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  chipText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  overview: { color: 'rgba(255,255,255,0.8)', fontSize: 14, marginTop: 10, lineHeight: 20 },
+  more: { color: '#0a84ff', fontSize: 13, fontWeight: '700', marginTop: 4 },
+  linkRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 },
+  linkDot: { color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 4 },
+  cast: { color: 'rgba(255,255,255,0.65)', fontSize: 12, marginTop: 8, fontStyle: 'italic' },
+  review: { color: '#ff9f0a', fontSize: 12, fontWeight: '700', marginTop: 8 },
+});

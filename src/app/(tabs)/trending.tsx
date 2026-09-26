@@ -1,0 +1,149 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useStore } from '../../lib/store';
+import { Movie } from '../../lib/types';
+import { fetchTrending, trendingToInput } from '../../lib/trending';
+import SwipeDeck, { SwipeDir } from '../../components/SwipeDeck';
+import ViewHeader from '../../components/ViewHeader';
+import TilesView from '../../components/TilesView';
+import ListView from '../../components/ListView';
+
+export default function TrendingScreen() {
+  const {
+    movies, ready, settings, addMovie, setTrendingView,
+  } = useStore();
+  const insets = useSafeAreaInsets();
+  const [items, setItems] = useState<Movie[] | null>(null);
+  const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+  // Tapping a tile/row jumps to the Cards view with that item on top.
+  const [focusId, setFocusId] = useState<string | null>(null);
+
+  const view = settings.trendingView;
+
+  useEffect(() => {
+    let live = true;
+    fetchTrending().then((t) => {
+      if (live) setItems(t);
+    });
+    return () => { live = false; };
+  }, []);
+
+  // Titles already in the library (any status) — for the ✓ state.
+  const libraryKeys = useMemo(
+    () => new Set(movies.map((m) => `${m.title.toLowerCase()}|${m.year}`)),
+    [movies]
+  );
+  const addedIds = useMemo(
+    () => new Set((items ?? []).filter((t) => libraryKeys.has(`${t.title.toLowerCase()}|${t.year}`)).map((t) => t.id)),
+    [items, libraryKeys]
+  );
+
+  const visible = useMemo(() => {
+    const list = (items ?? []).filter((t) => !hiddenIds.includes(t.id));
+    if (!focusId) return list;
+    const m = list.find((t) => t.id === focusId);
+    return m ? [m, ...list.filter((t) => t.id !== focusId)] : list;
+  }, [items, hiddenIds, focusId]);
+
+  const changeView = (v: 'cards' | 'tiles' | 'list') => {
+    setFocusId(null);
+    setTrendingView(v);
+  };
+
+  const openInCards = (t: Movie) => {
+    setFocusId(t.id);
+    setTrendingView('cards');
+  };
+
+  const addToWatchlist = (t: Movie) => {
+    if (addedIds.has(t.id)) return;
+    addMovie(trendingToInput(t));
+  };
+
+  const handleSwipe = (dir: SwipeDir, movie: Movie) => {
+    setFocusId(null);
+    if (dir === 'right') {
+      // ＋ Watchlist: save it, then take it out of the feed.
+      addToWatchlist(movie);
+      setHiddenIds((h) => [...h, movie.id]);
+    } else if (dir === 'down') {
+      // Hide from the feed for this session.
+      setHiddenIds((h) => [...h, movie.id]);
+    } else if (dir === 'left') {
+      // Next: cycle to the back of the feed.
+      setItems((prev) =>
+        prev ? [...prev.filter((t) => t.id !== movie.id), movie] : prev
+      );
+    }
+  };
+
+  if (!ready || items === null) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color="#fff" />
+        <Text style={styles.dim}>Finding what's trending…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ViewHeader title="Trending 🔥" value={view} onChange={changeView} />
+      <Text style={styles.sub}>Popular movies & series right now</Text>
+
+      {view === 'cards' && (
+        <View style={styles.deckArea}>
+          {visible.length === 0 ? (
+            <View style={styles.center}>
+              <Text style={styles.emptyIcon}>🔥</Text>
+              <Text style={styles.emptyTitle}>All caught up</Text>
+              <Text style={styles.dim}>You've gone through today's trending feed.</Text>
+            </View>
+          ) : (
+            <SwipeDeck
+              cards={visible}
+              onSwipe={handleSwipe}
+              enabledDirs={['left', 'right', 'down']}
+              toBackDirs={['left']}
+              animation={settings.cardAnimation}
+              deckStyle={settings.deckStyle}
+              stampOverrides={{
+                right: { text: '＋ Watchlist', color: '#30d158', textColor: '#000', dragIcon: 'add' },
+                down: { text: 'Hide', color: '#8e8e93', textColor: '#fff', dragIcon: 'hide' },
+              }}
+            />
+          )}
+        </View>
+      )}
+
+      {view === 'tiles' && (
+        <TilesView movies={visible} onSelect={openInCards} emptyText="Nothing trending right now." />
+      )}
+
+      {view === 'list' && (
+        <ListView
+          movies={visible}
+          onSelect={openInCards}
+          actions={{ onAdd: addToWatchlist, addedIds }}
+          emptyText="Nothing trending right now."
+        />
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#000', paddingBottom: 24 },
+  sub: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  deckArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
+  dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
+  emptyIcon: { fontSize: 56, marginBottom: 12 },
+  emptyTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 8 },
+});

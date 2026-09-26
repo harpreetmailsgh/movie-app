@@ -1,0 +1,165 @@
+import React, { useRef } from 'react';
+import { View, Text, FlatList, Image, Pressable, StyleSheet, Animated } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
+import { Movie, posterUrl } from '../lib/types';
+
+export interface ListActions {
+  onSeen?: (m: Movie) => void;
+  onRemove?: (m: Movie) => void;
+  onAdd?: (m: Movie) => void;
+  addedIds?: Set<string>;
+}
+
+export default function ListView({
+  movies,
+  onSelect,
+  actions,
+  emptyText,
+}: {
+  movies: Movie[];
+  onSelect: (m: Movie) => void;
+  actions: ListActions;
+  emptyText?: string;
+}) {
+  if (movies.length === 0) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.dim}>{emptyText ?? 'Nothing here yet.'}</Text>
+      </View>
+    );
+  }
+
+  const renderItem = ({ item }: { item: Movie }) => (
+    <Row item={item} onSelect={onSelect} actions={actions} />
+  );
+
+  return (
+    <FlatList
+      data={movies}
+      keyExtractor={(m) => m.id}
+      renderItem={renderItem}
+      contentContainerStyle={styles.list}
+      ItemSeparatorComponent={() => <View style={styles.sep} />}
+    />
+  );
+}
+
+function Row({
+  item,
+  onSelect,
+  actions,
+}: {
+  item: Movie;
+  onSelect: (m: Movie) => void;
+  actions: ListActions;
+}) {
+  const ref = useRef<Swipeable>(null);
+  const uri = posterUrl(item.posterPath);
+  const close = () => ref.current?.close();
+
+  const renderRight = (
+    progress: Animated.AnimatedInterpolation<number>,
+    dragX: Animated.AnimatedInterpolation<number>
+  ) => {
+    const trans = dragX.interpolate({
+      inputRange: [-160, 0],
+      outputRange: [0, 160],
+      extrapolate: 'clamp',
+    });
+    const buttons: { label: string; color: string; run: () => void }[] = [];
+    if (actions.onAdd) {
+      const added = actions.addedIds?.has(item.id);
+      buttons.push({
+        label: added ? '✓ Added' : '＋ Add',
+        color: '#30d158',
+        run: () => { if (!added) actions.onAdd!(item); },
+      });
+    }
+    if (actions.onSeen) {
+      buttons.push({
+        label: '✓ Seen',
+        color: '#0a84ff',
+        run: () => actions.onSeen!(item),
+      });
+    }
+    if (actions.onRemove) {
+      buttons.push({
+        label: '🗑 Delete',
+        color: '#ff453a',
+        run: () => actions.onRemove!(item),
+      });
+    }
+    return (
+      <Animated.View style={[styles.actions, { transform: [{ translateX: trans }] }]}>
+        {buttons.map((b) => (
+          <Pressable
+            key={b.label}
+            style={[styles.actionBtn, { backgroundColor: b.color }]}
+            onPress={() => { close(); b.run(); }}
+          >
+            <Text style={styles.actionText}>{b.label}</Text>
+          </Pressable>
+        ))}
+      </Animated.View>
+    );
+  };
+
+  return (
+    <Swipeable ref={ref} renderRightActions={renderRight} overshootRight={false}>
+      <Pressable style={styles.row} onPress={() => onSelect(item)}>
+        {uri ? (
+          <Image source={{ uri }} style={styles.thumb} />
+        ) : (
+          <View style={[styles.thumb, styles.thumbFallback]}>
+            <Text style={styles.thumbIcon}>{item.mediaType === 'tv' ? '📺' : '🎬'}</Text>
+          </View>
+        )}
+        <View style={styles.rowText}>
+          <Text style={styles.title} numberOfLines={1}>
+            {item.title}
+          </Text>
+          <Text style={styles.sub} numberOfLines={1}>
+            {[
+              item.year > 0 ? String(item.year) : null,
+              item.mediaType === 'tv' ? 'Series' : 'Movie',
+              item.imdbRating > 0 ? `★ ${item.imdbRating.toFixed(1)}` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </Text>
+          {(item.genres ?? []).length > 0 && (
+            <Text style={styles.genres} numberOfLines={1}>
+              {(item.genres ?? []).slice(0, 3).join(' · ')}
+            </Text>
+          )}
+        </View>
+        <Text style={styles.chev}>›</Text>
+      </Pressable>
+    </Swipeable>
+  );
+}
+
+const styles = StyleSheet.create({
+  list: { paddingBottom: 24 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
+  sep: { height: 1, backgroundColor: '#1c1c1e', marginLeft: 76 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#000',
+  },
+  thumb: { width: 48, height: 72, borderRadius: 8, backgroundColor: '#1c1c1e' },
+  thumbFallback: { alignItems: 'center', justifyContent: 'center' },
+  thumbIcon: { fontSize: 22 },
+  rowText: { flex: 1, marginLeft: 12, marginRight: 8 },
+  title: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  sub: { color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 3 },
+  genres: { color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 2 },
+  chev: { color: 'rgba(255,255,255,0.3)', fontSize: 24, fontWeight: '300' },
+  actions: { flexDirection: 'row', alignItems: 'stretch' },
+  actionBtn: { justifyContent: 'center', paddingHorizontal: 20 },
+  actionText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+});
