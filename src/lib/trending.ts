@@ -131,6 +131,7 @@ interface NetflixJsonEntry {
 interface NetflixJson {
   week?: string;
   country_iso2?: string;
+  country_name?: string;
   films?: NetflixJsonEntry[];
   tv?: NetflixJsonEntry[];
 }
@@ -161,11 +162,15 @@ async function fetchNetflixCountry(cc: string): Promise<NetflixResult | null> {
       items.push({
         title,
         mediaType: 'tv',
-        notes: season && season !== title ? season : '',
+        notes: season && season !== 'N/A' && season !== title ? season : '',
       });
     }
     if (!items.length) return null;
-    return { items, countryName: cc.toUpperCase() };
+    const countryName =
+      typeof data.country_name === 'string' && data.country_name.trim()
+        ? data.country_name.trim()
+        : cc.toUpperCase();
+    return { items, countryName };
   } catch {
     return null;
   }

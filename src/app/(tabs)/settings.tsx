@@ -115,7 +115,7 @@ export default function SettingsScreen() {
       <Pressable
         style={styles.dangerLink}
         onPress={() =>
-          Alert.alert('About', 'Movie Recommender v1.3.2 — your personal reel-to-watchlist app.')
+          Alert.alert('About', 'Movie Recommender v1.3.3 — your personal reel-to-watchlist app.')
         }
       >
         <Text style={styles.dangerLinkText}>About this app</Text>
