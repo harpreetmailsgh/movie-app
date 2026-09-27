@@ -94,15 +94,14 @@ export default function MovieDetailScreen() {
           </Pressable>
         </View>
       ) : (
-        <View style={styles.titleRow}>
+        <View style={styles.titleBlock}>
           <Pressable
-            style={styles.titlePress}
             onPress={() => {
               setTitleDraft(movie.title === 'Unknown title' ? '' : movie.title);
               setEditingTitle(true);
             }}
           >
-            <Text style={styles.title}>
+            <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
               {movie.title} <Text style={styles.editHint}>✎</Text>
             </Text>
           </Pressable>
@@ -112,7 +111,7 @@ export default function MovieDetailScreen() {
             if (movie.imdbRating > 0) segments.push(`★ ${movie.imdbRating.toFixed(1)}`);
             if ((movie.genres ?? []).length > 0) segments.push((movie.genres ?? []).join(' · '));
             return segments.length > 0 ? (
-              <Text style={styles.metaInline}>{segments.join(' · ')}</Text>
+              <Text style={styles.meta}>{segments.join(' · ')}</Text>
             ) : null;
           })()}
         </View>
@@ -194,17 +193,16 @@ const styles = StyleSheet.create({
   },
   trailerBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   seenBtn: {
-    backgroundColor: '#1c1c1e', borderRadius: 12,
+    backgroundColor: '#30d158', borderRadius: 12,
     paddingHorizontal: 16, paddingVertical: 10, justifyContent: 'center',
   },
-  seenBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  seenBtnText: { color: '#000', fontSize: 14, fontWeight: '700' },
   trashBtn: {
-    backgroundColor: '#1c1c1e', borderRadius: 12,
+    backgroundColor: '#ff453a', borderRadius: 12,
     paddingHorizontal: 16, paddingVertical: 10, justifyContent: 'center',
   },
-  trashBtnText: { color: '#ff453a', fontSize: 14, fontWeight: '700' },
-  titleRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 20 },
-  titlePress: { flex: 1 },
+  trashBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  titleBlock: { marginTop: 20 },
   title: { color: '#fff', fontSize: 26, fontWeight: '800' },
   editHint: { fontSize: 16, color: 'rgba(255,255,255,0.4)' },
   editRow: { flexDirection: 'row', marginTop: 20, gap: 10 },
@@ -224,9 +222,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10, alignItems: 'center', justifyContent: 'center',
   },
   keepBtnText: { color: '#000', fontSize: 14, fontWeight: '700' },
-  metaInline: {
-    color: 'rgba(255,255,255,0.55)', fontSize: 13, textAlign: 'right',
-    marginLeft: 12, marginTop: 6,
+  meta: {
+    color: 'rgba(255,255,255,0.55)', fontSize: 15, marginTop: 6,
   },
   overview: { color: 'rgba(255,255,255,0.85)', fontSize: 15, lineHeight: 23, marginTop: 14 },
   castBox: { marginTop: 16 },

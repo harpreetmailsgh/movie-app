@@ -9,7 +9,7 @@ import { useStore } from '../../lib/store';
 import { useAuth } from '../../lib/auth';
 import { getSupabase } from '../../lib/supabase';
 
-const APP_VERSION = '1.5.1';
+const APP_VERSION = '1.5.2';
 
 function AccountSection() {
   const { ready, configured, session, isAnonymous, authMessage, signInWithApple, signOut } = useAuth();
