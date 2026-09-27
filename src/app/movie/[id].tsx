@@ -5,10 +5,11 @@ import { useStore } from '../../lib/store';
 import { getFeedItem } from '../../lib/feedCache';
 import { posterUrl, tmdbUrl } from '../../lib/types';
 import { resolveTrailerUrl } from '../../lib/tmdb';
+import ClapboardPoster from '../../components/ClapboardPoster';
 
 export default function MovieDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { movies, moveMovie, deleteMovie, updateMovie, settings } = useStore();
+  const { movies, moveMovie, deleteMovie, updateMovie, revalidateTitle, settings } = useStore();
   // Library first; fall back to the in-memory feed cache so tapping a
   // Trending tile (feed items are not in the library) still renders the
   // detail page. Library data always wins; feed items are never written
@@ -32,16 +33,20 @@ export default function MovieDetailScreen() {
 
   const uri = posterUrl(movie.posterPath, 'w780');
 
-  const saveTitle = () => {
+  const saveTitle = async () => {
     const t = titleDraft.trim();
-    if (t) updateMovie(movie.id, { title: t, needsReview: false });
     setEditingTitle(false);
+    if (!t) return;
+    updateMovie(movie.id, { title: t, needsReview: true });
+    await revalidateTitle(movie.id, t);
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {uri ? (
         <Image source={{ uri }} style={styles.poster} resizeMode="cover" />
+      ) : movie.needsReview && movie.status === 'watchlist' ? (
+        <ClapboardPoster style={styles.poster} />
       ) : (
         <View style={[styles.poster, styles.posterFallback]}>
           <Text style={styles.fallbackIcon}>{movie.mediaType === 'tv' ? '📺' : '🎬'}</Text>
@@ -110,6 +115,31 @@ export default function MovieDetailScreen() {
               <Text style={styles.metaInline}>{segments.join(' · ')}</Text>
             ) : null;
           })()}
+        </View>
+      )}
+
+      {movie.needsReview && movie.status === 'watchlist' && (
+        <View style={styles.reviewBox}>
+          <Text style={styles.reviewText}>
+            We couldn’t validate this title. Do you want to Keep It or Trash It?
+          </Text>
+          <View style={styles.reviewRow}>
+            <Pressable
+              style={styles.keepBtn}
+              onPress={async () => { await revalidateTitle(movie.id); }}
+            >
+              <Text style={styles.keepBtnText}>Keep It</Text>
+            </Pressable>
+            <Pressable
+              style={styles.trashBtn}
+              onPress={() => {
+                deleteMovie(movie.id);
+                router.back();
+              }}
+            >
+              <Text style={styles.trashBtnText}>Trash It</Text>
+            </Pressable>
+          </View>
         </View>
       )}
 
@@ -184,6 +214,16 @@ const styles = StyleSheet.create({
   },
   saveBtn: { backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 18, justifyContent: 'center' },
   saveBtnText: { color: '#000', fontWeight: '700' },
+  reviewBox: {
+    backgroundColor: '#1c1c1e', borderRadius: 14, padding: 14, marginTop: 16,
+  },
+  reviewText: { color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 20 },
+  reviewRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  keepBtn: {
+    flex: 1, backgroundColor: '#30d158', borderRadius: 12,
+    paddingVertical: 10, alignItems: 'center', justifyContent: 'center',
+  },
+  keepBtnText: { color: '#000', fontSize: 14, fontWeight: '700' },
   metaInline: {
     color: 'rgba(255,255,255,0.55)', fontSize: 13, textAlign: 'right',
     marginLeft: 12, marginTop: 6,

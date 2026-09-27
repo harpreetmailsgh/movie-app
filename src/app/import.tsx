@@ -9,6 +9,7 @@ import { useStore } from '../lib/store';
 import { bestMatch, bestMatchKeyless, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
 import { parseYouTubeId, fetchYouTubeTitle } from '../lib/youtube';
 import { posterUrl } from '../lib/types';
+import ClapboardPoster from '../components/ClapboardPoster';
 
 const FIELD_BG = '#E9E9EE';
 const SEARCH_DEBOUNCE_MS = 500;
@@ -99,6 +100,19 @@ export default function ImportScreen() {
     router.back();
   };
 
+  /** "By title" first row: save the typed text as-is, flagged for review. */
+  const saveAsTyped = () => {
+    const t = query.trim();
+    if (!t) return;
+    addMovie({
+      title: t, year: 0, mediaType: 'movie', genres: [],
+      overview: '', posterPath: '', reelURL: '',
+      caption: '', notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
+      originalLanguage: '', cast: [], needsReview: true,
+    });
+    router.back();
+  };
+
   // ---- Card 2: Facebook / Instagram reel link --------------------------------
   const onFbChange = (text: string) => {
     setUrl(text);
@@ -121,9 +135,12 @@ export default function ImportScreen() {
       if (runId !== fbRunRef.current) return;
       const added = moviesRef.current.filter((m) => !beforeIds.has(m.id));
       const titles = added.filter((m) => !m.needsReview).map((m) => m.title).filter(Boolean);
+      const pending = added.filter((m) => m.needsReview).map((m) => m.title).filter(Boolean);
       const message = titles.length
         ? `“${titles.join('”, “')}” added to watchlist.`
-        : 'Saved to your Watchlist — couldn\'t identify the movie.';
+        : pending.length
+          ? `Saved “${pending.join('”, “')}” — couldn't validate the title.`
+          : 'Saved to your Watchlist — couldn\'t identify the movie.';
       Alert.alert('Fetch complete', message, [{ text: 'OK', onPress: () => router.back() }]);
     } else {
       // Error case: show the store's specific message inline, keep the link for editing.
@@ -193,14 +210,14 @@ export default function ImportScreen() {
         return;
       }
       addMovie({
-        title: 'Unknown title', year: 0, mediaType: 'movie', genres: [],
+        title: info.title, year: 0, mediaType: 'movie', genres: [],
         overview: '', posterPath: '', reelURL: link,
         caption, notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
         originalLanguage: '', cast: [], needsReview: true,
       });
       if (runId !== ytRunRef.current) return;
       setYtUrl('');
-      Alert.alert('Fetch complete', 'Saved to your Watchlist — couldn\'t identify the movie.', [
+      Alert.alert('Fetch complete', `Saved “${info.title}” — couldn't validate the title.`, [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } finally {
@@ -221,6 +238,16 @@ export default function ImportScreen() {
           onSubmitEditing={submitSearch}
           returnKeyType="search"
         />
+        {query.trim().length > 0 && (
+          <Pressable style={styles.result} onPress={saveAsTyped}>
+            <ClapboardPoster style={styles.thumb} />
+            <View style={styles.resultText}>
+              <Text style={styles.resultTitle} numberOfLines={1}>{query.trim()}</Text>
+              <Text style={styles.resultSub}>Save exactly as typed</Text>
+            </View>
+            <Text style={styles.addPlus}>＋</Text>
+          </Pressable>
+        )}
         {searching && <ActivityIndicator color="#fff" style={styles.loader} />}
         {!searching && query.trim().length > 0 && results.length === 0 && (
           <Text style={styles.body}>No matches — check the spelling, or try the original title.</Text>

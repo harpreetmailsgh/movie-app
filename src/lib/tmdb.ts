@@ -218,6 +218,45 @@ export async function fetchReelText(reelUrl: string): Promise<string | null> {
   }
 }
 
+/**
+ * Fetches a Facebook reel's public page and returns its Open Graph title —
+ * the same og:title parse as fetchReelText. Falls back to the first line of
+ * the fetched text when no og:title is present.
+ */
+export async function fetchReelTitle(reelUrl: string): Promise<string | null> {
+  try {
+    const res = await fetch(reelUrl, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+      },
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const decode = (s: string): string =>
+      s
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#0?39;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
+    const meta = (prop: string): string => {
+      const re = new RegExp(
+        `<meta[^>]+property=["']og:${prop}["'][^>]+content=["']([^"']+)["']`,
+        'i'
+      );
+      const match = html.match(re);
+      return match ? decode(match[1]).trim() : '';
+    };
+    const ogTitle = meta('title');
+    if (ogTitle) return ogTitle;
+    const firstLine = meta('description').split('\n')[0].trim();
+    return firstLine || null;
+  } catch {
+    return null;
+  }
+}
+
 interface TmdbVideo {
   key: string;
   site: string;

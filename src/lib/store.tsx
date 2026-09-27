@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Movie, EntryStatus, Settings, ViewMode } from './types';
 import { seedMovies, backfillSeedData, normalizeMovie } from './seed';
-import { bestMatch, bestMatchKeyless, fetchImdbRating, fetchReelText, searchTitlesKeyless, fetchKeylessMeta } from './tmdb';
+import { bestMatch, bestMatchKeyless, fetchImdbRating, fetchReelText, fetchReelTitle, searchTitlesKeyless, fetchKeylessMeta } from './tmdb';
 import { pickRandomTitles } from './testMovies';
 import { useAuth } from './auth';
 import { getSupabase } from './supabase';
@@ -32,6 +32,7 @@ interface Store {
   updateMovie: (id: string, patch: Partial<Movie>) => void;
   addMovie: (m: Omit<Movie, 'id' | 'dateAdded'>) => void;
   importReel: (url: string) => Promise<boolean>;
+  revalidateTitle: (id: string, titleOverride?: string) => Promise<void>;
   addTestMovies: (count: number) => Promise<number>;
   clearLibrary: () => void;
   setTmdbKey: (key: string) => void;
@@ -391,17 +392,52 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setImportMessage(`Added “${match.title}” to your Inbox.`);
         return true;
       }
+      const savedTitle = (await fetchReelTitle(clean)) ?? 'Unknown title';
       addMovie({
-        title: 'Unknown title', year: 0, mediaType: 'movie', genres: [],
+        title: savedTitle, year: 0, mediaType: 'movie', genres: [],
         overview: '', posterPath: '', reelURL: clean, caption: text, notes: '',
         status: 'watchlist', tmdbID: 0, imdbRating: 0, originalLanguage: '', cast: [], needsReview: true,
       });
-      setImportMessage('Saved, but I couldn’t identify the movie — tap it to fix the title.');
+      setImportMessage(`Saved “${savedTitle}” — couldn't validate the title. Tap it to Keep It or fix it.`);
       return true;
     } finally {
       setImporting(false);
     }
   }, [settings.tmdbKey, addMovie]);
+
+  /**
+   * Re-validates a needsReview entry against its title (or an explicit
+   * override). On a match the catalog details are filled in but the user's
+   * title is kept; either way needsReview is cleared. No-ops when the movie
+   * is missing or no longer needs review.
+   */
+  const revalidateTitle = useCallback(async (id: string, titleOverride?: string): Promise<void> => {
+    const movie = moviesRef.current.find((m) => m.id === id);
+    // The ✎ title-save calls this with an override immediately after
+    // updateMovie set needsReview: true — before the store's state flush, so
+    // the override itself carries the needsReview signal here.
+    if (!movie || (!movie.needsReview && !titleOverride)) return;
+    const title = (titleOverride ?? movie.title).trim();
+    if (!title) return;
+    const match = settings.tmdbKey
+      ? await bestMatch(title, settings.tmdbKey)
+      : await bestMatchKeyless(title);
+    if (match) {
+      const imdbRating = await fetchImdbRating(match.tmdbID, match.mediaType, match.title, settings.tmdbKey);
+      persist(moviesRef.current.map((m) => (m.id === id ? {
+        ...m,
+        posterPath: match.posterPath,
+        overview: match.overview,
+        genres: match.genres,
+        tmdbID: match.tmdbID,
+        imdbRating: imdbRating > 0 ? imdbRating : m.imdbRating,
+        originalLanguage: match.originalLanguage,
+        needsReview: false,
+      } : m)));
+    } else {
+      persist(moviesRef.current.map((m) => (m.id === id ? { ...m, needsReview: false } : m)));
+    }
+  }, [persist, settings.tmdbKey]);
 
   /** Fills in posters/overviews/genres/IMDb ratings for entries missing them. */
   const enrichLibrary = useCallback(async () => {
@@ -436,8 +472,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Store>(() => ({
     movies, ready, settings, importing, importMessage, syncState, lastSyncAt,
     moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary,
-    importReel, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen,
-  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, importReel, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen]);
+    importReel, revalidateTitle, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen,
+  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, importReel, revalidateTitle, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
