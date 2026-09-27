@@ -16,8 +16,8 @@ type TabRoute = BottomTabBarProps['state']['routes'][number];
 
 // Matches the stock bottom tab bar's content height (iOS UIKit, non-compact).
 const BAR_CONTENT_HEIGHT = 49;
-const PILL_HEIGHT = 45;
-const PILL_SIDE_PADDING = 12;
+const PILL_HEIGHT = 40;
+const PILL_SIDE_PADDING = 4;
 
 function getLabel(
   options: DescriptorOptions,

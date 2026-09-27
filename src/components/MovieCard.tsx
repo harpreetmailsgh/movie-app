@@ -75,8 +75,8 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
                 </Pressable>
               )}
               {!!sourceUrl && <Text style={styles.linkDot}>·</Text>}
-              <Pressable onPress={openTrailer} hitSlop={8}>
-                <Text style={styles.more}>Trailer ▶</Text>
+              <Pressable onPress={openTrailer} hitSlop={8} style={styles.trailerBtn}>
+                <Text style={styles.trailerBtnText}>Trailer ▶</Text>
               </Pressable>
             </View>
           </View>
@@ -138,6 +138,16 @@ const styles = StyleSheet.create({
   chipText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   overview: { color: 'rgba(255,255,255,0.8)', fontSize: 14, marginTop: 10, lineHeight: 20 },
   more: { color: '#0a84ff', fontSize: 13, fontWeight: '700', marginTop: 4 },
+  // Proper red trailer button on the swipe cards: cinematic red #C1272D
+  // (same as the detail screen), white text, rounded corners.
+  trailerBtn: {
+    backgroundColor: '#C1272D',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    marginTop: 4,
+  },
+  trailerBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
   linkRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 },
   linkDot: { color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 4 },
   cast: { color: 'rgba(255,255,255,0.65)', fontSize: 12, marginTop: 8, fontStyle: 'italic' },

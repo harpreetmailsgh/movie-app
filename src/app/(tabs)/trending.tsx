@@ -103,7 +103,11 @@ export default function TrendingScreen() {
       addToWatchlist(movie);
       setHiddenIds((h) => [...h, movie.id]);
     } else if (dir === 'down') {
-      // Hide from the feed for this session.
+      // Trash: remove from the feed (bin commit UI via trashBin, like Watchlist).
+      setHiddenIds((h) => [...h, movie.id]);
+    } else if (dir === 'up') {
+      // Seen: save it to the Seen list, then take it out of the feed.
+      if (!addedIds.has(movie.id)) addMovie({ ...trendingToInput(movie), status: 'seen' });
       setHiddenIds((h) => [...h, movie.id]);
     } else if (dir === 'left') {
       // Next: cycle to the back of the feed.
@@ -149,13 +153,13 @@ export default function TrendingScreen() {
               <SwipeDeck
                 cards={visible}
                 onSwipe={handleSwipe}
-                enabledDirs={['left', 'right', 'down']}
+                enabledDirs={['left', 'right', 'up', 'down']}
+                trashBin
                 toBackDirs={['left']}
                 animation={settings.cardAnimation}
                 deckStyle={settings.deckStyle}
                 stampOverrides={{
                   right: { text: '＋ Watchlist', color: '#30d158', textColor: '#000', dragIcon: 'add' },
-                  down: { text: 'Hide', color: '#8e8e93', textColor: '#fff', dragIcon: 'hide' },
                 }}
               />
               {/* Floating back button on the poster after a tile/row jump. */}
