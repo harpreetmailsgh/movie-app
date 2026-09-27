@@ -138,7 +138,6 @@ export default function TrendingScreen() {
         value={view}
         onChange={changeView}
       />
-      <Text style={styles.sub}>Popular movies & series right now</Text>
       <FilterBar values={filters} onChange={setFilters} />
 
       {view === 'cards' && (
@@ -161,6 +160,7 @@ export default function TrendingScreen() {
                 enabledDirs={['left', 'right', 'up', 'down']}
                 trashBin
                 toBackDirs={['left']}
+                onInfoTap={(m) => router.push(`/movie/${m.id}`)}
                 animation={settings.cardAnimation}
                 deckStyle={settings.deckStyle}
                 stampOverrides={{
@@ -224,12 +224,6 @@ export default function TrendingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000', paddingBottom: 24 },
-  sub: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: 2,
-  },
   deckArea: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', marginTop: 8 },
   deckWrap: { position: 'relative' },
   // Floating back button after a tile/row jump: white solid circle with a dark

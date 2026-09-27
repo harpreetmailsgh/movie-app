@@ -33,8 +33,9 @@ export default function WatchlistScreen() {
     [movies]
   );
 
+  // Alphabetical A→Z in every view — sorted copy, never the stored order.
   const filtered = useMemo(
-    () => applyFilters(watchlist, filters),
+    () => [...applyFilters(watchlist, filters)].sort((a, b) => a.title.localeCompare(b.title)),
     [watchlist, filters]
   );
 

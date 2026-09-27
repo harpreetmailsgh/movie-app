@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, TextInput, StyleSheet, ActivityIndicator, Pressable, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -33,8 +33,9 @@ export default function SeenScreen() {
     [movies]
   );
 
+  // Alphabetical A→Z in every view — sorted copy, never the stored order.
   const filtered = useMemo(
-    () => applyFilters(seen, filters),
+    () => [...applyFilters(seen, filters)].sort((a, b) => a.title.localeCompare(b.title)),
     [seen, filters]
   );
 
@@ -50,6 +51,7 @@ export default function SeenScreen() {
   };
 
   const changeView = (v: 'cards' | 'tiles' | 'list') => {
+    Keyboard.dismiss();
     clearJump();
     setSeenView(v);
   };
@@ -57,16 +59,19 @@ export default function SeenScreen() {
   // Tapping a tile/row opens the detail page; the cards view stays
   // reachable via the view switcher.
   const openDetail = (m: Movie) => {
+    Keyboard.dismiss();
     router.push(`/movie/${m.id}`);
   };
 
   const goBackToOrigin = () => {
+    Keyboard.dismiss();
     const target = originView ?? 'tiles';
     clearJump();
     setSeenView(target);
   };
 
   const handleSwipe = (dir: SwipeDir, movie: Movie) => {
+    Keyboard.dismiss();
     clearJump();
     if (dir === 'left' || dir === 'right') {
       // Next: cycle the card to the back of the deck.
@@ -88,14 +93,20 @@ export default function SeenScreen() {
     );
   }
 
+  // Tap anywhere outside the search field dismisses the keyboard / exits
+  // search focus. TouchableWithoutFeedback only fires when no inner
+  // responder claims the touch, so taps on the search field, clear
+  // button, filter pills, tiles, rows, and card buttons all behave
+  // exactly as before — nothing is swallowed.
   return (
+    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()} accessible={false}>
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ViewHeader
         title="Seen"
         value={view}
         onChange={changeView}
       />
-      <FilterBar values={filters} onChange={setFilters} />
+      <FilterBar values={filters} onChange={(f) => { Keyboard.dismiss(); setFilters(f); }} />
       <View style={styles.searchRow}>
         <TextInput
           style={styles.searchInput}
@@ -108,7 +119,7 @@ export default function SeenScreen() {
         {query.length > 0 && (
           <Pressable
             accessibilityLabel="Clear search"
-            onPress={() => setQuery('')}
+            onPress={() => { Keyboard.dismiss(); setQuery(''); }}
             hitSlop={8}
             style={styles.clearBtn}
           >
@@ -184,6 +195,7 @@ export default function SeenScreen() {
         />
       )}
     </View>
+    </TouchableWithoutFeedback>
   );
 }
 
