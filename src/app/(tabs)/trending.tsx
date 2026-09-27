@@ -29,7 +29,10 @@ export default function TrendingScreen() {
   const [headerTitle, setHeaderTitle] = useState('Trending 🔥');
   const [filters, setFilters] = useSharedFilters();
   // Tapping a tile/row jumps to the Cards view with that item on top.
+  // originView remembers where the jump came from so the back chevron
+  // can return to it; null when cards was reached normally.
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [originView, setOriginView] = useState<'tiles' | 'list' | null>(null);
 
   const view = settings.trendingView;
 
@@ -65,14 +68,26 @@ export default function TrendingScreen() {
     return m ? [m, ...list.filter((t) => t.id !== focusId)] : list;
   }, [items, hiddenIds, focusId, filters]);
 
-  const changeView = (v: 'cards' | 'tiles' | 'list') => {
+  const clearJump = () => {
     setFocusId(null);
+    setOriginView(null);
+  };
+
+  const changeView = (v: 'cards' | 'tiles' | 'list') => {
+    clearJump();
     setTrendingView(v);
   };
 
   const openInCards = (t: Movie) => {
+    setOriginView(view === 'list' ? 'list' : 'tiles');
     setFocusId(t.id);
     setTrendingView('cards');
+  };
+
+  const goBackToOrigin = () => {
+    const target = originView ?? 'tiles';
+    clearJump();
+    setTrendingView(target);
   };
 
   const addToWatchlist = (t: Movie) => {
@@ -81,7 +96,7 @@ export default function TrendingScreen() {
   };
 
   const handleSwipe = (dir: SwipeDir, movie: Movie) => {
-    setFocusId(null);
+    clearJump();
     if (dir === 'right') {
       // ＋ Watchlist: save it, then take it out of the feed.
       addToWatchlist(movie);
@@ -108,7 +123,13 @@ export default function TrendingScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ViewHeader title={headerTitle} value={view} onChange={changeView} />
+      <ViewHeader
+        title={headerTitle}
+        value={view}
+        onChange={changeView}
+        showBack={originView !== null && view === 'cards'}
+        onBack={goBackToOrigin}
+      />
       <Text style={styles.sub}>Popular movies & series right now</Text>
       <FilterBar values={filters} onChange={setFilters} />
 

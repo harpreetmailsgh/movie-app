@@ -14,14 +14,31 @@ export default function ViewHeader({
   title,
   value,
   onChange,
+  showBack = false,
+  onBack,
 }: {
   title: string;
   value: ViewMode;
   onChange: (m: ViewMode) => void;
+  /** Show a back chevron before the title (e.g. after a tile/row jump into cards). */
+  showBack?: boolean;
+  onBack?: () => void;
 }) {
   return (
     <View style={styles.row}>
-      <Text style={styles.title}>{title}</Text>
+      <View style={styles.left}>
+        {showBack && onBack && (
+          <Pressable
+            accessibilityLabel="Back"
+            hitSlop={10}
+            style={styles.backBtn}
+            onPress={onBack}
+          >
+            <Ionicons name="chevron-back" size={24} color="#fff" />
+          </Pressable>
+        )}
+        <Text style={styles.title}>{title}</Text>
+      </View>
       <View style={styles.icons}>
         {MODES.map((m) => {
           const active = value === m.id;
@@ -51,6 +68,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   title: { color: '#fff', fontSize: 22, fontWeight: '800' },
+  left: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
+  backBtn: { paddingVertical: 8, paddingRight: 8 },
   icons: { flexDirection: 'row', alignItems: 'center' },
   btn: { padding: 8 },
 });

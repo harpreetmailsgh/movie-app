@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Movie } from './types';
-import { TmdbMatch, bestMatchKeyless } from './tmdb';
+import { TmdbMatch, CinemetaFullMeta, bestMatchKeyless, fetchKeylessMeta } from './tmdb';
 
 const CINEMETA = 'https://v3-cinemeta.strem.io';
 
@@ -236,14 +236,17 @@ function mergeAndDedupe(netflix: RankedTitle[], apple: RankedTitle[]): RankedTit
   return out;
 }
 
-function matchToMovie(match: TmdbMatch, mediaType: 'movie' | 'tv', notes: string): Movie {
+function matchToMovie(match: TmdbMatch, mediaType: 'movie' | 'tv', notes: string, full?: CinemetaFullMeta | null): Movie {
+  const rating = parseFloat(full?.imdbRating ?? '');
   return {
     id: `trending-${mediaType}-${match.tmdbID || normTitle(match.title).replace(/[^a-z0-9]+/g, '-')}`,
     title: match.title,
     year: match.year ?? 0,
     mediaType,
-    genres: Array.isArray(match.genres) ? match.genres.slice(0, 3) : [],
-    overview: match.overview ?? '',
+    genres: full?.genres?.length
+      ? full.genres.slice(0, 3)
+      : Array.isArray(match.genres) ? match.genres.slice(0, 3) : [],
+    overview: full?.description || match.overview || '',
     posterPath: match.posterPath ?? '',
     reelURL: '',
     caption: '',
@@ -251,8 +254,8 @@ function matchToMovie(match: TmdbMatch, mediaType: 'movie' | 'tv', notes: string
     status: 'watchlist', // placeholder — never persisted
     tmdbID: match.tmdbID ?? 0,
     originalLanguage: match.originalLanguage ?? '',
-    cast: [],
-    imdbRating: 0,
+    cast: full?.cast?.length ? full.cast.slice(0, 5) : [],
+    imdbRating: Number.isFinite(rating) && rating > 0 ? rating : 0,
     needsReview: false,
     dateAdded: 0,
   };
@@ -266,9 +269,17 @@ async function enrichTitles(titles: RankedTitle[]): Promise<Movie[]> {
   for (let i = 0; i < titles.length; i += BATCH) {
     const batch = titles.slice(i, i + BATCH);
     const matches = await Promise.all(batch.map((t) => bestMatchKeyless(t.title)));
+    // Full meta per match (description, genres, rating, cast) — the same
+    // lookup the "Add 20 random movies" flow uses. Failures keep the slim
+    // fields: no blanks, no crashes.
+    const fulls = await Promise.all(matches.map((match) =>
+      match?.cinemetaId
+        ? fetchKeylessMeta(match.cinemetaId, match.mediaType).catch(() => null)
+        : Promise.resolve(null)
+    ));
     batch.forEach((t, j) => {
       const match = matches[j];
-      if (match) out.push(matchToMovie(match, t.mediaType, t.notes));
+      if (match) out.push(matchToMovie(match, t.mediaType, t.notes, fulls[j]));
     });
   }
   return out;

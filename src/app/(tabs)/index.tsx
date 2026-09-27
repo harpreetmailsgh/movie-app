@@ -19,7 +19,10 @@ export default function WatchlistScreen() {
   const insets = useSafeAreaInsets();
   const [filters, setFilters] = useSharedFilters();
   // Tapping a tile/row jumps to the Cards view with that movie on top.
+  // originView remembers where the jump came from so the back chevron
+  // can return to it; null when cards was reached normally.
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [originView, setOriginView] = useState<'tiles' | 'list' | null>(null);
 
   const view = settings.watchlistView;
 
@@ -39,18 +42,30 @@ export default function WatchlistScreen() {
     return m ? [m, ...filtered.filter((t) => t.id !== focusId)] : filtered;
   }, [filtered, focusId]);
 
-  const changeView = (v: 'cards' | 'tiles' | 'list') => {
+  const clearJump = () => {
     setFocusId(null);
+    setOriginView(null);
+  };
+
+  const changeView = (v: 'cards' | 'tiles' | 'list') => {
+    clearJump();
     setWatchlistView(v);
   };
 
   const openInCards = (m: Movie) => {
+    setOriginView(view === 'list' ? 'list' : 'tiles');
     setFocusId(m.id);
     setWatchlistView('cards');
   };
 
+  const goBackToOrigin = () => {
+    const target = originView ?? 'tiles';
+    clearJump();
+    setWatchlistView(target);
+  };
+
   const handleSwipe = (dir: SwipeDir, movie: Movie) => {
-    setFocusId(null);
+    clearJump();
     if (dir === 'left' || dir === 'right') {
       // Next: cycle the card to the back of the deck.
       cycleToBack(movie.id);
@@ -72,7 +87,13 @@ export default function WatchlistScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ViewHeader title="Watchlist" value={view} onChange={changeView} />
+      <ViewHeader
+        title="Watchlist"
+        value={view}
+        onChange={changeView}
+        showBack={originView !== null && view === 'cards'}
+        onBack={goBackToOrigin}
+      />
       <FilterBar values={filters} onChange={setFilters} />
 
       {view === 'cards' && (

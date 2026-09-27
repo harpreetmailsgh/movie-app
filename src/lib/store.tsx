@@ -13,6 +13,7 @@ import {
 
 const MOVIES_KEY = 'movies.v1';
 const SETTINGS_KEY = 'settings.v1';
+const DETAIL_BACKFILL_KEY = 'detail-backfill.v1';
 
 function newId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -132,13 +133,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const backfilledOnce = useRef(false);
 
   /**
-   * One-time enrichment: movies saved without a description (e.g. keyless
-   * adds from the slim catalog search) get their overview, genres, cast and
-   * missing IMDb rating filled in from the full Cinemeta meta entry.
-   * Runs in the background; movies that already have text are untouched.
+   * One-time enrichment: movies saved without a description or genres (e.g.
+   * keyless adds from the slim catalog search) get their overview, genres,
+   * cast and missing IMDb rating filled in from the full Cinemeta meta entry
+   * — the same lookup the "Add 20 random movies" flow uses.
+   * Runs in the background; movies that already have a description AND genres
+   * are untouched.
    */
   const backfillDetails = useCallback(async () => {
-    const targets = moviesRef.current.filter((m) => !m.overview);
+    const targets = moviesRef.current.filter((m) => !m.overview || !(m.genres?.length));
     if (!targets.length) return;
     const patches = new Map<string, Partial<Movie>>();
     for (let i = 0; i < targets.length; i += 4) {
@@ -170,11 +173,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     ));
   }, [persist]);
 
-  // Enrich text-less movies once per launch, after the library is loaded.
+  // Enrich detail-less movies in the background, exactly once (persisted flag).
   useEffect(() => {
     if (!ready || backfilledOnce.current) return;
     backfilledOnce.current = true;
-    void backfillDetails();
+    void (async () => {
+      try {
+        const done = await AsyncStorage.getItem(DETAIL_BACKFILL_KEY);
+        if (done === '1') return; // already ran on a previous launch
+        await backfillDetails();
+      } finally {
+        // Always mark done so this runs at most once, even if some fetches
+        // failed — failures simply keep today's slim fields.
+        try { await AsyncStorage.setItem(DETAIL_BACKFILL_KEY, '1'); } catch { /* best-effort */ }
+      }
+    })();
   }, [ready, backfillDetails]);
 
   // First cloud sync once signed in: pull anything new from the cloud,
