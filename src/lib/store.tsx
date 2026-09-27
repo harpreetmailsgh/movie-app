@@ -35,6 +35,8 @@ interface Store {
   revalidateTitle: (id: string, titleOverride?: string) => Promise<void>;
   addTestMovies: (count: number) => Promise<number>;
   clearLibrary: () => void;
+  clearWatchlist: () => void;
+  clearSeen: () => void;
   setTmdbKey: (key: string) => void;
   setCardAnimation: (style: 'flick' | 'peel') => void;
   setDeckStyle: (style: 'stack' | 'sidepeek' | 'fan') => void;
@@ -248,6 +250,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (userId) deleteRemoteMovie(userId, cacheId).catch(() => {});
     }
     persist([]);
+  }, [movies, persist]);
+
+  const clearWatchlist = useCallback(() => {
+    const userId = sessionRef.current;
+    for (const m of movies) {
+      if (m.status !== 'watchlist') continue;
+      // Tombstone each movie so a later cloud pull doesn't resurrect them.
+      const cacheId = cacheIdFor(m);
+      addDeletedId(cacheId);
+      if (userId) deleteRemoteMovie(userId, cacheId).catch(() => {});
+    }
+    persist(movies.filter((m) => m.status !== 'watchlist'));
+  }, [movies, persist]);
+
+  const clearSeen = useCallback(() => {
+    const userId = sessionRef.current;
+    for (const m of movies) {
+      if (m.status !== 'seen') continue;
+      // Tombstone each movie so a later cloud pull doesn't resurrect them.
+      const cacheId = cacheIdFor(m);
+      addDeletedId(cacheId);
+      if (userId) deleteRemoteMovie(userId, cacheId).catch(() => {});
+    }
+    persist(movies.filter((m) => m.status !== 'seen'));
   }, [movies, persist]);
 
   const deleteMovie = useCallback((id: string) => {
@@ -472,8 +498,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Store>(() => ({
     movies, ready, settings, importing, importMessage, syncState, lastSyncAt,
     moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary,
+    clearWatchlist, clearSeen,
     importReel, revalidateTitle, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen,
-  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, importReel, revalidateTitle, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen]);
+  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Updates from 'expo-updates';
@@ -9,7 +9,7 @@ import { useStore } from '../../lib/store';
 import { useAuth } from '../../lib/auth';
 import { getSupabase } from '../../lib/supabase';
 
-const APP_VERSION = '1.5.2';
+const APP_VERSION = '1.6.0';
 
 function AccountSection() {
   const { ready, configured, session, isAnonymous, authMessage, signInWithApple, signOut } = useAuth();
@@ -32,9 +32,9 @@ function AccountSection() {
           <Text style={styles.body}>
             {session
               ? isAnonymous
-                ? 'Using the app anonymously — your list will follow you once you sign in.'
+                ? 'Log in to save and never lose your lists and settings.'
                 : `Signed in${session.user.email ? ` as ${session.user.email}` : ''}.`
-              : 'Not signed in.'}
+              : 'Log in to save and never lose your lists and settings.'}
           </Text>
           {authMessage && <Text style={styles.error}>{authMessage}</Text>}
           {configured && session && (
@@ -171,7 +171,26 @@ function FeedbackModal({ visible, onClose }: { visible: boolean; onClose: () => 
 
 export default function SettingsScreen() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const { clearWatchlist, clearSeen } = useStore();
   const insets = useSafeAreaInsets();
+
+  const confirmClear = (which: 'watchlist' | 'seen') => {
+    const isWatchlist = which === 'watchlist';
+    Alert.alert(
+      isWatchlist ? 'Clear Watchlist?' : 'Clear Seen?',
+      isWatchlist
+        ? 'This removes every movie in your Watch List. This can’t be undone.'
+        : 'This removes every movie in your Seen list. This can’t be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => (isWatchlist ? clearWatchlist() : clearSeen()),
+        },
+      ],
+    );
+  };
 
   return (
     <ScrollView style={[styles.container, { paddingTop: insets.top }]} contentContainerStyle={styles.content}>
@@ -180,12 +199,26 @@ export default function SettingsScreen() {
       <AccountSection />
 
       <View style={[styles.accountBox, styles.section]}>
+        <Text style={styles.heading}>Library</Text>
+        <Pressable style={styles.feedbackRow} onPress={() => confirmClear('watchlist')}>
+          <Text style={styles.dangerText}>Clear Watchlist</Text>
+        </Pressable>
+        <Pressable style={styles.feedbackRow} onPress={() => confirmClear('seen')}>
+          <Text style={styles.dangerText}>Clear Seen</Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.accountBox, styles.section]}>
         <Text style={styles.heading}>About</Text>
         <Text style={styles.body}>Movie Recommender v{APP_VERSION}</Text>
         <Text style={styles.buildStamp} selectable>
           Build {Updates.updateId ? Updates.updateId.slice(0, 8) : 'dev'}
           {Updates.createdAt ? ` · ${new Date(Updates.createdAt).toLocaleString()}` : ''}
         </Text>
+      </View>
+
+      <View style={[styles.accountBox, styles.section]}>
+        <Text style={styles.heading}>Feedback</Text>
         <Pressable style={styles.feedbackRow} onPress={() => setFeedbackOpen(true)}>
           <Text style={styles.feedbackText}>Send feedback</Text>
         </Pressable>
@@ -211,6 +244,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', marginTop: 12,
   },
   feedbackText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  dangerText: { color: '#ff453a', fontSize: 15, fontWeight: '700' },
   accountBox: {
     backgroundColor: '#1c1c1e',
     borderRadius: 16,
