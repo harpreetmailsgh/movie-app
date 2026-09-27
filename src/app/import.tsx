@@ -100,7 +100,7 @@ export default function ImportScreen() {
     router.back();
   };
 
-  /** "By title" first row: save the typed text as-is, flagged for review. */
+  /** "By title" last row: save the typed text as-is, flagged for review. */
   const saveAsTyped = () => {
     const t = query.trim();
     if (!t) return;
@@ -238,16 +238,6 @@ export default function ImportScreen() {
           onSubmitEditing={submitSearch}
           returnKeyType="search"
         />
-        {query.trim().length > 0 && (
-          <Pressable style={styles.result} onPress={saveAsTyped}>
-            <ClapboardPoster style={styles.thumb} />
-            <View style={styles.resultText}>
-              <Text style={styles.resultTitle} numberOfLines={1}>{query.trim()}</Text>
-              <Text style={styles.resultSub}>Save exactly as typed</Text>
-            </View>
-            <Text style={styles.addPlus}>＋</Text>
-          </Pressable>
-        )}
         {searching && <ActivityIndicator color="#fff" style={styles.loader} />}
         {!searching && query.trim().length > 0 && results.length === 0 && (
           <Text style={styles.body}>No matches — check the spelling, or try the original title.</Text>
@@ -275,6 +265,17 @@ export default function ImportScreen() {
             </Pressable>
           );
         })}
+        {query.trim().length > 0 && (
+          <Pressable style={styles.result} onPress={saveAsTyped}>
+            <ClapboardPoster style={styles.thumb} />
+            <View style={styles.resultText}>
+              <Text style={styles.resultTitle} numberOfLines={2}>
+                Don&apos;t see it? Save &quot;{query.trim()}&quot; exactly as typed
+              </Text>
+            </View>
+            <Text style={styles.addPlus}>＋</Text>
+          </Pressable>
+        )}
       </View>
 
       <View style={styles.divider} />
