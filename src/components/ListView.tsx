@@ -1,13 +1,17 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Text, FlatList, Image, Pressable, StyleSheet, Animated } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Movie, posterUrl } from '../lib/types';
+import { useStore } from '../lib/store';
+import ClapboardPoster from './ClapboardPoster';
 
 export interface ListActions {
   onSeen?: (m: Movie) => void;
   onRemove?: (m: Movie) => void;
   onAdd?: (m: Movie) => void;
   addedIds?: Set<string>;
+  addLabel?: string;
+  removeLabel?: string;
 }
 
 export default function ListView({
@@ -54,23 +58,32 @@ function Row({
   actions: ListActions;
 }) {
   const ref = useRef<Swipeable>(null);
+  const { revalidateTitle, deleteMovie } = useStore();
   const uri = posterUrl(item.posterPath);
+  const gated = item.needsReview && item.status === 'watchlist';
+  // Measured width of the swipe actions strip. Swipeable parks the row at
+  // exactly -rightWidth (its own measurement of this strip), so the
+  // follow-along translate below must span the measured width — the old
+  // hardcoded 160px is what cut buttons off on single-button rows
+  // (Trending/Seen) while two-button rows (Watchlist) happened to fit.
+  const [actionsWidth, setActionsWidth] = useState(0);
   const close = () => ref.current?.close();
 
   const renderRight = (
     progress: Animated.AnimatedInterpolation<number>,
     dragX: Animated.AnimatedInterpolation<number>
   ) => {
+    const w = Math.max(actionsWidth, 1);
     const trans = dragX.interpolate({
-      inputRange: [-160, 0],
-      outputRange: [0, 160],
+      inputRange: [-w, 0],
+      outputRange: [0, w],
       extrapolate: 'clamp',
     });
     const buttons: { label: string; color: string; run: () => void }[] = [];
     if (actions.onAdd) {
       const added = actions.addedIds?.has(item.id);
       buttons.push({
-        label: added ? '✓ Added' : '＋ Add',
+        label: added ? '✓ Added' : (actions.addLabel ?? '＋ Add'),
         color: '#30d158',
         run: () => { if (!added) actions.onAdd!(item); },
       });
@@ -84,13 +97,16 @@ function Row({
     }
     if (actions.onRemove) {
       buttons.push({
-        label: '🗑 Delete',
+        label: actions.removeLabel ?? '🗑 Delete',
         color: '#ff453a',
         run: () => actions.onRemove!(item),
       });
     }
     return (
-      <Animated.View style={[styles.actions, { transform: [{ translateX: trans }] }]}>
+      <Animated.View
+        onLayout={({ nativeEvent }) => setActionsWidth(nativeEvent.layout.width)}
+        style={[styles.actions, { transform: [{ translateX: trans }] }]}
+      >
         {buttons.map((b) => (
           <Pressable
             key={b.label}
@@ -107,7 +123,9 @@ function Row({
   return (
     <Swipeable ref={ref} renderRightActions={renderRight} overshootRight={false}>
       <Pressable style={styles.row} onPress={() => onSelect(item)}>
-        {uri ? (
+        {gated ? (
+          <ClapboardPoster style={styles.thumb} />
+        ) : uri ? (
           <Image source={{ uri }} style={styles.thumb} />
         ) : (
           <View style={[styles.thumb, styles.thumbFallback]}>
@@ -131,6 +149,30 @@ function Row({
             <Text style={styles.genres} numberOfLines={1}>
               {(item.genres ?? []).slice(0, 3).join(' · ')}
             </Text>
+          )}
+          {gated && (
+            <View>
+              <Text style={styles.reviewNotice} numberOfLines={2}>
+                We couldn&apos;t validate this title. Do you want to Keep It or Trash It?
+              </Text>
+              <View style={styles.reviewRow}>
+                <Pressable
+                  style={[styles.reviewBtn, styles.keepBtn]}
+                  onPress={async () => { await revalidateTitle(item.id); }}
+                >
+                  <Text style={styles.reviewBtnText}>Keep It</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.reviewBtn, styles.trashBtn]}
+                  onPress={() => {
+                    if (actions.onRemove) actions.onRemove(item);
+                    else deleteMovie(item.id);
+                  }}
+                >
+                  <Text style={styles.reviewBtnText}>Trash It</Text>
+                </Pressable>
+              </View>
+            </View>
           )}
         </View>
         <Text style={styles.chev}>›</Text>
@@ -162,4 +204,10 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', alignItems: 'stretch' },
   actionBtn: { justifyContent: 'center', paddingHorizontal: 25 },
   actionText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  reviewNotice: { color: '#ff9f0a', fontSize: 13, marginTop: 6 },
+  reviewRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  reviewBtn: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  keepBtn: { backgroundColor: '#30d158' },
+  trashBtn: { backgroundColor: '#ff453a' },
+  reviewBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 });

@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, FlatList, Image, Pressable, StyleSheet, Dimensions } from 'react-native';
 import { Movie, posterUrl } from '../lib/types';
+import { useStore } from '../lib/store';
+import ClapboardPoster from './ClapboardPoster';
 
 const SCREEN_W = Dimensions.get('window').width;
 const GAP = 10;
@@ -17,6 +19,7 @@ export default function TilesView({
   onSelect: (m: Movie) => void;
   emptyText?: string;
 }) {
+  const { revalidateTitle, deleteMovie } = useStore();
   if (movies.length === 0) {
     return (
       <View style={styles.center}>
@@ -27,6 +30,7 @@ export default function TilesView({
 
   const renderItem = ({ item }: { item: Movie }) => {
     const uri = posterUrl(item.posterPath);
+    const gated = item.needsReview && item.status === 'watchlist';
     const meta = [
       item.year > 0 ? String(item.year) : null,
       item.imdbRating > 0 ? `★ ${item.imdbRating.toFixed(1)}` : null,
@@ -35,7 +39,9 @@ export default function TilesView({
       .join(' · ');
     return (
       <Pressable style={styles.tile} onPress={() => onSelect(item)}>
-        {uri ? (
+        {gated ? (
+          <ClapboardPoster style={styles.poster} />
+        ) : uri ? (
           <Image source={{ uri }} style={styles.poster} />
         ) : (
           <View style={[styles.poster, styles.fallback]}>
@@ -49,6 +55,27 @@ export default function TilesView({
           <Text style={styles.meta} numberOfLines={1}>
             {meta}
           </Text>
+        )}
+        {gated && (
+          <View>
+            <Text style={styles.reviewNotice} numberOfLines={3}>
+              We couldn&apos;t validate this title. Do you want to Keep It or Trash It?
+            </Text>
+            <View style={styles.reviewRow}>
+              <Pressable
+                style={[styles.reviewBtn, styles.keepBtn]}
+                onPress={async () => { await revalidateTitle(item.id); }}
+              >
+                <Text style={styles.reviewBtnText}>Keep It</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.reviewBtn, styles.trashBtn]}
+                onPress={() => deleteMovie(item.id)}
+              >
+                <Text style={styles.reviewBtnText}>Trash It</Text>
+              </Pressable>
+            </View>
+          </View>
         )}
       </Pressable>
     );
@@ -83,4 +110,10 @@ const styles = StyleSheet.create({
   fallbackIcon: { fontSize: 32 },
   title: { color: '#fff', fontSize: 12, fontWeight: '600', marginTop: 6, lineHeight: 15 },
   meta: { color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 2 },
+  reviewNotice: { color: '#ff9f0a', fontSize: 11, marginTop: 4 },
+  reviewRow: { flexDirection: 'row', gap: 6, marginTop: 4 },
+  reviewBtn: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  keepBtn: { backgroundColor: '#30d158' },
+  trashBtn: { backgroundColor: '#ff453a' },
+  reviewBtnText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 });

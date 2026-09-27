@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, TextInput, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -19,11 +19,10 @@ export default function SeenScreen() {
   } = useStore();
   const insets = useSafeAreaInsets();
   const [filters, setFilters] = useSharedFilters();
-  // Jump-to-cards machinery (focusId/originView): retained as-is so the
-  // cards view jump keeps working; tile/row taps now open the detail page.
-  // originView remembers where the jump came from so the floating back
-  // button can return to it; null when cards was reached normally.
-  const [focusId, setFocusId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  // originView remembers where a cards-view jump came from so the floating
+  // back button can return to it; null when cards was reached normally.
+  // (Tile/row taps now open the detail page, so the jump path is dormant.)
   const [originView, setOriginView] = useState<'tiles' | 'list' | null>(null);
 
   const view = settings.seenView;
@@ -39,14 +38,14 @@ export default function SeenScreen() {
     [seen, filters]
   );
 
-  const deck = useMemo(() => {
-    if (!focusId) return filtered;
-    const m = filtered.find((t) => t.id === focusId);
-    return m ? [m, ...filtered.filter((t) => t.id !== focusId)] : filtered;
-  }, [filtered, focusId]);
+  // Live search over the filtered list — title substring, case-insensitive.
+  const searched = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return filtered;
+    return filtered.filter((m) => m.title.toLowerCase().includes(q));
+  }, [filtered, query]);
 
   const clearJump = () => {
-    setFocusId(null);
     setOriginView(null);
   };
 
@@ -97,10 +96,30 @@ export default function SeenScreen() {
         onChange={changeView}
       />
       <FilterBar values={filters} onChange={setFilters} />
+      <View style={styles.searchRow}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search seen movies…"
+          placeholderTextColor="rgba(0,0,0,0.45)"
+          value={query}
+          onChangeText={setQuery}
+          returnKeyType="search"
+        />
+        {query.length > 0 && (
+          <Pressable
+            accessibilityLabel="Clear search"
+            onPress={() => setQuery('')}
+            hitSlop={8}
+            style={styles.clearBtn}
+          >
+            <Text style={styles.clearText}>×</Text>
+          </Pressable>
+        )}
+      </View>
 
       {view === 'cards' && (
         <View style={styles.deckArea}>
-          {deck.length === 0 ? (
+          {searched.length === 0 ? (
             <View style={styles.center}>
               <Text style={styles.emptyIcon}>👁️</Text>
               <Text style={styles.emptyTitle}>Nothing here yet</Text>
@@ -113,7 +132,7 @@ export default function SeenScreen() {
           ) : (
             <View style={styles.deckWrap}>
               <SwipeDeck
-                cards={deck}
+                cards={searched}
                 onSwipe={handleSwipe}
                 trashBin
                 toBackDirs={['left', 'right']}
@@ -137,7 +156,7 @@ export default function SeenScreen() {
 
       {view === 'tiles' && (
         <TilesView
-          movies={filtered}
+          movies={searched}
           onSelect={openDetail}
           emptyText={
             filtersActive(filters)
@@ -149,10 +168,13 @@ export default function SeenScreen() {
 
       {view === 'list' && (
         <ListView
-          movies={filtered}
+          movies={searched}
           onSelect={openDetail}
           actions={{
+            onAdd: (m) => moveMovie(m.id, 'watchlist'),
+            addLabel: '＋ Watchlist',
             onRemove: (m) => deleteMovie(m.id),
+            removeLabel: 'Trash',
           }}
           emptyText={
             filtersActive(filters)
@@ -167,6 +189,25 @@ export default function SeenScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000', paddingBottom: 24 },
+  searchRow: { position: 'relative', marginHorizontal: 16, marginTop: 8, marginBottom: 4 },
+  searchInput: {
+    backgroundColor: '#E9E9EE',
+    color: '#000',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingRight: 38,
+    paddingVertical: 10,
+    fontSize: 15,
+  },
+  clearBtn: {
+    position: 'absolute',
+    right: 4,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  clearText: { color: 'rgba(0,0,0,0.5)', fontSize: 20, fontWeight: '600' },
   deckArea: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', marginTop: 8 },
   deckWrap: { position: 'relative' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },

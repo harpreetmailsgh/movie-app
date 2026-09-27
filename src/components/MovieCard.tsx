@@ -4,10 +4,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Movie, posterUrl, tmdbUrl } from '../lib/types';
 import { resolveTrailerUrl } from '../lib/tmdb';
 import { useStore } from '../lib/store';
+import ClapboardPoster from './ClapboardPoster';
 
 export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTap?: () => void }) {
-  const { settings } = useStore();
+  const { settings, revalidateTitle, deleteMovie } = useStore();
   const uri = posterUrl(movie.posterPath, 'w780');
+  const gated = movie.needsReview && movie.status === 'watchlist';
   const sourceUrl = tmdbUrl(movie.tmdbID, movie.mediaType);
   const genres = movie.genres ?? [];
   const cast = movie.cast ?? [];
@@ -30,7 +32,9 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
       style={styles.bezel}
     >
       <View style={styles.card}>
-      {uri ? (
+      {gated ? (
+        <ClapboardPoster style={styles.poster} />
+      ) : uri ? (
         <Image source={{ uri }} style={styles.poster} resizeMode="cover" />
       ) : (
         <View style={[styles.poster, styles.posterFallback]}>
@@ -86,8 +90,26 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
             Starring {cast.slice(0, 3).join(', ')}
           </Text>
         )}
-        {movie.needsReview && (
-          <Text style={styles.review}>Needs a look — tap ⓘ to confirm the title</Text>
+        {gated && (
+          <View>
+            <Text style={styles.reviewNotice}>
+              We couldn&apos;t validate this title. Do you want to Keep It or Trash It?
+            </Text>
+            <View style={styles.reviewRow}>
+              <Pressable
+                style={[styles.reviewBtn, styles.keepBtn]}
+                onPress={async () => { await revalidateTitle(movie.id); }}
+              >
+                <Text style={styles.reviewBtnText}>Keep It</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.reviewBtn, styles.trashBtn]}
+                onPress={() => deleteMovie(movie.id)}
+              >
+                <Text style={styles.reviewBtnText}>Trash It</Text>
+              </Pressable>
+            </View>
+          </View>
         )}
       </View>
       </View>
@@ -151,5 +173,10 @@ const styles = StyleSheet.create({
   linkRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 },
   linkDot: { color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 4 },
   cast: { color: 'rgba(255,255,255,0.65)', fontSize: 12, marginTop: 8, fontStyle: 'italic' },
-  review: { color: '#ff9f0a', fontSize: 12, fontWeight: '700', marginTop: 8 },
+  reviewNotice: { color: '#ff9f0a', fontSize: 12, fontWeight: '700', marginTop: 8 },
+  reviewRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  reviewBtn: { borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  keepBtn: { backgroundColor: '#30d158' },
+  trashBtn: { backgroundColor: '#ff453a' },
+  reviewBtnText: { color: '#fff', fontSize: 13, fontWeight: '800' },
 });

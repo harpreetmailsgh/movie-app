@@ -199,7 +199,13 @@ export default function TrendingScreen() {
         <ListView
           movies={visible}
           onSelect={openDetail}
-          actions={{ onAdd: addToWatchlist, addedIds }}
+          actions={{
+            onAdd: addToWatchlist,
+            addedIds,
+            addLabel: '＋ Watchlist',
+            onRemove: (t) => setHiddenIds((h) => [...h, t.id]),
+            removeLabel: 'Trash',
+          }}
           emptyText={
             filtersActive(filters)
               ? 'No matches — trending items do not carry language or rating data; try clearing those.'
