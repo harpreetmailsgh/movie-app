@@ -110,24 +110,26 @@ export default function SeenScreen() {
               </Text>
             </View>
           ) : (
-            <SwipeDeck
-              cards={deck}
-              onSwipe={handleSwipe}
-              trashBin
-              toBackDirs={['left', 'right']}
-              onInfoTap={(m) => router.push(`/movie/${m.id}`)}
-              animation={settings.cardAnimation}
-              deckStyle={settings.deckStyle}
-            />
-          )}
-          {originView !== null && deck.length > 0 && (
-            <Pressable
-              accessibilityLabel="Back"
-              onPress={goBackToOrigin}
-              style={styles.fabBack}
-            >
-              <Ionicons name="chevron-back" size={24} color="#1c1c1e" />
-            </Pressable>
+            <View style={styles.deckWrap}>
+              <SwipeDeck
+                cards={deck}
+                onSwipe={handleSwipe}
+                trashBin
+                toBackDirs={['left', 'right']}
+                onInfoTap={(m) => router.push(`/movie/${m.id}`)}
+                animation={settings.cardAnimation}
+                deckStyle={settings.deckStyle}
+              />
+              {originView !== null && (
+                <Pressable
+                  accessibilityLabel="Back"
+                  onPress={goBackToOrigin}
+                  style={styles.fabBack}
+                >
+                  <Ionicons name="chevron-back" size={24} color="#1c1c1e" />
+                </Pressable>
+              )}
+            </View>
           )}
         </View>
       )}
@@ -165,6 +167,7 @@ export default function SeenScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000', paddingBottom: 24 },
   deckArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  deckWrap: { position: 'relative' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
   emptyIcon: { fontSize: 56, marginBottom: 12 },
