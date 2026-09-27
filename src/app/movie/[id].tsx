@@ -2,18 +2,18 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, Image, Pressable, StyleSheet, Linking, TextInput } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useStore } from '../../lib/store';
-import { posterUrl, tmdbUrl, EntryStatus } from '../../lib/types';
+import { getFeedItem } from '../../lib/feedCache';
+import { posterUrl, tmdbUrl } from '../../lib/types';
 import { resolveTrailerUrl } from '../../lib/tmdb';
-
-const MOVE_TARGETS: { status: EntryStatus; label: string }[] = [
-  { status: 'watchlist', label: 'Watch List' },
-  { status: 'seen', label: 'Seen' },
-];
 
 export default function MovieDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { movies, moveMovie, deleteMovie, updateMovie, settings } = useStore();
-  const movie = movies.find((m) => m.id === id);
+  // Library first; fall back to the in-memory feed cache so tapping a
+  // Trending tile (feed items are not in the library) still renders the
+  // detail page. Library data always wins; feed items are never written
+  // into the library.
+  const movie = movies.find((m) => m.id === id) ?? getFeedItem(id);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
 
@@ -48,6 +48,32 @@ export default function MovieDetailScreen() {
         </View>
       )}
 
+      <View style={styles.actionRow}>
+        <Pressable style={styles.trailerBtn} onPress={openTrailer}>
+          <Text style={styles.trailerBtnText}>Trailer ▶</Text>
+        </Pressable>
+        {movie.status !== 'seen' && (
+          <Pressable
+            style={styles.seenBtn}
+            onPress={() => {
+              moveMovie(movie.id, 'seen');
+              router.back();
+            }}
+          >
+            <Text style={styles.seenBtnText}>Seen</Text>
+          </Pressable>
+        )}
+        <Pressable
+          style={styles.trashBtn}
+          onPress={() => {
+            deleteMovie(movie.id);
+            router.back();
+          }}
+        >
+          <Text style={styles.trashBtnText}>Trash</Text>
+        </Pressable>
+      </View>
+
       {editingTitle ? (
         <View style={styles.editRow}>
           <TextInput
@@ -63,28 +89,30 @@ export default function MovieDetailScreen() {
           </Pressable>
         </View>
       ) : (
-        <Pressable
-          onPress={() => {
-            setTitleDraft(movie.title === 'Unknown title' ? '' : movie.title);
-            setEditingTitle(true);
-          }}
-        >
-          <Text style={styles.title}>
-            {movie.title} <Text style={styles.editHint}>✎</Text>
-          </Text>
-        </Pressable>
+        <View style={styles.titleRow}>
+          <Pressable
+            style={styles.titlePress}
+            onPress={() => {
+              setTitleDraft(movie.title === 'Unknown title' ? '' : movie.title);
+              setEditingTitle(true);
+            }}
+          >
+            <Text style={styles.title}>
+              {movie.title} <Text style={styles.editHint}>✎</Text>
+            </Text>
+          </Pressable>
+          {(() => {
+            const segments: string[] = [];
+            if (movie.year > 0) segments.push(String(movie.year));
+            if (movie.imdbRating > 0) segments.push(`★ ${movie.imdbRating.toFixed(1)}`);
+            if ((movie.genres ?? []).length > 0) segments.push((movie.genres ?? []).join(' · '));
+            return segments.length > 0 ? (
+              <Text style={styles.metaInline}>{segments.join(' · ')}</Text>
+            ) : null;
+          })()}
+        </View>
       )}
 
-      {movie.year > 0 && (
-        <Text style={styles.meta}>
-          {movie.year} · {movie.mediaType === 'tv' ? 'Series' : 'Movie'}
-          {movie.imdbRating > 0 ? ` · ★ ${movie.imdbRating.toFixed(1)}` : ''}
-          {movie.originalLanguage ? ` · ${movie.originalLanguage}` : ''}
-        </Text>
-      )}
-      {(movie.genres ?? []).length > 0 && (
-        <Text style={styles.genres}>{(movie.genres ?? []).join(' · ')}</Text>
-      )}
       {!!movie.overview && <Text style={styles.overview}>{movie.overview}</Text>}
       {(() => {
         const source = tmdbUrl(movie.tmdbID, movie.mediaType);
@@ -94,12 +122,6 @@ export default function MovieDetailScreen() {
           </Pressable>
         ) : null;
       })()}
-      <Pressable
-        style={styles.trailerBtn}
-        onPress={openTrailer}
-      >
-        <Text style={styles.trailerBtnText}>Watch trailer ▶</Text>
-      </Pressable>
       {(movie.cast ?? []).length > 0 && (
         <View style={styles.castBox}>
           <Text style={styles.castLabel}>Cast</Text>
@@ -120,55 +142,52 @@ export default function MovieDetailScreen() {
           <Text style={styles.linkBtnText}>Open source reel ↗</Text>
         </Pressable>
       )}
-
-      <Text style={styles.sectionLabel}>Move to</Text>
-      <View style={styles.moveRow}>
-        {MOVE_TARGETS.filter((t) => t.status !== movie.status).map((t) => (
-          <Pressable
-            key={t.status}
-            style={styles.moveBtn}
-            onPress={() => {
-              moveMovie(movie.id, t.status);
-              router.back();
-            }}
-          >
-            <Text style={styles.moveBtnText}>{t.label}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <Pressable
-        style={styles.deleteBtn}
-        onPress={() => {
-          deleteMovie(movie.id);
-          router.back();
-        }}
-      >
-        <Text style={styles.deleteBtnText}>Delete forever</Text>
-      </Pressable>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  content: { padding: 20, paddingBottom: 48 },
+  content: { padding: 20, paddingTop: 8, paddingBottom: 48 },
   center: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
   dim: { color: 'rgba(255,255,255,0.6)' },
   poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: 18, backgroundColor: '#1c1c1e' },
   posterFallback: { alignItems: 'center', justifyContent: 'center' },
   fallbackIcon: { fontSize: 72, opacity: 0.5 },
-  title: { color: '#fff', fontSize: 26, fontWeight: '800', marginTop: 30 },
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  // Trailer gets its own style: a deeper cinematic red (NOT YouTube brand red).
+  // Smaller in the action row than the old standalone button. linkBtn/linkBtnText
+  // above stay untouched.
+  trailerBtn: {
+    flex: 1, backgroundColor: '#C1272D', borderRadius: 12,
+    paddingVertical: 10, alignItems: 'center', justifyContent: 'center',
+  },
+  trailerBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  seenBtn: {
+    backgroundColor: '#1c1c1e', borderRadius: 12,
+    paddingHorizontal: 16, paddingVertical: 10, justifyContent: 'center',
+  },
+  seenBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  trashBtn: {
+    backgroundColor: '#1c1c1e', borderRadius: 12,
+    paddingHorizontal: 16, paddingVertical: 10, justifyContent: 'center',
+  },
+  trashBtnText: { color: '#ff453a', fontSize: 14, fontWeight: '700' },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 20 },
+  titlePress: { flex: 1 },
+  title: { color: '#fff', fontSize: 26, fontWeight: '800' },
   editHint: { fontSize: 16, color: 'rgba(255,255,255,0.4)' },
-  editRow: { flexDirection: 'row', marginTop: 30, gap: 10 },
+  editRow: { flexDirection: 'row', marginTop: 20, gap: 10 },
   titleInput: {
     flex: 1, backgroundColor: '#1c1c1e', color: '#fff', borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 12, fontSize: 18, fontWeight: '700',
   },
   saveBtn: { backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 18, justifyContent: 'center' },
   saveBtnText: { color: '#000', fontWeight: '700' },
-  meta: { color: 'rgba(255,255,255,0.7)', fontSize: 15, marginTop: 8 },
-  genres: { color: 'rgba(255,255,255,0.55)', fontSize: 14, marginTop: 6 },
+  metaInline: {
+    color: 'rgba(255,255,255,0.55)', fontSize: 13, textAlign: 'right',
+    marginLeft: 12, marginTop: 6,
+  },
   overview: { color: 'rgba(255,255,255,0.85)', fontSize: 15, lineHeight: 23, marginTop: 14 },
   castBox: { marginTop: 16 },
   castLabel: { color: 'rgba(255,255,255,0.45)', fontSize: 12, fontWeight: '700', marginBottom: 6 },
@@ -182,17 +201,4 @@ const styles = StyleSheet.create({
     paddingVertical: 13, alignItems: 'center', marginTop: 16,
   },
   linkBtnText: { color: '#0a84ff', fontSize: 15, fontWeight: '700' },
-  // Trailer gets its own style: a deeper cinematic red (NOT YouTube brand red),
-  // larger than the other link buttons. linkBtn/linkBtnText above stay untouched.
-  trailerBtn: {
-    backgroundColor: '#C1272D', borderRadius: 12,
-    paddingVertical: 16, alignItems: 'center', marginTop: 16,
-  },
-  trailerBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-  sectionLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: '700', marginTop: 26, marginBottom: 10 },
-  moveRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  moveBtn: { backgroundColor: '#1c1c1e', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 },
-  moveBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  deleteBtn: { marginTop: 30, alignItems: 'center', paddingVertical: 12 },
-  deleteBtnText: { color: '#ff453a', fontSize: 15, fontWeight: '700' },
 });
