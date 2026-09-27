@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Modal, Platform } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Updates from 'expo-updates';
@@ -170,42 +170,14 @@ function FeedbackModal({ visible, onClose }: { visible: boolean; onClose: () => 
 }
 
 export default function SettingsScreen() {
-  const { addTestMovies } = useStore();
-  const [addingTests, setAddingTests] = useState(false);
-  const [testsAdded, setTestsAdded] = useState<number | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const insets = useSafeAreaInsets();
-
-  const addTests = async () => {
-    setAddingTests(true);
-    setTestsAdded(null);
-    try {
-      const n = await addTestMovies(20);
-      setTestsAdded(n);
-    } catch {
-      Alert.alert('Couldn’t add movies', 'Check your connection and try again.');
-    } finally {
-      setAddingTests(false);
-    }
-  };
 
   return (
     <ScrollView style={[styles.container, { paddingTop: insets.top }]} contentContainerStyle={styles.content}>
       <Text style={styles.pageHeader}>Settings</Text>
 
       <AccountSection />
-
-      <View style={[styles.accountBox, styles.section]}>
-        <Text style={styles.heading}>Testing</Text>
-        <Text style={styles.body}>
-          Fill your Watchlist with 20 well-known sample movies — handy for trying out the swipe deck.
-        </Text>
-        <Pressable style={styles.hapticTest} onPress={addTests} disabled={addingTests}>
-          <Text style={styles.hapticTestText}>
-            {addingTests ? 'Adding…' : testsAdded !== null ? `Added ${testsAdded} movies ✓ — tap to add more` : 'Add 20 sample movies'}
-          </Text>
-        </Pressable>
-      </View>
 
       <View style={[styles.accountBox, styles.section]}>
         <Text style={styles.heading}>About</Text>
@@ -231,11 +203,6 @@ const styles = StyleSheet.create({
   heading: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 10 },
   section: { marginTop: 32 },
   body: { color: 'rgba(255,255,255,0.75)', fontSize: 14, lineHeight: 21, marginBottom: 10 },
-  hapticTest: {
-    backgroundColor: '#2c2c2e', borderRadius: 12, paddingVertical: 12,
-    alignItems: 'center', marginTop: 12,
-  },
-  hapticTestText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   buildStamp: {
     color: 'rgba(255,255,255,0.3)', fontSize: 12, marginTop: 8,
   },

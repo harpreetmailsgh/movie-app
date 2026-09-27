@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator, Alert,
 } from 'react-native';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useStore } from '../lib/store';
 import { bestMatch, bestMatchKeyless, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
@@ -254,31 +255,39 @@ export default function ImportScreen() {
       <View style={styles.section}>
         <View style={styles.headingRow}>
           <View style={styles.fbBadge}>
+            <LinearGradient
+              colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.06)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
             <FontAwesome name="facebook-f" size={22} color="#fff" />
           </View>
           <Text style={styles.heading}>Facebook</Text>
         </View>
         <Text style={styles.body}>Paste a Facebook or Instagram reel link.</Text>
-        <TextInput
-          style={styles.input}
-          value={url}
-          onChangeText={onFbChange}
-          placeholder="Paste link here"
-          placeholderTextColor="#8E8E93"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <Pressable
-          style={[styles.button, importing && styles.buttonDisabled]}
-          onPress={doFetchFb}
-          disabled={importing || !url.trim()}
-        >
-          {importing ? (
-            <ActivityIndicator color="#000" />
-          ) : (
-            <Text style={styles.buttonText}>Fetch</Text>
-          )}
-        </Pressable>
+        <View style={styles.fetchRow}>
+          <TextInput
+            style={[styles.input, styles.inputFlex]}
+            value={url}
+            onChangeText={onFbChange}
+            placeholder="Paste link here"
+            placeholderTextColor="#8E8E93"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable
+            style={[styles.fetchButton, importing && styles.buttonDisabled]}
+            onPress={doFetchFb}
+            disabled={importing || !url.trim()}
+          >
+            {importing ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text style={styles.fetchButtonText}>Fetch</Text>
+            )}
+          </Pressable>
+        </View>
         {fbFailed && !!importMessage && <Text style={styles.error}>{importMessage}</Text>}
       </View>
 
@@ -287,31 +296,39 @@ export default function ImportScreen() {
       <View style={styles.section}>
         <View style={styles.headingRow}>
           <View style={styles.ytBadge}>
+            <LinearGradient
+              colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.06)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
             <Ionicons name="play" size={18} color="#fff" />
           </View>
           <Text style={styles.heading}>YouTube</Text>
         </View>
         <Text style={styles.body}>Paste a watch, Shorts or youtu.be link.</Text>
-        <TextInput
-          style={styles.input}
-          value={ytUrl}
-          onChangeText={onYtChange}
-          placeholder="Paste YouTube link here"
-          placeholderTextColor="#8E8E93"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <Pressable
-          style={[styles.button, ytWorking && styles.buttonDisabled]}
-          onPress={doFetchYt}
-          disabled={ytWorking || !ytUrl.trim()}
-        >
-          {ytWorking ? (
-            <ActivityIndicator color="#000" />
-          ) : (
-            <Text style={styles.buttonText}>Fetch</Text>
-          )}
-        </Pressable>
+        <View style={styles.fetchRow}>
+          <TextInput
+            style={[styles.input, styles.inputFlex]}
+            value={ytUrl}
+            onChangeText={onYtChange}
+            placeholder="Paste YouTube link here"
+            placeholderTextColor="#8E8E93"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable
+            style={[styles.fetchButton, ytWorking && styles.buttonDisabled]}
+            onPress={doFetchYt}
+            disabled={ytWorking || !ytUrl.trim()}
+          >
+            {ytWorking ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text style={styles.fetchButtonText}>Fetch</Text>
+            )}
+          </Pressable>
+        </View>
         {!!ytMessage && <Text style={styles.error}>{ytMessage}</Text>}
       </View>
     </ScrollView>
@@ -327,23 +344,25 @@ const styles = StyleSheet.create({
   headingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   fbBadge: {
     backgroundColor: '#1877F2', borderRadius: 10, width: 40, height: 40,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
   ytBadge: {
     backgroundColor: '#FF0000', borderRadius: 8, width: 42, height: 30,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
   body: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 21, marginBottom: 14 },
   input: {
     backgroundColor: FIELD_BG, color: '#111', borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 13, fontSize: 15,
   },
-  button: {
-    backgroundColor: '#fff', borderRadius: 14, paddingVertical: 15,
-    alignItems: 'center', marginTop: 14,
+  inputFlex: { flex: 1 },
+  fetchRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  fetchButton: {
+    backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 20,
+    paddingVertical: 13, alignItems: 'center', justifyContent: 'center',
   },
   buttonDisabled: { opacity: 0.5 },
-  buttonText: { color: '#000', fontSize: 16, fontWeight: '700' },
+  fetchButtonText: { color: '#000', fontSize: 15, fontWeight: '700' },
   error: { color: '#ff453a', fontSize: 14, marginTop: 12, lineHeight: 20 },
   loader: { marginTop: 16 },
   result: {
