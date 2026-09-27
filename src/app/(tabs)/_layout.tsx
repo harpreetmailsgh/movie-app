@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { Tabs, router } from 'expo-router';
+import GlossTabBar from '../../components/GlossTabBar';
 
 function Emoji({ children }: { children: string }) {
   return <Text style={{ fontSize: 22 }}>{children}</Text>;
@@ -26,6 +27,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: '#fff',
         tabBarInactiveTintColor: '#8e8e93',
       }}
+      tabBar={(props) => <GlossTabBar {...props} />}
     >
       <Tabs.Screen
         name="index"
