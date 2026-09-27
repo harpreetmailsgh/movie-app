@@ -199,10 +199,15 @@ export default function TrendingScreen() {
         <ListView
           movies={visible}
           onSelect={openDetail}
+          compactActions
           actions={{
             onAdd: addToWatchlist,
             addedIds,
-            addLabel: '＋ Watchlist',
+            onSeen: (t) => {
+              // Mirror the cards-view up-swipe: save as seen, out of the feed.
+              if (!addedIds.has(t.id)) addMovie({ ...trendingToInput(t), status: 'seen' });
+              setHiddenIds((h) => [...h, t.id]);
+            },
             onRemove: (t) => setHiddenIds((h) => [...h, t.id]),
             removeLabel: 'Trash',
           }}

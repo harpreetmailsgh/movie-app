@@ -1,9 +1,19 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, FlatList, Image, Pressable, StyleSheet, Animated } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 import { Movie, posterUrl } from '../lib/types';
 import { useStore } from '../lib/store';
 import ClapboardPoster from './ClapboardPoster';
+
+// Compact swipe actions (Trending list only): three fixed-size buttons and a
+// full-swipe trash zone. With friction=1 (default) and overshootFriction=2,
+// overshoot points = (-rawDrag - STRIP_W) / 2, so 90pt of overshoot lands at
+// raw dragX = -(STRIP_W + 90 * 2).
+const COMPACT_BTN_W = 78;
+const STRIP_W = COMPACT_BTN_W * 3; // 234
+const TRASH_OVERSHOOT = 90;
+const RAW_TRASH_X = -(STRIP_W + TRASH_OVERSHOOT * 2); // -414
 
 export interface ListActions {
   onSeen?: (m: Movie) => void;
@@ -19,11 +29,14 @@ export default function ListView({
   onSelect,
   actions,
   emptyText,
+  compactActions,
 }: {
   movies: Movie[];
   onSelect: (m: Movie) => void;
   actions: ListActions;
   emptyText?: string;
+  /** Trending-style swipe: fixed 78pt buttons + full-swipe trash zone. */
+  compactActions?: boolean;
 }) {
   if (movies.length === 0) {
     return (
@@ -34,7 +47,7 @@ export default function ListView({
   }
 
   const renderItem = ({ item }: { item: Movie }) => (
-    <Row item={item} onSelect={onSelect} actions={actions} />
+    <Row item={item} onSelect={onSelect} actions={actions} compactActions={compactActions} />
   );
 
   return (
@@ -52,15 +65,44 @@ function Row({
   item,
   onSelect,
   actions,
+  compactActions,
 }: {
   item: Movie;
   onSelect: (m: Movie) => void;
   actions: ListActions;
+  compactActions?: boolean;
 }) {
   const ref = useRef<Swipeable>(null);
   const { revalidateTitle, deleteMovie } = useStore();
   const uri = posterUrl(item.posterPath);
   const gated = item.needsReview && item.status === 'watchlist';
+  // Always-current actions for the gesture listener (the listener is
+  // attached once; the actions object identity changes every render).
+  const actionsRef = useRef(actions);
+  useEffect(() => {
+    actionsRef.current = actions;
+  });
+  // Instant full-swipe trash: fires once when the drag crosses the trash
+  // threshold mid-gesture. Resets if the finger comes back under it.
+  const trashFiredRef = useRef(false);
+  useEffect(() => {
+    if (!compactActions) return;
+    const sx = ref.current as unknown as { state?: { dragX?: Animated.Value } } | null;
+    const raw = sx?.state?.dragX;
+    if (!raw) return;
+    const sub = raw.addListener(({ value }: { value: number }) => {
+      if (value <= RAW_TRASH_X) {
+        if (!trashFiredRef.current) {
+          trashFiredRef.current = true;
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+          actionsRef.current.onRemove?.(item);
+        }
+      } else if (value > -STRIP_W - 20) {
+        trashFiredRef.current = false;
+      }
+    });
+    return () => raw.removeListener(sub);
+  }, [compactActions, item]);
   // Measured width of the swipe actions strip. Swipeable parks the row at
   // exactly -rightWidth (its own measurement of this strip), so the
   // follow-along translate below must span the measured width — the old
@@ -69,10 +111,83 @@ function Row({
   const [actionsWidth, setActionsWidth] = useState(0);
   const close = () => ref.current?.close();
 
+  // Compact (Trending) actions: three fixed 78pt buttons, icon over label,
+  // plus a red trash zone left of the strip that uncovers as the row
+  // overshoots. All visuals are transform/opacity interpolations on the
+  // natively-driven row translation — no setState in the gesture path.
+  const renderRightCompact = (
+    _progress: Animated.AnimatedInterpolation<number>,
+    transX: Animated.AnimatedInterpolation<number>
+  ) => {
+    const overshoot = transX.interpolate({
+      inputRange: [-STRIP_W - TRASH_OVERSHOOT, -STRIP_W],
+      outputRange: [TRASH_OVERSHOOT, 0],
+      extrapolate: 'clamp',
+    });
+    const trashScale = overshoot.interpolate({
+      inputRange: [0, TRASH_OVERSHOOT],
+      outputRange: [0.5, 1.5],
+      extrapolate: 'clamp',
+    });
+    const zoneOpacity = overshoot.interpolate({
+      inputRange: [0, 30],
+      outputRange: [0, 1],
+      extrapolate: 'clamp',
+    });
+    const added = actions.addedIds?.has(item.id);
+    const buttons: { icon: string; label: string; color: string; run: () => void }[] = [];
+    if (actions.onAdd) {
+      buttons.push({
+        icon: added ? '✓' : '＋',
+        label: added ? 'Added' : 'Watchlist',
+        color: '#30d158',
+        run: () => { if (!added) actions.onAdd!(item); },
+      });
+    }
+    if (actions.onSeen) {
+      buttons.push({
+        icon: '✓',
+        label: 'Seen',
+        color: '#0a84ff',
+        run: () => actions.onSeen!(item),
+      });
+    }
+    if (actions.onRemove) {
+      buttons.push({
+        icon: '🗑',
+        label: actions.removeLabel ?? 'Trash',
+        color: '#ff453a',
+        run: () => actions.onRemove!(item),
+      });
+    }
+    return (
+      <>
+        <Animated.View pointerEvents="none" style={[styles.trashZone, { opacity: zoneOpacity }]}>
+          <Animated.Text style={[styles.trashZoneIcon, { transform: [{ scale: trashScale }] }]}>
+            🗑
+          </Animated.Text>
+        </Animated.View>
+        <View style={styles.compactStrip}>
+          {buttons.map((b) => (
+            <Pressable
+              key={b.label}
+              style={[styles.compactBtn, { backgroundColor: b.color }]}
+              onPress={() => { close(); b.run(); }}
+            >
+              <Text style={styles.compactIcon}>{b.icon}</Text>
+              <Text style={styles.compactLabel}>{b.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </>
+    );
+  };
+
   const renderRight = (
     progress: Animated.AnimatedInterpolation<number>,
     dragX: Animated.AnimatedInterpolation<number>
   ) => {
+    if (compactActions) return renderRightCompact(progress, dragX);
     const w = Math.max(actionsWidth, 1);
     const trans = dragX.interpolate({
       inputRange: [-w, 0],
@@ -121,7 +236,12 @@ function Row({
   };
 
   return (
-    <Swipeable ref={ref} renderRightActions={renderRight} overshootRight={false}>
+    <Swipeable
+      ref={ref}
+      renderRightActions={renderRight}
+      overshootRight={compactActions ? undefined : false}
+      overshootFriction={compactActions ? 2 : undefined}
+    >
       <Pressable style={styles.row} onPress={() => onSelect(item)}>
         {gated ? (
           <ClapboardPoster style={styles.thumb} />
@@ -204,6 +324,21 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', alignItems: 'stretch' },
   actionBtn: { justifyContent: 'center', paddingHorizontal: 25 },
   actionText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  // Compact (Trending) swipe: fixed-size buttons + full-swipe trash zone.
+  compactStrip: { flexDirection: 'row', alignItems: 'stretch' },
+  compactBtn: { width: COMPACT_BTN_W, justifyContent: 'center', alignItems: 'center' },
+  compactIcon: { color: '#fff', fontSize: 22, fontWeight: '700' },
+  compactLabel: { color: '#fff', fontSize: 11, fontWeight: '700', marginTop: 2 },
+  trashZone: {
+    position: 'absolute',
+    right: STRIP_W,
+    top: 0,
+    bottom: 0,
+    width: 200,
+    backgroundColor: '#ff453a',
+    justifyContent: 'center',
+  },
+  trashZoneIcon: { position: 'absolute', right: 28, fontSize: 44 },
   reviewNotice: { color: '#ff9f0a', fontSize: 13, marginTop: 6 },
   reviewRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
   reviewBtn: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },

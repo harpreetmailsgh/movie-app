@@ -17,7 +17,6 @@ type TabRoute = BottomTabBarProps['state']['routes'][number];
 // Matches the stock bottom tab bar's content height (iOS UIKit, non-compact).
 const BAR_CONTENT_HEIGHT = 49;
 const PILL_HEIGHT = 40;
-const PILL_SIDE_PADDING = 4;
 
 function getLabel(
   options: DescriptorOptions,
@@ -54,10 +53,11 @@ export default function GlossTabBar({ state, descriptors, navigation, insets }: 
   const activeTintColor = focusedOptions.tabBarActiveTintColor ?? '#fff';
   const inactiveTintColor = focusedOptions.tabBarInactiveTintColor ?? '#8e8e93';
 
-  // Pill width is derived from the measured focused item (items are all
-  // flex:1, so equal width); 0 until measured, keeping the pill hidden.
+  // Pill is a fixed 60pt wide — just enough to hug the tab button's
+  // icon+label content. 0 until the focused tab is measured, keeping the
+  // pill hidden on cold start.
   const focusedLayout = layouts[focusedRoute.key];
-  const pillWidth = focusedLayout ? focusedLayout.width + PILL_SIDE_PADDING * 2 : 0;
+  const pillWidth = focusedLayout ? 60 : 0;
 
   const pillCenterX = (key: string): number | null => {
     const layout = layouts[key];
