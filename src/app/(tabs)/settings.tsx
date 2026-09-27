@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Modal } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Modal, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Updates from 'expo-updates';
@@ -8,10 +8,10 @@ import { useStore } from '../../lib/store';
 import { useAuth } from '../../lib/auth';
 import { getSupabase } from '../../lib/supabase';
 
-const APP_VERSION = '1.3.6';
+const APP_VERSION = '1.3.7';
 
 function AccountSection() {
-  const { ready, configured, session, isAnonymous, appleAvailable, authMessage, signInWithApple, signOut } = useAuth();
+  const { ready, configured, session, isAnonymous, authMessage, signInWithApple, signOut } = useAuth();
   const { syncState, lastSyncAt } = useStore();
   const [googleMsg, setGoogleMsg] = useState(false);
 
@@ -45,7 +45,7 @@ function AccountSection() {
                     : 'Backup pending…'}
             </Text>
           )}
-          {appleAvailable && (!session || isAnonymous) && (
+          {Platform.OS === 'ios' && (!session || isAnonymous) && (
             <AppleAuthentication.AppleAuthenticationButton
               buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
               buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
@@ -176,25 +176,29 @@ export default function SettingsScreen() {
 
       <AccountSection />
 
-      <Text style={[styles.heading, styles.section]}>Testing</Text>
-      <Text style={styles.body}>
-        Fill your Watchlist with 20 well-known sample movies — handy for trying out the swipe deck.
-      </Text>
-      <Pressable style={styles.hapticTest} onPress={addTests} disabled={addingTests}>
-        <Text style={styles.hapticTestText}>
-          {addingTests ? 'Adding…' : testsAdded !== null ? `Added ${testsAdded} movies ✓ — tap to add more` : 'Add 20 sample movies'}
+      <View style={[styles.accountBox, styles.section]}>
+        <Text style={styles.heading}>Testing</Text>
+        <Text style={styles.body}>
+          Fill your Watchlist with 20 well-known sample movies — handy for trying out the swipe deck.
         </Text>
-      </Pressable>
+        <Pressable style={styles.hapticTest} onPress={addTests} disabled={addingTests}>
+          <Text style={styles.hapticTestText}>
+            {addingTests ? 'Adding…' : testsAdded !== null ? `Added ${testsAdded} movies ✓ — tap to add more` : 'Add 20 sample movies'}
+          </Text>
+        </Pressable>
+      </View>
 
-      <Text style={[styles.heading, styles.section]}>About</Text>
-      <Text style={styles.body}>Movie Recommender v{APP_VERSION}</Text>
-      <Text style={styles.buildStamp} selectable>
-        Build {Updates.updateId ? Updates.updateId.slice(0, 8) : 'dev'}
-        {Updates.createdAt ? ` · ${new Date(Updates.createdAt).toLocaleString()}` : ''}
-      </Text>
-      <Pressable style={styles.feedbackRow} onPress={() => setFeedbackOpen(true)}>
-        <Text style={styles.feedbackText}>Send feedback</Text>
-      </Pressable>
+      <View style={[styles.accountBox, styles.section]}>
+        <Text style={styles.heading}>About</Text>
+        <Text style={styles.body}>Movie Recommender v{APP_VERSION}</Text>
+        <Text style={styles.buildStamp} selectable>
+          Build {Updates.updateId ? Updates.updateId.slice(0, 8) : 'dev'}
+          {Updates.createdAt ? ` · ${new Date(Updates.createdAt).toLocaleString()}` : ''}
+        </Text>
+        <Pressable style={styles.feedbackRow} onPress={() => setFeedbackOpen(true)}>
+          <Text style={styles.feedbackText}>Send feedback</Text>
+        </Pressable>
+      </View>
 
       <FeedbackModal visible={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </ScrollView>
@@ -209,7 +213,7 @@ const styles = StyleSheet.create({
   section: { marginTop: 32 },
   body: { color: 'rgba(255,255,255,0.75)', fontSize: 14, lineHeight: 21, marginBottom: 10 },
   hapticTest: {
-    backgroundColor: '#1c1c1e', borderRadius: 12, paddingVertical: 12,
+    backgroundColor: '#2c2c2e', borderRadius: 12, paddingVertical: 12,
     alignItems: 'center', marginTop: 12,
   },
   hapticTestText: { color: '#fff', fontSize: 15, fontWeight: '700' },
@@ -217,7 +221,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.3)', fontSize: 12, marginTop: 8,
   },
   feedbackRow: {
-    backgroundColor: '#1c1c1e', borderRadius: 12, paddingVertical: 12,
+    backgroundColor: '#2c2c2e', borderRadius: 12, paddingVertical: 12,
     alignItems: 'center', marginTop: 12,
   },
   feedbackText: { color: '#fff', fontSize: 15, fontWeight: '700' },
