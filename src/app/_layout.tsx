@@ -23,7 +23,7 @@ export default function RootLayout() {
         />
         <Stack.Screen
           name="import"
-          options={{ presentation: 'modal', title: 'Add from reel' }}
+          options={{ presentation: 'modal', title: 'Add movies to watchlist' }}
         />
       </Stack>
       </StoreProvider>

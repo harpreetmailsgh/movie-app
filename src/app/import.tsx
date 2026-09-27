@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator, Alert,
 } from 'react-native';
-import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useStore } from '../lib/store';
 import { bestMatch, bestMatchKeyless, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
@@ -18,7 +17,6 @@ export default function ImportScreen() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TmdbMatch[]>([]);
   const [searching, setSearching] = useState(false);
-  const [ytUrl, setYtUrl] = useState('');
   const [ytWorking, setYtWorking] = useState(false);
   const [ytMessage, setYtMessage] = useState<string | null>(null);
   const [fbFailed, setFbFailed] = useState(false);
@@ -98,11 +96,23 @@ export default function ImportScreen() {
     router.back();
   };
 
-  // ---- Card 2: Facebook / Instagram reel link --------------------------------
-  const onFbChange = (text: string) => {
+  // ---- Link card: single input, routed by link type --------------------------------
+  const onLinkChange = (text: string) => {
     setUrl(text);
     fbRunRef.current += 1; // cancel any in-flight run's completion
+    ytRunRef.current += 1; // cancel any in-flight run's completion
     setFbFailed(false);
+    setYtMessage(null);
+  };
+
+  const doFetch = () => {
+    const link = url.trim();
+    if (!link) return;
+    if (parseYouTubeId(link)) {
+      doFetchYt(link);
+    } else {
+      doFetchFb();
+    }
   };
 
   const doFetchFb = async () => {
@@ -130,17 +140,8 @@ export default function ImportScreen() {
     }
   };
 
-  // ---- Card 3: YouTube link --------------------------------------------------
-  const onYtChange = (text: string) => {
-    setYtUrl(text);
-    ytRunRef.current += 1; // cancel any in-flight run's completion
-    setYtMessage(null);
-  };
-
   /** YouTube import: oEmbed title (caption-first step), then TMDB/keyless match. */
-  const doFetchYt = async () => {
-    const link = ytUrl.trim();
-    if (!link) return;
+  const doFetchYt = async (link: string) => {
     const runId = ++ytRunRef.current;
     setYtMessage(null);
     if (!parseYouTubeId(link)) {
@@ -185,7 +186,7 @@ export default function ImportScreen() {
           needsReview: false,
         });
         if (runId !== ytRunRef.current) return;
-        setYtUrl('');
+        setUrl('');
         Alert.alert('Fetch complete', `“${match.title}” added to watchlist.`, [
           { text: 'OK', onPress: () => router.back() },
         ]);
@@ -198,7 +199,7 @@ export default function ImportScreen() {
         originalLanguage: '', cast: [], needsReview: true,
       });
       if (runId !== ytRunRef.current) return;
-      setYtUrl('');
+      setUrl('');
       Alert.alert('Fetch complete', 'Saved to your Watchlist — couldn\'t identify the movie.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
@@ -209,17 +210,8 @@ export default function ImportScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.title}>Add movies</Text>
-      <Text style={styles.subtitle}>
-        Name a movie yourself, or paste a link and let the app identify it.
-      </Text>
-
       <View style={styles.section}>
-        <Text style={styles.heading}>🎬&nbsp; Search by title</Text>
-        <Text style={styles.body}>
-          The fastest way. Type the name of the movie or series — results appear as you type.
-          Tap the right result to add it to your Watchlist.
-        </Text>
+        <Text style={styles.heading}>🎬&nbsp; Add movie</Text>
         <TextInput
           style={styles.input}
           value={query}
@@ -261,66 +253,31 @@ export default function ImportScreen() {
       <View style={styles.divider} />
 
       <View style={styles.section}>
-        <View style={styles.headingRow}>
-          <View style={styles.fbBadge}>
-            <FontAwesome name="facebook-f" size={22} color="#fff" />
-          </View>
-          <Text style={styles.heading}>Facebook</Text>
+        <Text style={styles.heading}>🔗&nbsp; Reel or video link</Text>
+        <Text style={styles.body}>Paste a Facebook, Instagram, or YouTube link.</Text>
+        <View style={styles.linkRow}>
+          <TextInput
+            style={[styles.input, styles.linkInput]}
+            value={url}
+            onChangeText={onLinkChange}
+            placeholder="Paste link here"
+            placeholderTextColor="#8E8E93"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable
+            style={[styles.button, styles.fetchButton, (importing || ytWorking) && styles.buttonDisabled]}
+            onPress={doFetch}
+            disabled={importing || ytWorking || !url.trim()}
+          >
+            {(importing || ytWorking) ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text style={styles.buttonText}>Fetch</Text>
+            )}
+          </Pressable>
         </View>
-        <Text style={styles.body}>Paste a Facebook or Instagram reel link.</Text>
-        <TextInput
-          style={styles.input}
-          value={url}
-          onChangeText={onFbChange}
-          placeholder="Paste link here"
-          placeholderTextColor="#8E8E93"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <Pressable
-          style={[styles.button, importing && styles.buttonDisabled]}
-          onPress={doFetchFb}
-          disabled={importing || !url.trim()}
-        >
-          {importing ? (
-            <ActivityIndicator color="#000" />
-          ) : (
-            <Text style={styles.buttonText}>Fetch</Text>
-          )}
-        </Pressable>
         {fbFailed && !!importMessage && <Text style={styles.error}>{importMessage}</Text>}
-      </View>
-
-      <View style={styles.divider} />
-
-      <View style={styles.section}>
-        <View style={styles.headingRow}>
-          <View style={styles.ytBadge}>
-            <Ionicons name="play" size={18} color="#fff" />
-          </View>
-          <Text style={styles.heading}>YouTube</Text>
-        </View>
-        <Text style={styles.body}>Paste a watch, Shorts or youtu.be link.</Text>
-        <TextInput
-          style={styles.input}
-          value={ytUrl}
-          onChangeText={onYtChange}
-          placeholder="Paste YouTube link here"
-          placeholderTextColor="#8E8E93"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-        <Pressable
-          style={[styles.button, ytWorking && styles.buttonDisabled]}
-          onPress={doFetchYt}
-          disabled={ytWorking || !ytUrl.trim()}
-        >
-          {ytWorking ? (
-            <ActivityIndicator color="#000" />
-          ) : (
-            <Text style={styles.buttonText}>Fetch</Text>
-          )}
-        </Pressable>
         {!!ytMessage && <Text style={styles.error}>{ytMessage}</Text>}
       </View>
     </ScrollView>
@@ -355,6 +312,9 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.5 },
   buttonText: { color: '#000', fontSize: 16, fontWeight: '700' },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  linkInput: { flex: 1 },
+  fetchButton: { marginTop: 0, paddingVertical: 13, paddingHorizontal: 20 },
   error: { color: '#ff453a', fontSize: 14, marginTop: 12, lineHeight: 20 },
   loader: { marginTop: 16 },
   result: {
