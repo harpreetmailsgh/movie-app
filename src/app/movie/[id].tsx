@@ -95,10 +95,10 @@ export default function MovieDetailScreen() {
         ) : null;
       })()}
       <Pressable
-        style={styles.linkBtn}
+        style={styles.trailerBtn}
         onPress={openTrailer}
       >
-        <Text style={styles.linkBtnText}>Watch trailer ▶</Text>
+        <Text style={styles.trailerBtnText}>Watch trailer ▶</Text>
       </Pressable>
       {(movie.cast ?? []).length > 0 && (
         <View style={styles.castBox}>
@@ -158,9 +158,9 @@ const styles = StyleSheet.create({
   poster: { width: '100%', aspectRatio: 2 / 3, borderRadius: 18, backgroundColor: '#1c1c1e' },
   posterFallback: { alignItems: 'center', justifyContent: 'center' },
   fallbackIcon: { fontSize: 72, opacity: 0.5 },
-  title: { color: '#fff', fontSize: 26, fontWeight: '800', marginTop: 18 },
+  title: { color: '#fff', fontSize: 26, fontWeight: '800', marginTop: 30 },
   editHint: { fontSize: 16, color: 'rgba(255,255,255,0.4)' },
-  editRow: { flexDirection: 'row', marginTop: 18, gap: 10 },
+  editRow: { flexDirection: 'row', marginTop: 30, gap: 10 },
   titleInput: {
     flex: 1, backgroundColor: '#1c1c1e', color: '#fff', borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 12, fontSize: 18, fontWeight: '700',
@@ -182,6 +182,13 @@ const styles = StyleSheet.create({
     paddingVertical: 13, alignItems: 'center', marginTop: 16,
   },
   linkBtnText: { color: '#0a84ff', fontSize: 15, fontWeight: '700' },
+  // Trailer gets its own style: a deeper cinematic red (NOT YouTube brand red),
+  // larger than the other link buttons. linkBtn/linkBtnText above stay untouched.
+  trailerBtn: {
+    backgroundColor: '#C1272D', borderRadius: 12,
+    paddingVertical: 16, alignItems: 'center', marginTop: 16,
+  },
+  trailerBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
   sectionLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: '700', marginTop: 26, marginBottom: 10 },
   moveRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   moveBtn: { backgroundColor: '#1c1c1e', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 },

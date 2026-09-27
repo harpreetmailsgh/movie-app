@@ -39,6 +39,7 @@ interface Store {
   setDeckStyle: (style: 'stack' | 'sidepeek' | 'fan') => void;
   setWatchlistView: (view: ViewMode) => void;
   setTrendingView: (view: ViewMode) => void;
+  setSeenView: (view: ViewMode) => void;
   cycleToBack: (id: string) => void;
   enrichLibrary: () => Promise<void>;
   setOnboardingSeen: () => void;
@@ -55,7 +56,7 @@ export function useStore(): Store {
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [ready, setReady] = useState(false);
-  const [settings, setSettings] = useState<Settings>({ tmdbKey: '', onboardingSeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles' });
+  const [settings, setSettings] = useState<Settings>({ tmdbKey: '', onboardingSeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles' });
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'error'>('idle');
@@ -91,7 +92,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           setMovies(seeds);
           await AsyncStorage.setItem(MOVIES_KEY, JSON.stringify(seeds));
         }
-        if (settingsRaw) setSettings({ tmdbKey: '', onboardingSeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', ...JSON.parse(settingsRaw) });
+        if (settingsRaw) setSettings({ tmdbKey: '', onboardingSeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles', ...JSON.parse(settingsRaw) });
       } catch {
         // Corrupt storage: start fresh with seeds.
         setMovies(seedMovies());
@@ -346,6 +347,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     persistSettings({ ...settings, trendingView: view });
   }, [settings, persistSettings]);
 
+  const setSeenView = useCallback((view: ViewMode) => {
+    persistSettings({ ...settings, seenView: view });
+  }, [settings, persistSettings]);
+
   /** "Next" swipe: cycle the movie to the back of the Watch List. */
   const cycleToBack = useCallback((id: string) => {
     const m = movies.find((x) => x.id === id);
@@ -431,8 +436,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Store>(() => ({
     movies, ready, settings, importing, importMessage, syncState, lastSyncAt,
     moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary,
-    importReel, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, cycleToBack, enrichLibrary, setOnboardingSeen,
-  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, importReel, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, cycleToBack, enrichLibrary, setOnboardingSeen]);
+    importReel, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen,
+  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, importReel, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

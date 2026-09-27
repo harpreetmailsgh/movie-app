@@ -31,6 +31,7 @@ export interface Settings {
   deckStyle: DeckStyle;
   watchlistView: ViewMode;
   trendingView: ViewMode;
+  seenView: ViewMode;
 }
 
 export const STATUS_META: Record<EntryStatus, { title: string; icon: string }> = {
