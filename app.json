@@ -24,7 +24,7 @@
     "scheme": "movierecommender",
     "slug": "movie-app",
     "userInterfaceStyle": "dark",
-    "version": "1.3.9",
+    "version": "1.5.0",
     "web": {
       "favicon": "./assets/favicon.png"
     },
