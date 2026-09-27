@@ -3,17 +3,20 @@ import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Alert, Modal,
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Updates from 'expo-updates';
+import Constants from 'expo-constants';
 import { FontAwesome } from '@expo/vector-icons';
 import { useStore } from '../../lib/store';
 import { useAuth } from '../../lib/auth';
 import { getSupabase } from '../../lib/supabase';
 
-const APP_VERSION = '1.3.7';
+const APP_VERSION = '1.3.8';
 
 function AccountSection() {
   const { ready, configured, session, isAnonymous, authMessage, signInWithApple, signOut } = useAuth();
   const { syncState, lastSyncAt } = useStore();
   const [googleMsg, setGoogleMsg] = useState(false);
+  const [appleMsg, setAppleMsg] = useState(false);
+  const isExpoGo = Constants.appOwnership === 'expo';
 
   return (
     <View style={styles.accountBox}>
@@ -46,13 +49,29 @@ function AccountSection() {
             </Text>
           )}
           {Platform.OS === 'ios' && (!session || isAnonymous) && (
-            <AppleAuthentication.AppleAuthenticationButton
-              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-              cornerRadius={12}
-              style={styles.appleBtn}
-              onPress={signInWithApple}
-            />
+            // The native Apple button renders a red "Unimplemented component"
+            // box in Expo Go because the native view manager isn't in the Expo
+            // Go binary — only render it in real builds. In Expo Go show a
+            // black fallback button mirroring the Google button style instead.
+            isExpoGo ? (
+              <>
+                <Pressable style={styles.googleBtn} onPress={() => setAppleMsg(true)}>
+                  <FontAwesome name="apple" size={18} color="#fff" style={styles.googleIcon} />
+                  <Text style={styles.googleBtnText}>Sign in with Apple</Text>
+                </Pressable>
+                {appleMsg && (
+                  <Text style={styles.dim}>Apple sign-in isn&rsquo;t available in Expo Go.</Text>
+                )}
+              </>
+            ) : (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                cornerRadius={12}
+                style={styles.appleBtn}
+                onPress={signInWithApple}
+              />
+            )
           )}
           {(!session || isAnonymous) && (
             <Pressable style={styles.googleBtn} onPress={() => setGoogleMsg(true)}>

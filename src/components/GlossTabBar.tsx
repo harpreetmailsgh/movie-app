@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  Easing,
   LayoutChangeEvent,
   Pressable,
   StyleSheet,
@@ -19,8 +18,6 @@ type TabRoute = BottomTabBarProps['state']['routes'][number];
 const BAR_CONTENT_HEIGHT = 49;
 const PILL_HEIGHT = 45;
 const PILL_SIDE_PADDING = 12;
-const SHINE_WIDTH = 24;
-const SHINE_SWEEP_MS = 2200;
 
 function getLabel(
   options: DescriptorOptions,
@@ -38,16 +35,15 @@ function getLabel(
 
 /**
  * Custom tab bar for the (tabs) navigator: replicates the stock look exactly
- * (black bar, #222 top border, emoji icons, labels) and adds a glossy glass
- * pill behind the focused tab that springs to the newly selected tab, with a
- * shine band sweeping across it on an infinite loop.
+ * (black bar, #222 top border, emoji icons, labels) and adds a static glossy
+ * glass pill behind the focused tab that springs to the newly selected tab.
+ * The pill has no looping animation — it just sits there, glossy.
  */
 export default function GlossTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
   const [layouts, setLayouts] = useState<Record<string, { x: number; width: number }>>({});
 
   const [pillX] = useState(() => new Animated.Value(0));
   const [pillOpacity] = useState(() => new Animated.Value(0));
-  const [shineX] = useState(() => new Animated.Value(0));
 
   // Effect-only mutable flags: never read during render.
   const fadeStartedRef = useRef(false);
@@ -113,24 +109,6 @@ export default function GlossTabBar({ state, descriptors, navigation, insets }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layouts]);
 
-  // Infinite shine sweep across the pill; restarted when the pill width
-  // changes (rotation) and stopped on unmount.
-  useEffect(() => {
-    if (pillWidth <= 0) return;
-    const range = pillWidth / 2 + SHINE_WIDTH / 2;
-    shineX.setValue(-range);
-    const sweep = Animated.loop(
-      Animated.timing(shineX, {
-        toValue: range,
-        duration: SHINE_SWEEP_MS,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    sweep.start();
-    return () => sweep.stop();
-  }, [pillWidth, shineX]);
-
   const handleItemLayout = (key: string) => (e: LayoutChangeEvent) => {
     const { x, width } = e.nativeEvent.layout;
     setLayouts((prev) => {
@@ -188,31 +166,14 @@ export default function GlossTabBar({ state, descriptors, navigation, insets }: 
             },
           ]}
         >
-          {/* Diagonal frosted-glass sheen */}
+          {/* Diagonal frosted-glass sheen — strengthened so the pill pops
+              against the black bar. Static: no animation. */}
           <LinearGradient
-            colors={['rgba(255,255,255,0.10)', 'rgba(255,255,255,0.02)']}
+            colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.06)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          {/* Shine band sweeping across, clipped to the pill's rounded bounds */}
-          <Animated.View
-            style={[
-              styles.shine,
-              { marginLeft: -SHINE_WIDTH / 2, transform: [{ translateX: shineX }] },
-            ]}
-          >
-            <LinearGradient
-              colors={[
-                'rgba(255,255,255,0)',
-                'rgba(255,255,255,0.6)',
-                'rgba(255,255,255,0)',
-              ]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={StyleSheet.absoluteFill}
-            />
-          </Animated.View>
         </Animated.View>
 
         {state.routes.map((route, index) => {
@@ -271,14 +232,9 @@ const styles = StyleSheet.create({
     top: (BAR_CONTENT_HEIGHT - PILL_HEIGHT) / 2,
     height: PILL_HEIGHT,
     borderRadius: PILL_HEIGHT / 2,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.30)',
     overflow: 'hidden',
-  },
-  shine: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: '50%',
-    width: SHINE_WIDTH,
   },
 });

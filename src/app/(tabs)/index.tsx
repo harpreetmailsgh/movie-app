@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../../lib/store';
 import { Movie } from '../../lib/types';
 import SwipeDeck, { SwipeDir } from '../../components/SwipeDeck';
@@ -91,8 +92,6 @@ export default function WatchlistScreen() {
         title="Watchlist"
         value={view}
         onChange={changeView}
-        showBack={originView !== null && view === 'cards'}
-        onBack={goBackToOrigin}
       />
       <FilterBar values={filters} onChange={setFilters} />
 
@@ -109,15 +108,28 @@ export default function WatchlistScreen() {
               </Text>
             </View>
           ) : (
-            <SwipeDeck
-              cards={deck}
-              onSwipe={handleSwipe}
-              trashBin
-              toBackDirs={['left', 'right']}
-              onInfoTap={(m) => router.push(`/movie/${m.id}`)}
-              animation={settings.cardAnimation}
-              deckStyle={settings.deckStyle}
-            />
+            <View style={styles.deckWrap}>
+              <SwipeDeck
+                cards={deck}
+                onSwipe={handleSwipe}
+                trashBin
+                toBackDirs={['left', 'right']}
+                onInfoTap={(m) => router.push(`/movie/${m.id}`)}
+                animation={settings.cardAnimation}
+                deckStyle={settings.deckStyle}
+              />
+              {/* Floating back button on the poster after a tile/row jump. */}
+              {originView !== null && (
+                <Pressable
+                  accessibilityLabel="Back"
+                  hitSlop={6}
+                  style={styles.jumpBack}
+                  onPress={goBackToOrigin}
+                >
+                  <Ionicons name="chevron-back" size={26} color="#1c1c1e" />
+                </Pressable>
+              )}
+            </View>
           )}
         </View>
       )}
@@ -143,7 +155,26 @@ export default function WatchlistScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000', paddingBottom: 24 },
-  deckArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  deckArea: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', marginTop: 8 },
+  deckWrap: { position: 'relative' },
+  // Floating back button after a tile/row jump: white solid circle with a dark
+  // chevron, so it stays visible on any poster art (dark or light).
+  jumpBack: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 4,
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
   emptyIcon: { fontSize: 56, marginBottom: 12 },

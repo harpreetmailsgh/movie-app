@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../../lib/store';
 import { Movie } from '../../lib/types';
 import { fetchTrending, trendingToInput } from '../../lib/trending';
@@ -127,8 +128,6 @@ export default function TrendingScreen() {
         title={headerTitle}
         value={view}
         onChange={changeView}
-        showBack={originView !== null && view === 'cards'}
-        onBack={goBackToOrigin}
       />
       <Text style={styles.sub}>Popular movies & series right now</Text>
       <FilterBar values={filters} onChange={setFilters} />
@@ -146,18 +145,31 @@ export default function TrendingScreen() {
               </Text>
             </View>
           ) : (
-            <SwipeDeck
-              cards={visible}
-              onSwipe={handleSwipe}
-              enabledDirs={['left', 'right', 'down']}
-              toBackDirs={['left']}
-              animation={settings.cardAnimation}
-              deckStyle={settings.deckStyle}
-              stampOverrides={{
-                right: { text: '＋ Watchlist', color: '#30d158', textColor: '#000', dragIcon: 'add' },
-                down: { text: 'Hide', color: '#8e8e93', textColor: '#fff', dragIcon: 'hide' },
-              }}
-            />
+            <View style={styles.deckWrap}>
+              <SwipeDeck
+                cards={visible}
+                onSwipe={handleSwipe}
+                enabledDirs={['left', 'right', 'down']}
+                toBackDirs={['left']}
+                animation={settings.cardAnimation}
+                deckStyle={settings.deckStyle}
+                stampOverrides={{
+                  right: { text: '＋ Watchlist', color: '#30d158', textColor: '#000', dragIcon: 'add' },
+                  down: { text: 'Hide', color: '#8e8e93', textColor: '#fff', dragIcon: 'hide' },
+                }}
+              />
+              {/* Floating back button on the poster after a tile/row jump. */}
+              {originView !== null && (
+                <Pressable
+                  accessibilityLabel="Back"
+                  hitSlop={6}
+                  style={styles.jumpBack}
+                  onPress={goBackToOrigin}
+                >
+                  <Ionicons name="chevron-back" size={26} color="#1c1c1e" />
+                </Pressable>
+              )}
+            </View>
           )}
         </View>
       )}
@@ -198,7 +210,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 2,
   },
-  deckArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  deckArea: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', marginTop: 8 },
+  deckWrap: { position: 'relative' },
+  // Floating back button after a tile/row jump: white solid circle with a dark
+  // chevron, so it stays visible on any poster art (dark or light).
+  jumpBack: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 4,
+  },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
   emptyIcon: { fontSize: 56, marginBottom: 12 },
