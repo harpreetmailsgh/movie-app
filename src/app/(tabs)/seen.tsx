@@ -19,7 +19,8 @@ export default function SeenScreen() {
   } = useStore();
   const insets = useSafeAreaInsets();
   const [filters, setFilters] = useSharedFilters();
-  // Tapping a tile/row jumps to the Cards view with that movie on top.
+  // Jump-to-cards machinery (focusId/originView): retained as-is so the
+  // cards view jump keeps working; tile/row taps now open the detail page.
   // originView remembers where the jump came from so the floating back
   // button can return to it; null when cards was reached normally.
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -54,10 +55,10 @@ export default function SeenScreen() {
     setSeenView(v);
   };
 
-  const openInCards = (m: Movie) => {
-    setOriginView(view === 'list' ? 'list' : 'tiles');
-    setFocusId(m.id);
-    setSeenView('cards');
+  // Tapping a tile/row opens the detail page; the cards view stays
+  // reachable via the view switcher.
+  const openDetail = (m: Movie) => {
+    router.push(`/movie/${m.id}`);
   };
 
   const goBackToOrigin = () => {
@@ -137,7 +138,7 @@ export default function SeenScreen() {
       {view === 'tiles' && (
         <TilesView
           movies={filtered}
-          onSelect={openInCards}
+          onSelect={openDetail}
           emptyText={
             filtersActive(filters)
               ? 'No movies match these filters.'
@@ -149,7 +150,7 @@ export default function SeenScreen() {
       {view === 'list' && (
         <ListView
           movies={filtered}
-          onSelect={openInCards}
+          onSelect={openDetail}
           actions={{
             onRemove: (m) => deleteMovie(m.id),
           }}

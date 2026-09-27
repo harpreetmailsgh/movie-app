@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useStore } from '../../lib/store';
 import { Movie } from '../../lib/types';
 import { fetchTrending, trendingToInput } from '../../lib/trending';
+import { cacheFeedItem } from '../../lib/feedCache';
 import * as trendingLib from '../../lib/trending';
 import SwipeDeck, { SwipeDir } from '../../components/SwipeDeck';
 import ViewHeader from '../../components/ViewHeader';
@@ -29,7 +31,8 @@ export default function TrendingScreen() {
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const [headerTitle, setHeaderTitle] = useState('Trending 🔥');
   const [filters, setFilters] = useSharedFilters();
-  // Tapping a tile/row jumps to the Cards view with that item on top.
+  // Jump-to-cards machinery (focusId/originView): retained as-is so the
+  // cards view jump keeps working; tile/row taps now open the detail page.
   // originView remembers where the jump came from so the back chevron
   // can return to it; null when cards was reached normally.
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -79,10 +82,12 @@ export default function TrendingScreen() {
     setTrendingView(v);
   };
 
-  const openInCards = (t: Movie) => {
-    setOriginView(view === 'list' ? 'list' : 'tiles');
-    setFocusId(t.id);
-    setTrendingView('cards');
+  // Tapping a tile/row opens the detail page; the cards view stays
+  // reachable via the view switcher. Feed items are not in the library,
+  // so cache the tapped one for the detail page's fallback lookup.
+  const openDetail = (t: Movie) => {
+    cacheFeedItem(t);
+    router.push(`/movie/${t.id}`);
   };
 
   const goBackToOrigin = () => {
@@ -181,7 +186,7 @@ export default function TrendingScreen() {
       {view === 'tiles' && (
         <TilesView
           movies={visible}
-          onSelect={openInCards}
+          onSelect={openDetail}
           emptyText={
             filtersActive(filters)
               ? 'No matches — trending items do not carry language or rating data; try clearing those.'
@@ -193,7 +198,7 @@ export default function TrendingScreen() {
       {view === 'list' && (
         <ListView
           movies={visible}
-          onSelect={openInCards}
+          onSelect={openDetail}
           actions={{ onAdd: addToWatchlist, addedIds }}
           emptyText={
             filtersActive(filters)

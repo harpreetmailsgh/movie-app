@@ -19,7 +19,8 @@ export default function WatchlistScreen() {
   } = useStore();
   const insets = useSafeAreaInsets();
   const [filters, setFilters] = useSharedFilters();
-  // Tapping a tile/row jumps to the Cards view with that movie on top.
+  // Jump-to-cards machinery (focusId/originView): retained as-is so the
+  // cards view jump keeps working; tile/row taps now open the detail page.
   // originView remembers where the jump came from so the back chevron
   // can return to it; null when cards was reached normally.
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -53,10 +54,10 @@ export default function WatchlistScreen() {
     setWatchlistView(v);
   };
 
-  const openInCards = (m: Movie) => {
-    setOriginView(view === 'list' ? 'list' : 'tiles');
-    setFocusId(m.id);
-    setWatchlistView('cards');
+  // Tapping a tile/row opens the detail page; the cards view stays
+  // reachable via the view switcher.
+  const openDetail = (m: Movie) => {
+    router.push(`/movie/${m.id}`);
   };
 
   const goBackToOrigin = () => {
@@ -135,13 +136,13 @@ export default function WatchlistScreen() {
       )}
 
       {view === 'tiles' && (
-        <TilesView movies={filtered} onSelect={openInCards} emptyText="Nothing in your watchlist yet." />
+        <TilesView movies={filtered} onSelect={openDetail} emptyText="Nothing in your watchlist yet." />
       )}
 
       {view === 'list' && (
         <ListView
           movies={filtered}
-          onSelect={openInCards}
+          onSelect={openDetail}
           actions={{
             onSeen: (m) => moveMovie(m.id, 'seen'),
             onRemove: (m) => deleteMovie(m.id),
