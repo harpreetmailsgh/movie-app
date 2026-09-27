@@ -287,20 +287,9 @@ export default function ImportScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   content: { padding: 20, paddingBottom: 48 },
-  title: { color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 6 },
-  subtitle: { color: 'rgba(255,255,255,0.6)', fontSize: 14, lineHeight: 20, marginBottom: 8 },
   section: { marginTop: 20 },
   divider: { height: 1, backgroundColor: '#2c2c2e', marginTop: 28 },
   heading: { color: '#fff', fontSize: 19, fontWeight: '800' },
-  headingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  fbBadge: {
-    backgroundColor: '#1877F2', borderRadius: 10, width: 40, height: 40,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  ytBadge: {
-    backgroundColor: '#FF0000', borderRadius: 8, width: 42, height: 30,
-    alignItems: 'center', justifyContent: 'center',
-  },
   body: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 21, marginBottom: 14 },
   input: {
     backgroundColor: FIELD_BG, color: '#111', borderRadius: 12,
