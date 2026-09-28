@@ -36,6 +36,18 @@ function libraryKey(title: string, year: number, mediaType: string, tmdbID: numb
   return `t:${title.toLowerCase().trim()}|${year}|${mediaType}`;
 }
 
+/** Loose title key: catches the same title saved with a different year or id. */
+function titleKey(title: string): string {
+  return `n:${title.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+}
+
+/** All identity keys for a library entry or a fresh match. */
+function allKeys(title: string, year: number, mediaType: string, tmdbID: number): string[] {
+  const keys = [titleKey(title), libraryKey(title, year, mediaType, tmdbID)];
+  if (tmdbID) keys.push(`t:${title.toLowerCase().trim()}|${year}|${mediaType}`);
+  return keys;
+}
+
 interface Store {
   movies: Movie[];
   ready: boolean;
@@ -426,14 +438,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const matches = settings.tmdbKey
         ? await bestMatches(text, settings.tmdbKey)
         : await bestMatches(text);
-      const have = new Set(
-        moviesRef.current.map((m) => libraryKey(m.title, m.year, m.mediaType, m.tmdbID))
-      );
+      const have = new Set<string>();
+      for (const m of moviesRef.current) {
+        for (const k of allKeys(m.title, m.year, m.mediaType, m.tmdbID)) have.add(k);
+      }
       const added: string[] = [];
       const alreadyHave: string[] = [];
       for (const match of matches) {
-        const key = libraryKey(match.title, match.year, match.mediaType, match.tmdbID);
-        if (have.has(key)) {
+        const keys = allKeys(match.title, match.year, match.mediaType, match.tmdbID);
+        if (keys.some((k) => have.has(k))) {
           alreadyHave.push(match.title);
           continue;
         }
@@ -444,10 +457,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           reelURL: clean, caption: text, notes: '', status: 'watchlist',
           tmdbID: match.tmdbID, imdbRating, originalLanguage: match.originalLanguage, cast: [], needsReview: false,
         });
-        have.add(key);
+        for (const k of keys) have.add(k);
         added.push(match.title);
-      }
-      if (added.length > 0 || alreadyHave.length > 0) {
+      }      if (added.length > 0 || alreadyHave.length > 0) {
         return { ok: true, added, alreadyHave, savedForReview: [] };
       }
       const savedTitle = (await fetchReelTitle(clean)) ?? 'Unknown title';
