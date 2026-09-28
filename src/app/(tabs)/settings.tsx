@@ -9,7 +9,7 @@ import { useStore } from '../../lib/store';
 import { useAuth } from '../../lib/auth';
 import { getSupabase } from '../../lib/supabase';
 
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.6.1';
 
 function AccountSection() {
   const { ready, configured, session, isAnonymous, authMessage, signInWithApple, signOut } = useAuth();
@@ -200,12 +200,14 @@ export default function SettingsScreen() {
 
       <View style={[styles.accountBox, styles.section]}>
         <Text style={styles.heading}>Library</Text>
-        <Pressable style={styles.feedbackRow} onPress={() => confirmClear('watchlist')}>
-          <Text style={styles.dangerText}>Clear Watchlist</Text>
-        </Pressable>
-        <Pressable style={styles.feedbackRow} onPress={() => confirmClear('seen')}>
-          <Text style={styles.dangerText}>Clear Seen</Text>
-        </Pressable>
+        <View style={styles.clearRow}>
+          <Pressable style={[styles.feedbackRow, styles.clearBtn]} onPress={() => confirmClear('watchlist')}>
+            <Text style={styles.dangerText}>Clear Watchlist</Text>
+          </Pressable>
+          <Pressable style={[styles.feedbackRow, styles.clearBtn]} onPress={() => confirmClear('seen')}>
+            <Text style={styles.dangerText}>Clear Seen list</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={[styles.accountBox, styles.section]}>
@@ -243,6 +245,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#2c2c2e', borderRadius: 12, paddingVertical: 12,
     alignItems: 'center', marginTop: 12,
   },
+  clearRow: { flexDirection: 'row', gap: 12 },
+  clearBtn: { flex: 1, marginTop: 12 },
   feedbackText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   dangerText: { color: '#ff453a', fontSize: 15, fontWeight: '700' },
   accountBox: {
