@@ -33,17 +33,26 @@ export default function WatchlistScreen() {
     [movies]
   );
 
-  // Alphabetical A→Z in every view — sorted copy, never the stored order.
+  // Alphabetical A→Z for tiles/list — sorted copy, never the stored order.
   const filtered = useMemo(
     () => [...applyFilters(watchlist, filters)].sort((a, b) => a.title.localeCompare(b.title)),
     [watchlist, filters]
   );
 
+  // Cards deck: library order, NOT A→Z. "Next" swipes (left/right) cycle the
+  // card to the back of the stored order via cycleToBack — on a sorted deck
+  // that reorder is a no-op, so the deck could never advance past the top
+  // card (v1.6.0 regression).
+  const deckOrder = useMemo(
+    () => applyFilters(watchlist, filters),
+    [watchlist, filters]
+  );
+
   const deck = useMemo(() => {
-    if (!focusId) return filtered;
-    const m = filtered.find((t) => t.id === focusId);
-    return m ? [m, ...filtered.filter((t) => t.id !== focusId)] : filtered;
-  }, [filtered, focusId]);
+    if (!focusId) return deckOrder;
+    const m = deckOrder.find((t) => t.id === focusId);
+    return m ? [m, ...deckOrder.filter((t) => t.id !== focusId)] : deckOrder;
+  }, [deckOrder, focusId]);
 
   const clearJump = () => {
     setFocusId(null);

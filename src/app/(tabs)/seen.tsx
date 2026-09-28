@@ -40,11 +40,23 @@ export default function SeenScreen() {
   );
 
   // Live search over the filtered list — title substring, case-insensitive.
+  // Tiles/list stay A→Z; the cards deck below uses library order instead.
   const searched = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return filtered;
     return filtered.filter((m) => m.title.toLowerCase().includes(q));
   }, [filtered, query]);
+
+  // Cards deck: library order (filters + search, no A→Z sort). "Next"
+  // swipes (left/right) cycle the card to the back of the stored order via
+  // cycleToBack — on a sorted deck that reorder is a no-op, so the deck
+  // could never advance past the top card (v1.6.0 regression).
+  const deckOrder = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = applyFilters(seen, filters);
+    if (!q) return list;
+    return list.filter((m) => m.title.toLowerCase().includes(q));
+  }, [seen, filters, query]);
 
   const clearJump = () => {
     setOriginView(null);
@@ -143,7 +155,7 @@ export default function SeenScreen() {
           ) : (
             <View style={styles.deckWrap}>
               <SwipeDeck
-                cards={searched}
+                cards={deckOrder}
                 onSwipe={handleSwipe}
                 trashBin
                 toBackDirs={['left', 'right']}
