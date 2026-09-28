@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Movie, EntryStatus, Settings, ViewMode } from './types';
 import { seedMovies, backfillSeedData, normalizeMovie } from './seed';
-import { bestMatch, bestMatchKeyless, fetchImdbRating, fetchReelText, fetchReelTitle, searchTitlesKeyless, fetchKeylessMeta } from './tmdb';
+import { bestMatch, bestMatchKeyless, bestMatches, fetchImdbRating, fetchReelText, fetchReelTitle, searchTitlesKeyless, fetchKeylessMeta } from './tmdb';
 import { pickRandomTitles } from './testMovies';
 import { useAuth } from './auth';
 import { getSupabase } from './supabase';
@@ -19,6 +19,23 @@ function newId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** Outcome of a reel import: every title found, split by what happened to it. */
+export interface ReelImportOutcome {
+  ok: boolean;
+  /** Titles newly added to the watchlist. */
+  added: string[];
+  /** Titles matched but already in the library — not duplicated. */
+  alreadyHave: string[];
+  /** Titles saved for manual review when nothing matched confidently. */
+  savedForReview: string[];
+}
+
+/** Library identity key for dedupe: TMDB id when known, else title/year/type. */
+function libraryKey(title: string, year: number, mediaType: string, tmdbID: number): string {
+  if (tmdbID) return `id:${tmdbID}`;
+  return `t:${title.toLowerCase().trim()}|${year}|${mediaType}`;
+}
+
 interface Store {
   movies: Movie[];
   ready: boolean;
@@ -31,7 +48,7 @@ interface Store {
   deleteMovie: (id: string) => void;
   updateMovie: (id: string, patch: Partial<Movie>) => void;
   addMovie: (m: Omit<Movie, 'id' | 'dateAdded'>) => void;
-  importReel: (url: string) => Promise<boolean>;
+  importReel: (url: string) => Promise<ReelImportOutcome>;
   revalidateTitle: (id: string, titleOverride?: string) => Promise<void>;
   addTestMovies: (count: number) => Promise<number>;
   clearLibrary: () => void;
@@ -390,11 +407,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [settings, persistSettings]);
 
   /** Paste a reel link → read its caption → TMDB match → add to Inbox. */
-  const importReel = useCallback(async (url: string): Promise<boolean> => {
+  const importReel = useCallback(async (url: string): Promise<ReelImportOutcome> => {
     const clean = url.trim();
+    const empty: ReelImportOutcome = { ok: false, added: [], alreadyHave: [], savedForReview: [] };
     if (!/^https?:\/\//i.test(clean)) {
       setImportMessage('That doesn’t look like a link — paste the full reel URL.');
-      return false;
+      return empty;
     }
     setImporting(true);
     setImportMessage(null);
@@ -402,12 +420,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const text = await fetchReelText(clean);
       if (!text) {
         setImportMessage('Couldn’t read that reel (it may be private). You can add the title manually below.');
-        return false;
+        return empty;
       }
-      const match = settings.tmdbKey
-        ? await bestMatch(text, settings.tmdbKey)
-        : await bestMatchKeyless(text);
-      if (match) {
+      // A reel can list several titles — identify and add every one of them.
+      const matches = settings.tmdbKey
+        ? await bestMatches(text, settings.tmdbKey)
+        : await bestMatches(text);
+      const have = new Set(
+        moviesRef.current.map((m) => libraryKey(m.title, m.year, m.mediaType, m.tmdbID))
+      );
+      const added: string[] = [];
+      const alreadyHave: string[] = [];
+      for (const match of matches) {
+        const key = libraryKey(match.title, match.year, match.mediaType, match.tmdbID);
+        if (have.has(key)) {
+          alreadyHave.push(match.title);
+          continue;
+        }
         const imdbRating = await fetchImdbRating(match.tmdbID, match.mediaType, match.title, settings.tmdbKey);
         addMovie({
           title: match.title, year: match.year, mediaType: match.mediaType,
@@ -415,8 +444,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           reelURL: clean, caption: text, notes: '', status: 'watchlist',
           tmdbID: match.tmdbID, imdbRating, originalLanguage: match.originalLanguage, cast: [], needsReview: false,
         });
-        setImportMessage(`Added “${match.title}” to your Inbox.`);
-        return true;
+        have.add(key);
+        added.push(match.title);
+      }
+      if (added.length > 0 || alreadyHave.length > 0) {
+        return { ok: true, added, alreadyHave, savedForReview: [] };
       }
       const savedTitle = (await fetchReelTitle(clean)) ?? 'Unknown title';
       addMovie({
@@ -424,8 +456,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         overview: '', posterPath: '', reelURL: clean, caption: text, notes: '',
         status: 'watchlist', tmdbID: 0, imdbRating: 0, originalLanguage: '', cast: [], needsReview: true,
       });
-      setImportMessage(`Saved “${savedTitle}” — couldn't validate the title. Tap it to Keep It or fix it.`);
-      return true;
+      return { ok: true, added: [], alreadyHave: [], savedForReview: [savedTitle] };
     } finally {
       setImporting(false);
     }

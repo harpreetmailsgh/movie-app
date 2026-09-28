@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator, Alert,
 } from 'react-native';
@@ -15,7 +15,7 @@ const FIELD_BG = '#E9E9EE';
 const SEARCH_DEBOUNCE_MS = 500;
 
 export default function ImportScreen() {
-  const { importReel, importing, importMessage, settings, addMovie, movies } = useStore();
+  const { importReel, importing, importMessage, settings, addMovie } = useStore();
   const [url, setUrl] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TmdbMatch[]>([]);
@@ -24,10 +24,6 @@ export default function ImportScreen() {
   const [ytWorking, setYtWorking] = useState(false);
   const [ytMessage, setYtMessage] = useState<string | null>(null);
   const [fbFailed, setFbFailed] = useState(false);
-
-  // Latest store movies, readable inside async completions.
-  const moviesRef = useRef(movies);
-  useEffect(() => { moviesRef.current = movies; }, [movies]);
 
   // Run ids: editing a field mid-run cancels that run's completion UI.
   const fbRunRef = useRef(0);
@@ -124,23 +120,20 @@ export default function ImportScreen() {
     const link = url.trim();
     if (!link) return;
     const runId = ++fbRunRef.current;
-    const beforeIds = new Set(moviesRef.current.map((m) => m.id));
     setFbFailed(false);
-    const ok = await importReel(link);
+    const outcome = await importReel(link);
     if (runId !== fbRunRef.current) return; // user edited mid-run — ignore stale completion
-    if (ok) {
+    if (outcome.ok) {
       setUrl('');
-      // Let React commit the newly added movie, then find what the run added.
-      await new Promise((r) => setTimeout(r, 150));
-      if (runId !== fbRunRef.current) return;
-      const added = moviesRef.current.filter((m) => !beforeIds.has(m.id));
-      const titles = added.filter((m) => !m.needsReview).map((m) => m.title).filter(Boolean);
-      const pending = added.filter((m) => m.needsReview).map((m) => m.title).filter(Boolean);
-      const message = titles.length
-        ? `“${titles.join('”, “')}” added to watchlist.`
-        : pending.length
-          ? `Saved “${pending.join('”, “')}” — couldn't validate the title.`
-          : 'Saved to your Watchlist — couldn\'t identify the movie.';
+      const { added, alreadyHave, savedForReview } = outcome;
+      const message = added.length
+        ? `“${added.join('”, “')}” added to watchlist.` +
+          (alreadyHave.length ? ` Already in your list: “${alreadyHave.join('”, “')}”.` : '')
+        : alreadyHave.length
+          ? `Already in your watchlist: “${alreadyHave.join('”, “')}”.`
+          : savedForReview.length
+            ? `Saved “${savedForReview.join('”, “')}” — couldn't validate the title.`
+            : 'Saved to your Watchlist — couldn\'t identify the movie.';
       Alert.alert('Fetch complete', message, [{ text: 'OK', onPress: () => router.back() }]);
     } else {
       // Error case: show the store's specific message inline, keep the link for editing.

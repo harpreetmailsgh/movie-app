@@ -110,7 +110,15 @@ export async function searchTitlesKeyless(query: string): Promise<TmdbMatch[]> {
 export function candidates(text: string): string[] {
   const ordered: string[] = [];
   const add = (value: string) => {
-    let t = value.trim().replace(/[@#]\w+/g, '').trim();
+    let t = value.trim();
+    // Strip list numbering/bullets: "1. ", "2) ", "- ", "• ".
+    t = t.replace(/^(\d{1,3}[.)]\s*|[-*•]\s*)+/, '');
+    // Strip a trailing year: "Devs (2020)" -> "Devs".
+    t = t.replace(/\s*\(\d{4}\)\s*$/, '');
+    // Ignore special characters: drop emoji/symbols, keep letters, numbers,
+    // spaces and the few punctuation marks titles use.
+    t = t.replace(/[^\p{L}\p{N}\s'&:,-]/gu, '').replace(/\s+/g, ' ').trim();
+    t = t.replace(/[@#]\w+/g, '').trim();
     if (t.length < 2 || t.length > 60) return;
     if (t.split(/\s+/).length > 8) return;
     if (!ordered.includes(t)) ordered.push(t);
@@ -124,6 +132,55 @@ export function candidates(text: string): string[] {
   return ordered;
 }
 
+/**
+ * Every confident title match in the text — for reels that list multiple
+ * titles ("1. Devs (2020)", "2. Fringe (2008)", ...). Runs each candidate
+ * through the keyed or keyless search and keeps every result scoring ≥ 60,
+ * deduplicated. Requests are paced with one retry so a throttled catalog
+ * response can't silently drop a title. Returns [] when nothing matches.
+ */
+export async function bestMatches(text: string, apiKey?: string): Promise<TmdbMatch[]> {
+  if (!text) return [];
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const found: TmdbMatch[] = [];
+  const seen = new Set<string>();
+  // "Label: value" lines are caption metadata, not titles — skip them.
+  const list = candidates(text).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)).slice(0, 12);
+  // Caption-level hint ("series"/"movie") breaks exact movie-vs-tv title ties.
+  const tvHint = /\b(series|shows?|seasons?|episodes?)\b/i.test(text);
+  const movieHint = /\bfilms?\b|\bmovies?\b/i.test(text);
+  for (let i = 0; i < list.length; i++) {
+    if (i > 0) await sleep(250);
+    const candidate = list[i];
+    let results: TmdbMatch[] | null = null;
+    for (let attempt = 0; attempt < 2 && (!results || results.length === 0); attempt++) {
+      try {
+        results = apiKey ? await searchMulti(candidate, apiKey) : await searchTitlesKeyless(candidate);
+      } catch {
+        results = null;
+      }
+      if (!results || results.length === 0) await sleep(400);
+    }
+    if (!results) continue;
+    let best: { match: TmdbMatch; total: number } | null = null;
+    for (const r of results) {
+      const s = score(r.title, candidate, apiKey ? r.popularity : 0);
+      if (s < 60) continue;
+      // +1 only breaks exact ties — it can never beat a genuinely higher score.
+      const hintBonus = (tvHint && r.mediaType === 'tv') || (movieHint && r.mediaType === 'movie') ? 1 : 0;
+      const total = s + hintBonus;
+      if (!best || total > best.total) best = { match: r, total };
+    }
+    if (best) {
+      const key = `${best.match.title.toLowerCase()}|${best.match.year}|${best.match.mediaType}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        found.push(best.match);
+      }
+    }
+  }
+  return found;
+}
 function score(resultTitle: string, candidate: string, popularity: number): number {
   const title = resultTitle.toLowerCase();
   const query = candidate.toLowerCase();
@@ -181,6 +238,29 @@ async function searchMulti(query: string, apiKey: string): Promise<TmdbMatch[] |
 }
 
 /**
+ * Decode HTML entities, including the hex/decimal numeric ones Facebook emits
+ * in og: tags (e.g. &#x1f3ac;). The old hand-rolled chain only handled five
+ * named entities and leaked the rest through as raw text.
+ */
+export function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, hex: string) => {
+      const cp = parseInt(hex, 16);
+      return Number.isFinite(cp) ? String.fromCodePoint(cp) : '';
+    })
+    .replace(/&#(\d+);/g, (_m, dec: string) => {
+      const cp = parseInt(dec, 10);
+      return Number.isFinite(cp) ? String.fromCodePoint(cp) : '';
+    });
+}
+
+/**
  * Fetches a Facebook reel's public page and extracts its Open Graph
  * title/description — the same thing a link preview shows. Works for
  * public reels, no login needed.
@@ -202,17 +282,14 @@ export async function fetchReelText(reelUrl: string): Promise<string | null> {
       );
       const match = html.match(re);
       if (!match) return '';
-      return match[1]
-        .replace(/&amp;/g, '&')
-        .replace(/&quot;/g, '"')
-        .replace(/&#0?39;/g, "'")
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>');
+      return decodeEntities(match[1]);
     };
     const title = meta('title');
     const desc = meta('description');
     const combined = [title, desc].filter(Boolean).join('\n').trim();
-    return combined || null;
+    // Facebook appends " | PageName | Facebook" to descriptions — not part of the caption.
+    const cleaned = combined.replace(/\s*\|[^|]+\|\s*Facebook\s*$/i, '').trim();
+    return cleaned || null;
   } catch {
     return null;
   }
@@ -233,20 +310,13 @@ export async function fetchReelTitle(reelUrl: string): Promise<string | null> {
     });
     if (!res.ok) return null;
     const html = await res.text();
-    const decode = (s: string): string =>
-      s
-        .replace(/&amp;/g, '&')
-        .replace(/&quot;/g, '"')
-        .replace(/&#0?39;/g, "'")
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>');
     const meta = (prop: string): string => {
       const re = new RegExp(
         `<meta[^>]+property=["']og:${prop}["'][^>]+content=["']([^"']+)["']`,
         'i'
       );
       const match = html.match(re);
-      return match ? decode(match[1]).trim() : '';
+      return match ? decodeEntities(match[1]).trim() : '';
     };
     const ogTitle = meta('title');
     if (ogTitle) return ogTitle;
