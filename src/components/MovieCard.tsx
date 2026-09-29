@@ -3,6 +3,7 @@ import { View, Text, Image, Pressable, StyleSheet, Linking, Alert } from 'react-
 import { LinearGradient } from 'expo-linear-gradient';
 import { Movie, posterUrl, tmdbUrl } from '../lib/types';
 import { resolveTrailerKey } from '../lib/tmdb';
+import { firstYoutubeResultId } from '../lib/youtube';
 import { useStore } from '../lib/store';
 import ClapboardPoster from './ClapboardPoster';
 
@@ -15,11 +16,19 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
   const cast = movie.cast ?? [];
 
   const openTrailer = async () => {
-    // Only the actual trailer video opens, inside the app. When TMDB has no
-    // trailer for the title, say so instead of showing a search page.
-    const key = await resolveTrailerKey(movie, settings.tmdbKey);
-    if (key) {
-      playTrailer(`https://www.youtube.com/embed/${key}?autoplay=1&rel=0`);
+    // Only the trailer video itself ever opens, inside the app: the official
+    // TMDB trailer when there is one, otherwise the top YouTube result for
+    // "<title> <year> official trailer". The "not found" note only appears
+    // when both come up empty — never a search page.
+    const tmdbKey = await resolveTrailerKey(movie, settings.tmdbKey);
+    let videoKey = tmdbKey;
+    if (!videoKey) {
+      videoKey = await firstYoutubeResultId(
+        `${movie.title} ${movie.year || ''} official trailer`
+      );
+    }
+    if (videoKey) {
+      playTrailer(`https://www.youtube.com/embed/${videoKey}?autoplay=1&rel=0`);
     } else {
       Alert.alert('No trailer found', `We couldn't find a trailer for "${movie.title}".`);
     }

@@ -29,7 +29,7 @@
       "resizeMode": "contain"
     },
     "userInterfaceStyle": "dark",
-    "version": "1.6.11",
+    "version": "1.6.12",
     "web": {
       "favicon": "./assets/favicon.png"
     },
