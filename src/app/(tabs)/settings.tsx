@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -9,7 +9,7 @@ import { useStore } from '../../lib/store';
 import { useAuth } from '../../lib/auth';
 import { getSupabase } from '../../lib/supabase';
 
-const APP_VERSION = '1.6.10';
+const APP_VERSION = '1.6.11';
 
 function AccountSection() {
   const { ready, configured, session, isAnonymous, authMessage, signInWithApple, signOut } = useAuth();
@@ -171,29 +171,6 @@ function FeedbackModal({ visible, onClose }: { visible: boolean; onClose: () => 
 
 export default function SettingsScreen() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const { settings } = useStore();
-  const [tmdbLabel, setTmdbLabel] = useState('Checking…');
-  const [tmdbColor, setTmdbColor] = useState('#999');
-  useEffect(() => {
-    let live = true;
-    (async () => {
-      const key = settings.tmdbKey;
-      if (!key) {
-        if (live) { setTmdbLabel('Not set'); setTmdbColor('#ff9d9d'); }
-        return;
-      }
-      try {
-        const res = await fetch(`https://api.themoviedb.org/3/configuration?api_key=${encodeURIComponent(key)}`);
-        if (live) {
-          setTmdbLabel(res.ok ? 'Connected' : 'Key rejected');
-          setTmdbColor(res.ok ? '#9dff9d' : '#ff9d9d');
-        }
-      } catch {
-        if (live) { setTmdbLabel('Network error'); setTmdbColor('#ff9d9d'); }
-      }
-    })();
-    return () => { live = false; };
-  }, [settings.tmdbKey]);
   const { clearWatchlist, clearSeen } = useStore();
   const insets = useSafeAreaInsets();
 
@@ -236,9 +213,6 @@ export default function SettingsScreen() {
       <View style={[styles.accountBox, styles.section]}>
         <Text style={styles.heading}>About</Text>
         <Text style={styles.body}>Movie Recommender v{APP_VERSION}</Text>
-        <Text style={styles.body}>
-          Trailers: <Text style={{ color: tmdbColor }}>TMDB {tmdbLabel}</Text>
-        </Text>
         <Text style={styles.buildStamp} selectable>
           Build {Updates.updateId ? Updates.updateId.slice(0, 8) : 'dev'}
           {Updates.createdAt ? ` · ${new Date(Updates.createdAt).toLocaleString()}` : ''}

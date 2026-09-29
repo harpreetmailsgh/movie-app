@@ -181,9 +181,20 @@ export async function bestMatches(text: string, apiKey?: string): Promise<TmdbMa
   }
   return found;
 }
+/** Lowercase, strip punctuation, collapse spaces — so a TMDB title like
+ * "Why Did I Get Married Again?" still matches a query like
+ * "Why Did I Get Married Again 2026" (the ? is stripped from one side only
+ * by candidates(), which used to make score() return 0). */
+function normTitle(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 function score(resultTitle: string, candidate: string, popularity: number): number {
-  const title = resultTitle.toLowerCase();
-  const query = candidate.toLowerCase();
+  const title = normTitle(resultTitle);
+  const query = normTitle(candidate);
   let s = 0;
   if (title === query) s += 100;
   else if (query.includes(title) || title.includes(query)) s += 50;

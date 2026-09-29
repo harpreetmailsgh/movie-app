@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, Image, Pressable, StyleSheet, Linking } from 'react-native';
+import { View, Text, Image, Pressable, StyleSheet, Linking, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Movie, posterUrl, tmdbUrl, trailerSearchUrl } from '../lib/types';
+import { Movie, posterUrl, tmdbUrl } from '../lib/types';
 import { resolveTrailerKey } from '../lib/tmdb';
 import { useStore } from '../lib/store';
 import ClapboardPoster from './ClapboardPoster';
@@ -15,14 +15,14 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
   const cast = movie.cast ?? [];
 
   const openTrailer = async () => {
-    // Trailers always play inside the app now: the TMDB trailer when we have
-    // one, otherwise the YouTube search page in the same in-app player.
+    // Only the actual trailer video opens, inside the app. When TMDB has no
+    // trailer for the title, say so instead of showing a search page.
     const key = await resolveTrailerKey(movie, settings.tmdbKey);
-    playTrailer(
-      key
-        ? `https://www.youtube.com/embed/${key}?autoplay=1&rel=0`
-        : trailerSearchUrl(movie.title, movie.year)
-    );
+    if (key) {
+      playTrailer(`https://www.youtube.com/embed/${key}?autoplay=1&rel=0`);
+    } else {
+      Alert.alert('No trailer found', `We couldn't find a trailer for "${movie.title}".`);
+    }
   };
   const metaBits = [
     movie.year > 0 ? String(movie.year) : null,
