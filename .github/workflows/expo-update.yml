@@ -24,9 +24,10 @@ jobs:
 
       - name: Write .env.production
         run: |
-          printf 'EXPO_PUBLIC_SUPABASE_URL=%s\nEXPO_PUBLIC_SUPABASE_ANON_KEY=%s\n' \
+          printf 'EXPO_PUBLIC_SUPABASE_URL=%s\nEXPO_PUBLIC_SUPABASE_ANON_KEY=%s\nEXPO_PUBLIC_TMDB_API_KEY=%s\n' \
             "${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}" \
-            "${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}" > .env.production
+            "${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}" \
+            "${{ secrets.EXPO_PUBLIC_TMDB_API_KEY }}" > .env.production
 
       - name: Export bundle
         run: npx expo export --clear
