@@ -128,7 +128,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           setMovies(seeds);
           await AsyncStorage.setItem(MOVIES_KEY, JSON.stringify(seeds));
         }
-        if (settingsRaw) setSettings({ tmdbKey: BAKED_TMDB_KEY, onboardingSeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles', ...JSON.parse(settingsRaw) });
+        if (settingsRaw) {
+          const parsed = JSON.parse(settingsRaw);
+          setSettings({ onboardingSeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles', ...parsed, tmdbKey: parsed.tmdbKey || BAKED_TMDB_KEY });
+        }
       } catch {
         // Corrupt storage: start fresh with seeds.
         setMovies(seedMovies());
