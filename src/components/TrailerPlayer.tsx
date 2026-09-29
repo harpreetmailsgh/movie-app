@@ -10,6 +10,12 @@ import { useStore } from '../lib/store';
 // Referer is sent, so YouTube refuses to configure the player. Wrapping the
 // embed in an <iframe> inside a minimal page served from an https baseUrl
 // makes the iframe request carry a Referer, and the video plays.
+// NOTE: the baseUrl must be a THIRD-PARTY origin, never youtube.com itself:
+// a page claiming to be youtube.com embedding a youtube.com iframe is
+// rejected as an invalid embed context ("Error 152: this video is
+// unavailable"). .invalid is RFC-reserved and can never collide with a real
+// site or its cookies.
+const EMBED_BASE_URL = 'https://movie-recommender.invalid/';
 function embedHtml(videoId: string): string {
   const src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1`;
   return (
@@ -55,7 +61,7 @@ export default function TrailerPlayer() {
             key={trailerUrl}
             source={
               videoId
-                ? { html: embedHtml(videoId), baseUrl: 'https://www.youtube.com' }
+                ? { html: embedHtml(videoId), baseUrl: EMBED_BASE_URL }
                 : { uri: trailerUrl }
             }
             style={styles.webview}
