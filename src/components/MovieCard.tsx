@@ -1,13 +1,13 @@
 import React from 'react';
 import { View, Text, Image, Pressable, StyleSheet, Linking } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Movie, posterUrl, tmdbUrl } from '../lib/types';
-import { resolveTrailerUrl } from '../lib/tmdb';
+import { Movie, posterUrl, tmdbUrl, trailerSearchUrl } from '../lib/types';
+import { resolveTrailerKey } from '../lib/tmdb';
 import { useStore } from '../lib/store';
 import ClapboardPoster from './ClapboardPoster';
 
 export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTap?: () => void }) {
-  const { settings, revalidateTitle, deleteMovie } = useStore();
+  const { settings, revalidateTitle, deleteMovie, playTrailer } = useStore();
   const uri = posterUrl(movie.posterPath, 'w780');
   const gated = movie.needsReview && movie.status === 'watchlist';
   const sourceUrl = tmdbUrl(movie.tmdbID, movie.mediaType);
@@ -15,8 +15,9 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
   const cast = movie.cast ?? [];
 
   const openTrailer = async () => {
-    const url = await resolveTrailerUrl(movie, settings.tmdbKey);
-    Linking.openURL(url);
+    const key = await resolveTrailerKey(movie, settings.tmdbKey);
+    if (key) playTrailer(key);
+    else Linking.openURL(trailerSearchUrl(movie.title, movie.year));
   };
   const metaBits = [
     movie.year > 0 ? String(movie.year) : null,

@@ -335,10 +335,10 @@ interface TmdbVideo {
 }
 
 /**
- * Direct YouTube URL for the title's official trailer via the TMDB API,
+ * YouTube video key for the title's official trailer via the TMDB API,
  * or null when there's no key, no TMDB id, or no trailer on file.
  */
-export async function fetchTrailerUrl(
+export async function fetchTrailerKey(
   tmdbID: number,
   mediaType: 'movie' | 'tv',
   apiKey: string
@@ -359,10 +359,23 @@ export async function fetchTrailerUrl(
       videos.find((v) => v.type === 'Trailer') ??
       videos.find((v) => v.official && v.type === 'Teaser') ??
       videos[0];
-    return `https://www.youtube.com/watch?v=${pick.key}`;
+    return pick.key;
   } catch {
     return null;
   }
+}
+
+/**
+ * Direct YouTube URL for the title's official trailer via the TMDB API,
+ * or null when there's no key, no TMDB id, or no trailer on file.
+ */
+export async function fetchTrailerUrl(
+  tmdbID: number,
+  mediaType: 'movie' | 'tv',
+  apiKey: string
+): Promise<string | null> {
+  const key = await fetchTrailerKey(tmdbID, mediaType, apiKey);
+  return key ? `https://www.youtube.com/watch?v=${key}` : null;
 }
 
 /**
@@ -386,6 +399,29 @@ export async function resolveTrailerUrl(
   }
   const direct = await fetchTrailerUrl(tmdbID, movie.mediaType, apiKey);
   return direct ?? trailerSearchUrl(movie.title, movie.year);
+}
+
+/**
+ * Best YouTube video key for in-app trailer playback: the real official
+ * trailer from TMDB when the user has an API key set, otherwise null
+ * (callers fall back to a YouTube search link).
+ */
+export async function resolveTrailerKey(
+  movie: { tmdbID: number; mediaType: 'movie' | 'tv'; title: string; year: number },
+  apiKey: string
+): Promise<string | null> {
+  let tmdbID = movie.tmdbID;
+  // Keyless-added entries carry tmdbID 0; resolve the real id on demand so
+  // their trailers come from TMDB instead of falling back to a search.
+  if (!tmdbID && apiKey) {
+    try {
+      const match = await bestMatch(`${movie.title} ${movie.year || ''}`, apiKey);
+      if (match) tmdbID = match.tmdbID;
+    } catch {
+      // fall through to the search fallback below
+    }
+  }
+  return fetchTrailerKey(tmdbID, movie.mediaType, apiKey);
 }
 
 function cinemetaType(mediaType: 'movie' | 'tv'): string {

@@ -60,6 +60,7 @@ interface Store {
   importMessage: string | null;
   syncState: 'idle' | 'syncing' | 'error';
   lastSyncAt: number | null;
+  trailerKey: string | null;
   moveMovie: (id: string, status: EntryStatus) => void;
   deleteMovie: (id: string) => void;
   updateMovie: (id: string, patch: Partial<Movie>) => void;
@@ -71,6 +72,8 @@ interface Store {
   clearWatchlist: () => void;
   clearSeen: () => void;
   setTmdbKey: (key: string) => void;
+  playTrailer: (key: string) => void;
+  closeTrailer: () => void;
   setCardAnimation: (style: 'flick' | 'peel') => void;
   setDeckStyle: (style: 'stack' | 'sidepeek' | 'fan') => void;
   setWatchlistView: (view: ViewMode) => void;
@@ -97,6 +100,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
+  const [trailerKey, setTrailerKey] = useState<string | null>(null);
   const { session, ready: authReady } = useAuth();
   const moviesRef = useRef<Movie[]>([]);
   const sessionRef = useRef<string | null>(null);
@@ -394,6 +398,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     persistSettings({ ...settings, tmdbKey: key.trim() });
   }, [settings, persistSettings]);
 
+  const playTrailer = useCallback((key: string) => setTrailerKey(key), []);
+  const closeTrailer = useCallback(() => setTrailerKey(null), []);
+
   const setCardAnimation = useCallback((style: 'flick' | 'peel') => {
     persistSettings({ ...settings, cardAnimation: style });
   }, [settings, persistSettings]);
@@ -546,11 +553,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [movies, settings.tmdbKey, persist]);
 
   const value = useMemo<Store>(() => ({
-    movies, ready, settings, importing, importMessage, syncState, lastSyncAt,
+    movies, ready, settings, importing, importMessage, syncState, lastSyncAt, trailerKey,
     moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary,
     clearWatchlist, clearSeen,
-    importReel, revalidateTitle, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen,
-  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen]);
+    importReel, revalidateTitle, setTmdbKey, playTrailer, closeTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen,
+  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, trailerKey, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, closeTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

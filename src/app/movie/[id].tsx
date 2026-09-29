@@ -3,13 +3,13 @@ import { View, Text, ScrollView, Image, Pressable, StyleSheet, Linking, TextInpu
 import { useLocalSearchParams, router } from 'expo-router';
 import { useStore } from '../../lib/store';
 import { getFeedItem } from '../../lib/feedCache';
-import { posterUrl, tmdbUrl } from '../../lib/types';
-import { resolveTrailerUrl } from '../../lib/tmdb';
+import { posterUrl, tmdbUrl, trailerSearchUrl } from '../../lib/types';
+import { resolveTrailerKey } from '../../lib/tmdb';
 import ClapboardPoster from '../../components/ClapboardPoster';
 
 export default function MovieDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { movies, moveMovie, deleteMovie, updateMovie, revalidateTitle, settings } = useStore();
+  const { movies, moveMovie, deleteMovie, updateMovie, revalidateTitle, settings, playTrailer } = useStore();
   // Library first; fall back to the in-memory feed cache so tapping a
   // Trending tile (feed items are not in the library) still renders the
   // detail page. Library data always wins; feed items are never written
@@ -27,8 +27,9 @@ export default function MovieDetailScreen() {
   }
 
   const openTrailer = async () => {
-    const url = await resolveTrailerUrl(movie, settings.tmdbKey);
-    Linking.openURL(url);
+    const key = await resolveTrailerKey(movie, settings.tmdbKey);
+    if (key) playTrailer(key);
+    else Linking.openURL(trailerSearchUrl(movie.title, movie.year));
   };
 
   const uri = posterUrl(movie.posterPath, 'w780');
