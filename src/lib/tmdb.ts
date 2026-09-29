@@ -373,7 +373,18 @@ export async function resolveTrailerUrl(
   movie: { tmdbID: number; mediaType: 'movie' | 'tv'; title: string; year: number },
   apiKey: string
 ): Promise<string> {
-  const direct = await fetchTrailerUrl(movie.tmdbID, movie.mediaType, apiKey);
+  let tmdbID = movie.tmdbID;
+  // Keyless-added entries carry tmdbID 0; resolve the real id on demand so
+  // their trailers come from TMDB instead of falling back to a search.
+  if (!tmdbID && apiKey) {
+    try {
+      const match = await bestMatch(`${movie.title} ${movie.year || ''}`, apiKey);
+      if (match) tmdbID = match.tmdbID;
+    } catch {
+      // fall through to the search fallback below
+    }
+  }
+  const direct = await fetchTrailerUrl(tmdbID, movie.mediaType, apiKey);
   return direct ?? trailerSearchUrl(movie.title, movie.year);
 }
 
