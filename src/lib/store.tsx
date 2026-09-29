@@ -15,6 +15,10 @@ const MOVIES_KEY = 'movies.v1';
 const SETTINGS_KEY = 'settings.v1';
 const DETAIL_BACKFILL_KEY = 'detail-backfill.v1';
 
+// TMDB API key baked in at export time (EXPO_PUBLIC_TMDB_API_KEY).
+// A key saved later via setTmdbKey overrides it.
+const BAKED_TMDB_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY ?? '';
+
 function newId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -88,7 +92,7 @@ export function useStore(): Store {
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [ready, setReady] = useState(false);
-  const [settings, setSettings] = useState<Settings>({ tmdbKey: '', onboardingSeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles' });
+  const [settings, setSettings] = useState<Settings>({ tmdbKey: BAKED_TMDB_KEY, onboardingSeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles' });
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'error'>('idle');
@@ -124,7 +128,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           setMovies(seeds);
           await AsyncStorage.setItem(MOVIES_KEY, JSON.stringify(seeds));
         }
-        if (settingsRaw) setSettings({ tmdbKey: '', onboardingSeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles', ...JSON.parse(settingsRaw) });
+        if (settingsRaw) setSettings({ tmdbKey: BAKED_TMDB_KEY, onboardingSeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles', ...JSON.parse(settingsRaw) });
       } catch {
         // Corrupt storage: start fresh with seeds.
         setMovies(seedMovies());
