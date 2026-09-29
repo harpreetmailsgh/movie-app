@@ -5,12 +5,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../lib/store';
 
 export default function TrailerPlayer() {
-  const { trailerKey, closeTrailer } = useStore();
+  const { trailerUrl, closeTrailer } = useStore();
   const insets = useSafeAreaInsets();
 
   return (
     <Modal
-      visible={!!trailerKey}
+      visible={!!trailerUrl}
       animationType="slide"
       presentationStyle="fullScreen"
       onRequestClose={closeTrailer}
@@ -22,10 +22,10 @@ export default function TrailerPlayer() {
             <Text style={styles.closeText}>✕ Done</Text>
           </Pressable>
         </View>
-        {!!trailerKey && (
+        {!!trailerUrl && (
           <WebView
-            key={trailerKey}
-            source={{ uri: `https://www.youtube.com/embed/${trailerKey}?autoplay=1&rel=0` }}
+            key={trailerUrl}
+            source={{ uri: trailerUrl }}
             style={styles.webview}
             javaScriptEnabled
             domStorageEnabled

@@ -27,9 +27,14 @@ export default function MovieDetailScreen() {
   }
 
   const openTrailer = async () => {
+    // Trailers always play inside the app now: the TMDB trailer when we have
+    // one, otherwise the YouTube search page in the same in-app player.
     const key = await resolveTrailerKey(movie, settings.tmdbKey);
-    if (key) playTrailer(key);
-    else Linking.openURL(trailerSearchUrl(movie.title, movie.year));
+    playTrailer(
+      key
+        ? `https://www.youtube.com/embed/${key}?autoplay=1&rel=0`
+        : trailerSearchUrl(movie.title, movie.year)
+    );
   };
 
   const uri = posterUrl(movie.posterPath, 'w780');
