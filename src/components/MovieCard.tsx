@@ -21,17 +21,27 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
     // "<title> <year> official trailer". The "not found" note only appears
     // when both come up empty — never a search page.
     const tmdbKey = await resolveTrailerKey(movie, settings.tmdbKey);
+    const tmdbStatus = tmdbKey ? 'found' : 'not found';
     let videoKey = tmdbKey;
+    let fallbackNote = '';
     if (!videoKey) {
       videoKey = await firstYoutubeResultId(
         `${movie.title} ${movie.year || ''} official trailer`
       );
+      fallbackNote = videoKey ? '\nYouTube fallback: found' : '\nYouTube fallback: not found';
     }
-    if (videoKey) {
-      playTrailer(`https://www.youtube.com/embed/${videoKey}?autoplay=1&rel=0`);
-    } else {
-      Alert.alert('No trailer found', `We couldn't find a trailer for "${movie.title}".`);
+    // TEMP-DIAG: temporary popup reporting whether TMDB served the trailer,
+    // so the TMDB path can be verified on device. Remove once confirmed.
+    const diagMsg = `TMDB: ${tmdbStatus}${fallbackNote}`;
+    if (!videoKey) {
+      Alert.alert('Trailer check', `${diagMsg}\n\nWe couldn't find a trailer for "${movie.title}".`);
+      return;
     }
+    const key = videoKey;
+    Alert.alert('Trailer check', diagMsg, [
+      { text: 'Play', onPress: () => playTrailer(`https://www.youtube.com/embed/${key}?autoplay=1&rel=0`) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
   const metaBits = [
     movie.year > 0 ? String(movie.year) : null,

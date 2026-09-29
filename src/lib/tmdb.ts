@@ -429,7 +429,19 @@ export async function resolveTrailerKey(
       const match = await bestMatch(`${movie.title} ${movie.year || ''}`, apiKey);
       if (match) tmdbID = match.tmdbID;
     } catch {
-      // fall through to the search fallback below
+      // fall through to the year-stripped retry below
+    }
+    // TMDB's search can return zero results when the year is appended to the
+    // query (confirmed 2026-09-29 via live API: "Why Did I Get Married Again
+    // 2026" → 0 results, bare title → id 1522689). Retry with the bare title
+    // before giving up.
+    if (!tmdbID) {
+      try {
+        const match = await bestMatch(movie.title, apiKey);
+        if (match) tmdbID = match.tmdbID;
+      } catch {
+        // fall through to fetchTrailerKey(0) → null
+      }
     }
   }
   return fetchTrailerKey(tmdbID, movie.mediaType, apiKey);

@@ -29,6 +29,14 @@ jobs:
             "${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}" \
             "${{ secrets.EXPO_PUBLIC_TMDB_API_KEY }}" > .env.production
 
+      - name: Validate TMDB API key
+        run: |
+          KEY="${{ secrets.EXPO_PUBLIC_TMDB_API_KEY }}"
+          if [ -z "$KEY" ]; then echo "EXPO_PUBLIC_TMDB_API_KEY secret is missing or empty"; exit 1; fi
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "https://api.themoviedb.org/3/configuration?api_key=${KEY}")
+          if [ "$CODE" != "200" ]; then echo "TMDB key validation failed (HTTP $CODE) — publish stopped"; exit 1; fi
+          echo "TMDB key OK"
+
       - name: Export bundle
         run: npx expo export --clear
 
