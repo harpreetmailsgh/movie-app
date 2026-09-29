@@ -9,7 +9,9 @@ import { useStore } from '../../lib/store';
 import { useAuth } from '../../lib/auth';
 import { getSupabase } from '../../lib/supabase';
 
-const APP_VERSION = '1.6.12';
+// Version always comes from the running update's own manifest (app.json),
+// so the About screen can never go stale behind a hardcoded string again.
+const APP_VERSION = Constants.expoConfig?.version ?? 'dev';
 
 function AccountSection() {
   const { ready, configured, session, isAnonymous, authMessage, signInWithApple, signOut } = useAuth();
