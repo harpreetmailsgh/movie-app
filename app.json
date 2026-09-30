@@ -7,14 +7,16 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.harpreetmails.movieapp"
     },
     "experiments": {
       "typedRoutes": true
     },
     "icon": "./assets/icon.png",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.harpreetmails.movieapp"
     },
     "name": "Movie Recommender",
     "orientation": "portrait",
