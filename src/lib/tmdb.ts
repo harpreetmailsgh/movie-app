@@ -460,41 +460,6 @@ export async function resolveTrailerUrl(
   return direct ?? trailerSearchUrl(movie.title, movie.year);
 }
 
-/**
- * Best YouTube video key for in-app trailer playback: the real official
- * trailer from TMDB when the user has an API key set, otherwise null
- * (callers fall back to a YouTube search link).
- */
-export async function resolveTrailerKey(
-  movie: { tmdbID: number; mediaType: 'movie' | 'tv'; title: string; year: number },
-  apiKey: string
-): Promise<string | null> {
-  let tmdbID = movie.tmdbID;
-  // Keyless-added entries carry tmdbID 0; resolve the real id on demand so
-  // their trailers come from TMDB instead of falling back to a search.
-  if (!tmdbID && apiKey) {
-    try {
-      const match = await bestMatch(`${movie.title} ${movie.year || ''}`, apiKey);
-      if (match) tmdbID = match.tmdbID;
-    } catch {
-      // fall through to the year-stripped retry below
-    }
-    // TMDB's search can return zero results when the year is appended to the
-    // query (confirmed 2026-09-29 via live API: "Why Did I Get Married Again
-    // 2026" → 0 results, bare title → id 1522689). Retry with the bare title
-    // before giving up.
-    if (!tmdbID) {
-      try {
-        const match = await bestMatch(movie.title, apiKey);
-        if (match) tmdbID = match.tmdbID;
-      } catch {
-        // fall through to fetchTrailerKey(0) → null
-      }
-    }
-  }
-  return fetchTrailerKey(tmdbID, movie.mediaType, apiKey);
-}
-
 function cinemetaType(mediaType: 'movie' | 'tv'): string {
   return mediaType === 'tv' ? 'series' : 'movie';
 }

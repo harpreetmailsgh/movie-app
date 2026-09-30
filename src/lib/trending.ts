@@ -291,7 +291,7 @@ async function enrichTitles(titles: RankedTitle[]): Promise<Movie[]> {
 // Cache + label
 // ---------------------------------------------------------------------------
 
-const CACHE_KEY = 'trending.cache.v1';
+const CACHE_KEY = 'trending.cache.v2';
 
 interface TrendingCache {
   at: number;

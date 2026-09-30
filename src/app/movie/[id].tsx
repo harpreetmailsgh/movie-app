@@ -1,16 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, Image, Pressable, StyleSheet, Linking, TextInput, Alert, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useIsFocused } from 'expo-router';
 import { useStore } from '../../lib/store';
 import { getFeedItem } from '../../lib/feedCache';
 import { posterUrl, tmdbUrl } from '../../lib/types';
-import { resolveTrailerKey } from '../../lib/tmdb';
+import { resolveTrailerForTitle } from '../../lib/tmdb';
 import { firstYoutubeResultId } from '../../lib/youtube';
 import ClapboardPoster from '../../components/ClapboardPoster';
 
 export default function MovieDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { movies, moveMovie, deleteMovie, updateMovie, revalidateTitle, settings, playTrailer } = useStore();
+  const { movies, moveMovie, deleteMovie, updateMovie, revalidateTitle, settings, playTrailer, closeTrailer } = useStore();
   // Library first; fall back to the in-memory feed cache so tapping a
   // Trending tile (feed items are not in the library) still renders the
   // detail page. Library data always wins; feed items are never written
@@ -22,10 +22,21 @@ export default function MovieDetailScreen() {
   // Freeze fix: a late trailer result must never touch a dead screen.
   const mountedRef = useRef(true);
   const trailerRequestRef = useRef(0);
+  // Focus gate: the trailer modal must never be presented while a navigation
+  // transition is in flight — iOS leaves an invisible touch-eating overlay.
+  const isFocused = useIsFocused();
+  const isFocusedRef = useRef(isFocused);
+  const openedTrailerRef = useRef(false);
+  useEffect(() => { isFocusedRef.current = isFocused; }, [isFocused]);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
+    return () => {
+      mountedRef.current = false;
+      // If this screen opened the trailer, close it on unmount so the modal
+      // can never be left orphaned over a popped screen.
+      if (openedTrailerRef.current) { openedTrailerRef.current = false; closeTrailer(); }
+    };
+  }, [closeTrailer]);
 
   if (!movie) {
     return (
@@ -41,9 +52,18 @@ export default function MovieDetailScreen() {
     // "<title> <year> official trailer". The "not found" note only appears
     // when both come up empty — never a search page.
     // Cached key from the enrich/backfill pass: plays immediately — no
-    // network, no spinner.
+    // network, no spinner. The present is delayed past any in-flight
+    // navigation transition and gated on focus: presenting the modal while
+    // the screen is popping corrupts it into an invisible touch-eating
+    // overlay (the trending freeze). If we already left, drop it silently.
     if (movie.trailerKey) {
-      playTrailer(`https://www.youtube.com/embed/${movie.trailerKey}?autoplay=1&rel=0`);
+      const url = `https://www.youtube.com/embed/${movie.trailerKey}?autoplay=1&rel=0`;
+      setTimeout(() => {
+        if (mountedRef.current && isFocusedRef.current) {
+          openedTrailerRef.current = true;
+          playTrailer(url);
+        }
+      }, 300);
       return;
     }
     // A resolve is already in flight — extra taps are ignored.
@@ -55,9 +75,12 @@ export default function MovieDetailScreen() {
     const stale = () => !mountedRef.current || trailerRequestRef.current !== requestId;
     setResolvingTrailer(true);
     try {
-      const tmdbKey = await resolveTrailerKey(movie, settings.tmdbKey);
-      if (stale()) return;
-      let videoKey = tmdbKey;
+      // Single TMDB search with a strict title-agreement guard — the tap
+      // never does heavy searching; the enrich/backfill pass already saved
+      // keys for everything it could match.
+      const tmdb = await resolveTrailerForTitle(movie.title, movie.mediaType, settings.tmdbKey);
+      if (stale() || !isFocusedRef.current) return;
+      let videoKey: string | null = tmdb ? tmdb.key : null;
       if (!videoKey) {
         // The YouTube scrape has no built-in timeout, so bound it here at
         // 6s — worst case the whole resolve takes ~12s, never silent forever.
@@ -65,12 +88,14 @@ export default function MovieDetailScreen() {
           firstYoutubeResultId(`${movie.title} ${movie.year || ''} official trailer`),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
         ]);
-        if (stale()) return;
+        if (stale() || !isFocusedRef.current) return;
       }
       if (!videoKey) {
         Alert.alert(`We couldn't find a trailer for "${movie.title}".`);
         return;
       }
+      if (stale() || !isFocusedRef.current) return;
+      openedTrailerRef.current = true;
       playTrailer(`https://www.youtube.com/embed/${videoKey}?autoplay=1&rel=0`);
     } finally {
       // Don't clear the spinner out from under a newer invocation.
