@@ -1,9 +1,16 @@
 import React from 'react';
-import { Modal, View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useStore } from '../lib/store';
+import { useLocalSearchParams, router } from 'expo-router';
 
+// The trailer player is a regular Stack screen, NOT a React Native Modal:
+// the movie detail screen (movie/[id]) is itself presented as a modal, and
+// presenting an RN Modal over it leaves an invisible fullscreen overlay on
+// iOS that swallows every tap (the app looks frozen and no trailer appears).
+// A pushed route stays inside the navigation stack and presents reliably
+// from both tab screens and the modal detail screen.
+//
 // YouTube's embed endpoint rejects a bare top-level WebView load of
 // /embed/<id> with "Error 153: Video player configuration error"
 // (PLAYABILITY_ERROR_CODE_EMBEDDER_IDENTITY_MISSING_REFERRER): no http(s)
@@ -30,50 +37,45 @@ function embedHtml(videoId: string): string {
   );
 }
 
-// trailerUrl is always an https://www.youtube.com/embed/<11-char-id> URL built
-// by the trailer buttons; the id charset is strict so interpolation is safe.
+// The url param is always an https://www.youtube.com/embed/<11-char-id> URL
+// built by the trailer buttons; the id charset is strict so interpolation
+// is safe.
 function videoIdFromEmbedUrl(url: string): string | null {
   const m = url.match(/\/embed\/([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
 }
 
-export default function TrailerPlayer() {
-  const { trailerUrl, closeTrailer } = useStore();
+export default function TrailerScreen() {
+  const { url } = useLocalSearchParams<{ url?: string }>();
   const insets = useSafeAreaInsets();
+  const trailerUrl = typeof url === 'string' && url ? url : null;
   const videoId = trailerUrl ? videoIdFromEmbedUrl(trailerUrl) : null;
 
   return (
-    <Modal
-      visible={!!trailerUrl}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={closeTrailer}
-    >
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.bar}>
-          <Text style={styles.title}>Trailer</Text>
-          <Pressable onPress={closeTrailer} style={styles.closeBtn} hitSlop={12}>
-            <Text style={styles.closeText}>✕ Done</Text>
-          </Pressable>
-        </View>
-        {!!trailerUrl && (
-          <WebView
-            key={trailerUrl}
-            source={
-              videoId
-                ? { html: embedHtml(videoId), baseUrl: EMBED_BASE_URL }
-                : { uri: trailerUrl }
-            }
-            style={styles.webview}
-            javaScriptEnabled
-            domStorageEnabled
-            allowsFullscreenVideo
-            allowsInlineMediaPlayback
-            mediaPlaybackRequiresUserAction={false}
-          />
-        )}
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <View style={styles.bar}>
+        <Text style={styles.title}>Trailer</Text>
+        <Pressable onPress={() => router.back()} style={styles.closeBtn} hitSlop={12}>
+          <Text style={styles.closeText}>✕ Done</Text>
+        </Pressable>
       </View>
-    </Modal>
+      {!!trailerUrl && (
+        <WebView
+          key={trailerUrl}
+          source={
+            videoId
+              ? { html: embedHtml(videoId), baseUrl: EMBED_BASE_URL }
+              : { uri: trailerUrl }
+          }
+          style={styles.webview}
+          javaScriptEnabled
+          domStorageEnabled
+          allowsFullscreenVideo
+          allowsInlineMediaPlayback
+          mediaPlaybackRequiresUserAction={false}
+        />
+      )}
+    </View>
   );
 }
 

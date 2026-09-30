@@ -2,7 +2,6 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StoreProvider } from '../lib/store';
 import { AuthProvider } from '../lib/auth';
-import TrailerPlayer from '../components/TrailerPlayer';
 
 export default function RootLayout() {
   return (
@@ -26,8 +25,8 @@ export default function RootLayout() {
           name="import"
           options={{ presentation: 'modal', title: 'Add movies to watchlist' }}
         />
+        <Stack.Screen name="trailer" options={{ headerShown: false }} />
       </Stack>
-      <TrailerPlayer />
       </StoreProvider>
     </AuthProvider>
   );

@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Movie, EntryStatus, Settings, ViewMode } from './types';
 import { seedMovies, backfillSeedData, normalizeMovie } from './seed';
@@ -60,7 +61,6 @@ interface Store {
   importMessage: string | null;
   syncState: 'idle' | 'syncing' | 'error';
   lastSyncAt: number | null;
-  trailerUrl: string | null;
   moveMovie: (id: string, status: EntryStatus) => void;
   deleteMovie: (id: string) => void;
   updateMovie: (id: string, patch: Partial<Movie>) => void;
@@ -73,7 +73,6 @@ interface Store {
   clearSeen: () => void;
   setTmdbKey: (key: string) => void;
   playTrailer: (url: string) => void;
-  closeTrailer: () => void;
   setCardAnimation: (style: 'flick' | 'peel') => void;
   setDeckStyle: (style: 'stack' | 'sidepeek' | 'fan') => void;
   setWatchlistView: (view: ViewMode) => void;
@@ -100,7 +99,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
-  const [trailerUrl, setTrailerUrl] = useState<string | null>(null);
   const { session, ready: authReady } = useAuth();
   const moviesRef = useRef<Movie[]>([]);
   const sessionRef = useRef<string | null>(null);
@@ -398,8 +396,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     persistSettings({ ...settings, tmdbKey: key.trim() });
   }, [settings, persistSettings]);
 
-  const playTrailer = useCallback((url: string) => setTrailerUrl(url), []);
-  const closeTrailer = useCallback(() => setTrailerUrl(null), []);
+  // The trailer plays on a regular Stack screen (src/app/trailer.tsx), not
+  // an RN Modal: the detail screen is itself a modal, and a Modal presented
+  // over it wedges on iOS (invisible overlay, frozen app, no trailer).
+  const playTrailer = useCallback((url: string) => {
+    router.push({ pathname: '/trailer', params: { url } });
+  }, []);
 
   const setCardAnimation = useCallback((style: 'flick' | 'peel') => {
     persistSettings({ ...settings, cardAnimation: style });
@@ -553,11 +555,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [movies, settings.tmdbKey, persist]);
 
   const value = useMemo<Store>(() => ({
-    movies, ready, settings, importing, importMessage, syncState, lastSyncAt, trailerUrl,
+    movies, ready, settings, importing, importMessage, syncState, lastSyncAt,
     moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary,
     clearWatchlist, clearSeen,
-    importReel, revalidateTitle, setTmdbKey, playTrailer, closeTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen,
-  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, trailerUrl, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, closeTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen]);
+    importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen,
+  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
