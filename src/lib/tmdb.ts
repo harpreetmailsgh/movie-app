@@ -18,6 +18,20 @@ export interface TmdbMatch {
 const BASE = 'https://api.themoviedb.org/3';
 const CINEMETA = 'https://v3-cinemeta.strem.io';
 
+/**
+ * fetch with a 6s timeout: a hung TMDB request must never stall a trailer
+ * resolution batch (the tap-time waterfall that used to freeze the app).
+ */
+async function timedFetch(url: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Best TMDB match for free text, or null when nothing matches confidently. */
 export async function bestMatch(text: string, apiKey: string): Promise<TmdbMatch | null> {
   if (!apiKey || !text) return null;
@@ -222,7 +236,7 @@ async function searchMulti(query: string, apiKey: string): Promise<TmdbMatch[] |
     const url =
       `${BASE}/search/multi?api_key=${encodeURIComponent(apiKey)}` +
       `&query=${encodeURIComponent(query)}&include_adult=false`;
-    const res = await fetch(url);
+    const res = await timedFetch(url);
     if (!res.ok) return null;
     const json = (await res.json()) as { results?: RawItem[] };
     return (json.results ?? []).flatMap((item) => {
@@ -356,7 +370,7 @@ export async function fetchTrailerKey(
 ): Promise<string | null> {
   if (!apiKey || !tmdbID) return null;
   try {
-    const res = await fetch(
+    const res = await timedFetch(
       `${BASE}/${mediaType}/${tmdbID}/videos?api_key=${encodeURIComponent(apiKey)}`
     );
     if (!res.ok) return null;
@@ -371,6 +385,40 @@ export async function fetchTrailerKey(
       videos.find((v) => v.official && v.type === 'Teaser') ??
       videos[0];
     return pick.key;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One-shot trailer resolution for a title: a single TMDB multi search, the
+ * top result of the requested media type scoring ≥ 60, then a title-agreement
+ * guard on the normalized titles (reject on mismatch — this is what prevents
+ * attaching a wrong movie's trailer), then its trailer key. Returns null on
+ * any miss or mismatch. The tmdbID rides along so callers can upgrade
+ * keyless (tmdbID 0) items to the real id.
+ */
+export async function resolveTrailerForTitle(
+  title: string,
+  mediaType: 'movie' | 'tv',
+  apiKey: string
+): Promise<{ key: string; tmdbID: number } | null> {
+  if (!apiKey || !title) return null;
+  try {
+    const results = await searchMulti(title, apiKey);
+    if (!results) return null;
+    let top: TmdbMatch | null = null;
+    for (const r of results) {
+      if (r.mediaType !== mediaType) continue;
+      if (score(r.title, title, r.popularity) >= 60) {
+        top = r;
+        break;
+      }
+    }
+    if (!top) return null;
+    if (normTitle(top.title) !== normTitle(title)) return null;
+    const key = await fetchTrailerKey(top.tmdbID, top.mediaType, apiKey);
+    return key ? { key, tmdbID: top.tmdbID } : null;
   } catch {
     return null;
   }

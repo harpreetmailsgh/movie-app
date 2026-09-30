@@ -13,6 +13,7 @@ export interface Movie {
   notes: string;
   status: EntryStatus;
   tmdbID: number;
+  trailerKey?: string; // YouTube key for the official trailer, resolved at enrich/backfill time
   originalLanguage: string; // human-readable, e.g. "English"
   cast: string[]; // top-billed actor names
   imdbRating: number; // 0 = unknown

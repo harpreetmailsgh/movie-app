@@ -1,8 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Movie } from './types';
-import { TmdbMatch, CinemetaFullMeta, bestMatchKeyless, fetchKeylessMeta } from './tmdb';
+import { TmdbMatch, CinemetaFullMeta, bestMatchKeyless, fetchKeylessMeta, fetchTrailerKey, resolveTrailerForTitle } from './tmdb';
 
 const CINEMETA = 'https://v3-cinemeta.strem.io';
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 interface CatalogMeta {
   id: string;
@@ -296,29 +298,94 @@ interface TrendingCache {
   countryCode: string | null;
   label: string;
   items: Movie[];
+  /** Trailer-key backfill pass has run; set on write-back, never moves `at`. */
+  trailersDone?: boolean;
 }
 
 let lastLabel = 'Trending 🔥';
+let lastRefreshedAt: number | null = null;
 
-async function readCache(): Promise<TrendingCache | null> {
+/** Raw cache read — no freshness filter. */
+async function readRawCache(): Promise<TrendingCache | null> {
   try {
     const raw = await AsyncStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const cached = JSON.parse(raw) as TrendingCache;
     if (!cached || !Array.isArray(cached.items) || !cached.items.length) return null;
-    if (Date.now() - cached.at > WEEK_MS) return null;
     return cached;
   } catch {
     return null;
   }
 }
 
-async function writeCache(entry: Omit<TrendingCache, 'at'>): Promise<void> {
+/**
+ * Friday cadence: the most recent Friday 00:00 device-local.
+ * (Friday is getDay() 5.)
+ */
+function lastFridayMidnight(): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() - 5 + 7) % 7));
+  return d.getTime();
+}
+
+/**
+ * Cached list iff it was written at/after the most recent Friday 00:00.
+ * Entries written under the old 7-day scheme get the Friday rule applied
+ * uniformly here on read.
+ */
+async function readCache(): Promise<TrendingCache | null> {
+  const cached = await readRawCache();
+  if (!cached) return null;
+  if (cached.at < lastFridayMidnight()) return null;
+  return cached;
+}
+
+/**
+ * Writes the entry verbatim — the caller owns `at`. The trailer backfill
+ * uses this so its pass never moves the list's refresh date.
+ */
+async function writeCacheEntry(entry: TrendingCache): Promise<void> {
   try {
-    await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ ...entry, at: Date.now() }));
+    await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(entry));
   } catch {
     // cache writes are best-effort
   }
+}
+
+/**
+ * Resolves missing trailer keys for cached trending items, in place (the
+ * screen state and feedCache hold the same item refs, so trailers go live
+ * mid-session). tmdbID > 0 → a single fetchTrailerKey; tmdbID 0 → resolve
+ * the title first, then its trailer (and the real tmdbID). 500ms pacing
+ * stays under TMDB's 40 req/10s; a per-item try/catch means one bad item
+ * never kills the pass. Always marks trailersDone and writes the cache
+ * back preserving the ORIGINAL at.
+ */
+async function backfillTrailerKeys(entry: TrendingCache, apiKey?: string): Promise<void> {
+  if (!apiKey || entry.trailersDone) return;
+  let first = true;
+  for (const item of entry.items) {
+    if (item.trailerKey) continue;
+    if (!first) await sleep(500);
+    first = false;
+    try {
+      if (item.tmdbID > 0) {
+        const key = await fetchTrailerKey(item.tmdbID, item.mediaType, apiKey);
+        if (key) item.trailerKey = key;
+      } else {
+        const hit = await resolveTrailerForTitle(item.title, item.mediaType, apiKey);
+        if (hit) {
+          item.trailerKey = hit.key;
+          item.tmdbID = hit.tmdbID;
+        }
+      }
+    } catch {
+      // one bad item never kills the pass
+    }
+  }
+  entry.trailersDone = true;
+  await writeCacheEntry(entry);
 }
 
 /**
@@ -326,7 +393,7 @@ async function writeCache(entry: Omit<TrendingCache, 'at'>): Promise<void> {
  * dedupe, enrich. Any failure or zero enriched items throws, so the caller
  * falls back to the Cinemeta global path.
  */
-async function loadCountryTrending(): Promise<Movie[]> {
+async function loadCountryTrending(apiKey?: string): Promise<Movie[]> {
   const cc = await getCountryCode();
   if (!cc) throw new Error('no country');
   const [netflix, apple] = await Promise.all([
@@ -339,33 +406,65 @@ async function loadCountryTrending(): Promise<Movie[]> {
   if (!items.length) throw new Error('no enriched items');
   const label = netflix ? `Trending in ${netflix.countryName} 🔥` : `Trending in ${cc.toUpperCase()} 🔥`;
   lastLabel = label;
-  await writeCache({ countryCode: cc, label, items });
+  const entry: TrendingCache = {
+    at: Date.now(),
+    countryCode: cc,
+    label,
+    items,
+    trailersDone: false,
+  };
+  lastRefreshedAt = entry.at;
+  await writeCacheEntry(entry);
+  // Trailers resolve in the background — the fresh list is served immediately.
+  void backfillTrailerKeys(entry, apiKey).catch(() => {});
   return items;
 }
 
 /**
  * What's popular right now. Country path (Netflix + Apple, enriched) when
- * available; otherwise the existing Cinemeta global top. Stale-while-
- * revalidate: a fresh cache is served immediately and refreshed in the
- * background — the fetch never blocks the UI.
+ * available; otherwise the existing Cinemeta global top. Friday cadence:
+ * a list cached at/after the most recent Friday 00:00 is served as-is with
+ * no background refresh (network stays quiet); an older list is served
+ * instantly and refreshed in the background (stale-while-revalidate) — the
+ * fetch never blocks the UI.
  */
-export async function fetchTrending(): Promise<Movie[]> {
-  const cached = await readCache();
-  if (cached) {
-    lastLabel = cached.label || lastLabel;
-    void loadCountryTrending().catch(() => {
-      // Background refresh failed — keep serving the stale cache; a failure
-      // here must never clobber good cached items or the served label.
-    });
-    return cached.items;
+export async function fetchTrending(apiKey?: string): Promise<Movie[]> {
+  const fresh = await readCache();
+  const entry = fresh ?? (await readRawCache());
+  if (entry) {
+    lastLabel = entry.label || lastLabel;
+    lastRefreshedAt = entry.at;
+    // Cached path — fresh or stale: fire the trailer backfill whenever it
+    // hasn't run and any item still lacks a key, regardless of freshness.
+    if (!entry.trailersDone && entry.items.some((i) => !i.trailerKey)) {
+      void backfillTrailerKeys(entry, apiKey).catch(() => {});
+    }
+    if (!fresh) {
+      // Friday boundary HAS passed since the list was cached: serve the stale
+      // list instantly and refresh in the background.
+      void loadCountryTrending(apiKey).catch(() => {
+        // Background refresh failed — keep serving the stale cache; a failure
+        // here must never clobber good cached items or the served label.
+      });
+    }
+    return entry.items;
   }
   try {
-    return await loadCountryTrending();
+    return await loadCountryTrending(apiKey);
   } catch {
     // Any failure at any step → the existing Cinemeta global path.
     const items = await fetchCinemetaGlobal();
     lastLabel = 'Trending 🔥';
-    await writeCache({ countryCode: null, label: lastLabel, items });
+    const fallback: TrendingCache = {
+      at: Date.now(),
+      countryCode: null,
+      label: lastLabel,
+      items,
+      trailersDone: false,
+    };
+    lastRefreshedAt = fallback.at;
+    await writeCacheEntry(fallback);
+    void backfillTrailerKeys(fallback, apiKey).catch(() => {});
     return items;
   }
 }
@@ -373,6 +472,11 @@ export async function fetchTrending(): Promise<Movie[]> {
 /** Label reflecting what fetchTrending actually served last. */
 export async function getTrendingLabel(): Promise<string> {
   return lastLabel;
+}
+
+/** Label + refresh timestamp reflecting what fetchTrending last served. */
+export async function getTrendingMeta(): Promise<{ label: string; refreshedAt: number | null }> {
+  return { label: lastLabel, refreshedAt: lastRefreshedAt };
 }
 
 /** Strip trending-only extras before saving into the library. */

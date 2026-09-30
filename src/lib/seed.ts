@@ -104,6 +104,9 @@ export function normalizeMovie(m: Movie): Movie {
     notes: m.notes ?? '',
     genres: m.genres ?? [],
     tmdbID: m.tmdbID ?? 0,
+    // || not ??: old saves can carry the field as an empty string, which must
+    // fall back to the default rather than stick.
+    trailerKey: m.trailerKey || '',
     originalLanguage: m.originalLanguage ?? '',
     cast: m.cast ?? [],
     imdbRating: m.imdbRating ?? 0,
