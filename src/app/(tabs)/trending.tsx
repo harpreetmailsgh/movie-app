@@ -5,22 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useStore } from '../../lib/store';
 import { Movie } from '../../lib/types';
-import { fetchTrending, trendingToInput } from '../../lib/trending';
+import { fetchTrending, trendingToInput, getTrendingMeta } from '../../lib/trending';
 import { cacheFeedItem } from '../../lib/feedCache';
-import * as trendingLib from '../../lib/trending';
 import SwipeDeck, { SwipeDir } from '../../components/SwipeDeck';
 import ViewHeader from '../../components/ViewHeader';
 import { useSharedFilters, applyFilters } from '../../lib/sharedFilters';
 import FilterBar, { filtersActive } from '../../components/FilterBar';
 import TilesView from '../../components/TilesView';
 import ListView from '../../components/ListView';
-
-// Dev-1 adds getTrendingLabel(): Promise<string> to src/lib/trending in parallel.
-// This shim compiles until that lands, then resolves to the real export at
-// runtime (module namespace objects carry live bindings).
-const getTrendingLabel: () => Promise<string> =
-  (trendingLib as unknown as { getTrendingLabel?: () => Promise<string> }).getTrendingLabel ??
-  (async () => 'Trending 🔥');
 
 export default function TrendingScreen() {
   const {
@@ -30,6 +22,7 @@ export default function TrendingScreen() {
   const [items, setItems] = useState<Movie[] | null>(null);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const [headerTitle, setHeaderTitle] = useState('Trending 🔥');
+  const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
   const [filters, setFilters] = useSharedFilters();
   // Jump-to-cards machinery (focusId/originView): retained as-is so the
   // cards view jump keeps working; tile/row taps now open the detail page.
@@ -42,14 +35,21 @@ export default function TrendingScreen() {
 
   useEffect(() => {
     let live = true;
-    fetchTrending().then((t) => {
+    // Pass the TMDB key so the trailer-key backfill can resolve keys
+    // (optional param — no key still works, backfill then skips silently).
+    fetchTrending(settings.tmdbKey).then((t) => {
       if (!live) return;
       setItems(t);
-      getTrendingLabel().then((label) => {
-        if (live) setHeaderTitle(label);
+      getTrendingMeta().then((meta) => {
+        if (!live) return;
+        setHeaderTitle(meta.label);
+        setRefreshedAt(meta.refreshedAt);
       });
     });
     return () => { live = false; };
+    // Mount-once fetch: the TMDB key is baked into settings by the time this
+    // screen mounts, so re-running on settings changes is not wanted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Titles already in the library (any status) — for the ✓ state.
@@ -138,6 +138,13 @@ export default function TrendingScreen() {
         value={view}
         onChange={changeView}
       />
+      {/* Hidden on first-ever run: getTrendingMeta reports null until a
+          cache entry exists. */}
+      {refreshedAt !== null && (
+        <Text style={styles.refreshLine}>
+          Last refreshed {new Date(refreshedAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+        </Text>
+      )}
       <FilterBar values={filters} onChange={setFilters} />
 
       {view === 'cards' && (
@@ -224,6 +231,14 @@ export default function TrendingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000', paddingBottom: 24 },
+  // Small dim line between the header and the filter bar showing the cache
+  // freshness ("Last refreshed Fri, Sep 25"); neighbors untouched.
+  refreshLine: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 12,
+    paddingHorizontal: 16,
+    marginTop: 2,
+  },
   deckArea: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', marginTop: 8 },
   deckWrap: { position: 'relative' },
   // Floating back button after a tile/row jump: white solid circle with a dark

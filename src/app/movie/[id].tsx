@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Image, Pressable, StyleSheet, Linking, TextInput, Alert } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, ScrollView, Image, Pressable, StyleSheet, Linking, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useStore } from '../../lib/store';
 import { getFeedItem } from '../../lib/feedCache';
@@ -18,6 +18,14 @@ export default function MovieDetailScreen() {
   const movie = movies.find((m) => m.id === id) ?? getFeedItem(id);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
+  const [resolvingTrailer, setResolvingTrailer] = useState(false);
+  // Freeze fix: a late trailer result must never touch a dead screen.
+  const mountedRef = useRef(true);
+  const trailerRequestRef = useRef(0);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   if (!movie) {
     return (
@@ -32,18 +40,42 @@ export default function MovieDetailScreen() {
     // TMDB trailer when there is one, otherwise the top YouTube result for
     // "<title> <year> official trailer". The "not found" note only appears
     // when both come up empty — never a search page.
-    const tmdbKey = await resolveTrailerKey(movie, settings.tmdbKey);
-    let videoKey = tmdbKey;
-    if (!videoKey) {
-      videoKey = await firstYoutubeResultId(
-        `${movie.title} ${movie.year || ''} official trailer`
-      );
-    }
-    if (!videoKey) {
-      Alert.alert(`We couldn't find a trailer for "${movie.title}".`);
+    // Cached key from the enrich/backfill pass: plays immediately — no
+    // network, no spinner.
+    if (movie.trailerKey) {
+      playTrailer(`https://www.youtube.com/embed/${movie.trailerKey}?autoplay=1&rel=0`);
       return;
     }
-    playTrailer(`https://www.youtube.com/embed/${videoKey}?autoplay=1&rel=0`);
+    // A resolve is already in flight — extra taps are ignored.
+    if (resolvingTrailer) return;
+    const requestId = ++trailerRequestRef.current;
+    // Staleness guard (the freeze fix): after every await below, bail out
+    // silently if the screen unmounted or a newer invocation started, so a
+    // late result can never open the modal or an alert on a dead screen.
+    const stale = () => !mountedRef.current || trailerRequestRef.current !== requestId;
+    setResolvingTrailer(true);
+    try {
+      const tmdbKey = await resolveTrailerKey(movie, settings.tmdbKey);
+      if (stale()) return;
+      let videoKey = tmdbKey;
+      if (!videoKey) {
+        // The YouTube scrape has no built-in timeout, so bound it here at
+        // 6s — worst case the whole resolve takes ~12s, never silent forever.
+        videoKey = await Promise.race([
+          firstYoutubeResultId(`${movie.title} ${movie.year || ''} official trailer`),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
+        ]);
+        if (stale()) return;
+      }
+      if (!videoKey) {
+        Alert.alert(`We couldn't find a trailer for "${movie.title}".`);
+        return;
+      }
+      playTrailer(`https://www.youtube.com/embed/${videoKey}?autoplay=1&rel=0`);
+    } finally {
+      // Don't clear the spinner out from under a newer invocation.
+      if (!stale()) setResolvingTrailer(false);
+    }
   };
 
   const uri = posterUrl(movie.posterPath, 'w780');
@@ -69,8 +101,12 @@ export default function MovieDetailScreen() {
       )}
 
       <View style={styles.actionRow}>
-        <Pressable style={styles.trailerBtn} onPress={openTrailer}>
-          <Text style={styles.trailerBtnText}>Trailer ▶</Text>
+        <Pressable style={styles.trailerBtn} onPress={openTrailer} disabled={resolvingTrailer}>
+          {resolvingTrailer ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.trailerBtnText}>Trailer ▶</Text>
+          )}
         </Pressable>
         {movie.status !== 'seen' && (
           <Pressable
