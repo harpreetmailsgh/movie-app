@@ -24,7 +24,7 @@
     "scheme": "movierecommender",
     "slug": "movie-app",
     "splash": {
-      "backgroundColor": "#101010",
+      "backgroundColor": "#000000",
       "image": "./assets/splash.png",
       "resizeMode": "contain"
     },
