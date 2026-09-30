@@ -5,6 +5,12 @@ on:
     - cron: '0 15 * * 2'  # Tuesdays 15:00 UTC, after Netflix's Tuesday publish
   workflow_dispatch:
 
+# The push step writes new JSONs to the trending-data branch via GITHUB_TOKEN.
+# Without this, the token inherits the repo's default (read-only) workflow
+# permissions and the push fails with 403 (git exit 128).
+permissions:
+  contents: write
+
 jobs:
   update:
     runs-on: ubuntu-latest
