@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Image, Pressable, StyleSheet, Linking, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, Image, Pressable, StyleSheet, Linking, Alert, ActivityIndicator, InteractionManager } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useIsFocused } from 'expo-router';
 import { Movie, posterUrl, tmdbUrl } from '../lib/types';
 import { resolveTrailerForTitle } from '../lib/tmdb';
 import { firstYoutubeResultId } from '../lib/youtube';
@@ -14,12 +13,7 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
   // Freeze fix: a late trailer result must never touch a dead card.
   const mountedRef = useRef(true);
   const trailerRequestRef = useRef(0);
-  // Focus gate: the trailer modal must never be presented while a navigation
-  // transition is in flight — iOS leaves an invisible touch-eating overlay.
-  const isFocused = useIsFocused();
-  const isFocusedRef = useRef(isFocused);
   const openedTrailerRef = useRef(false);
-  useEffect(() => { isFocusedRef.current = isFocused; }, [isFocused]);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -47,12 +41,15 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
     // overlay (the trending freeze). If we already left, drop it silently.
     if (movie.trailerKey) {
       const url = `https://www.youtube.com/embed/${movie.trailerKey}?autoplay=1&rel=0`;
-      setTimeout(() => {
-        if (mountedRef.current && isFocusedRef.current) {
+      // Present only after navigation animations settle (presenting the modal
+      // mid-transition corrupts it into an invisible touch-eating overlay).
+      // If the screen unmounted meanwhile, drop it silently.
+      InteractionManager.runAfterInteractions(() => {
+        if (mountedRef.current) {
           openedTrailerRef.current = true;
           playTrailer(url);
         }
-      }, 300);
+      });
       return;
     }
     // A resolve is already in flight — extra taps are ignored.
@@ -68,7 +65,7 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
       // never does heavy searching; the enrich/backfill pass already saved
       // keys for everything it could match.
       const tmdb = await resolveTrailerForTitle(movie.title, movie.mediaType, settings.tmdbKey);
-      if (stale() || !isFocusedRef.current) return;
+      if (stale()) return;
       let videoKey: string | null = tmdb ? tmdb.key : null;
       if (!videoKey) {
         // The YouTube scrape has no built-in timeout, so bound it here at
@@ -77,13 +74,13 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
           firstYoutubeResultId(`${movie.title} ${movie.year || ''} official trailer`),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
         ]);
-        if (stale() || !isFocusedRef.current) return;
+        if (stale()) return;
       }
       if (!videoKey) {
         Alert.alert(`We couldn't find a trailer for "${movie.title}".`);
         return;
       }
-      if (stale() || !isFocusedRef.current) return;
+      if (stale()) return;
       openedTrailerRef.current = true;
       playTrailer(`https://www.youtube.com/embed/${videoKey}?autoplay=1&rel=0`);
     } finally {

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, Image, Pressable, StyleSheet, Linking, TextInput, Alert, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams, router, useIsFocused } from 'expo-router';
+import { View, Text, ScrollView, Image, Pressable, StyleSheet, Linking, TextInput, Alert, ActivityIndicator, InteractionManager } from 'react-native';
+import { useLocalSearchParams, router } from 'expo-router';
 import { useStore } from '../../lib/store';
 import { getFeedItem } from '../../lib/feedCache';
 import { posterUrl, tmdbUrl } from '../../lib/types';
@@ -16,18 +16,14 @@ export default function MovieDetailScreen() {
   // detail page. Library data always wins; feed items are never written
   // into the library.
   const movie = movies.find((m) => m.id === id) ?? getFeedItem(id);
+  const inLibrary = movies.some((m) => m.id === id);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [resolvingTrailer, setResolvingTrailer] = useState(false);
   // Freeze fix: a late trailer result must never touch a dead screen.
   const mountedRef = useRef(true);
   const trailerRequestRef = useRef(0);
-  // Focus gate: the trailer modal must never be presented while a navigation
-  // transition is in flight — iOS leaves an invisible touch-eating overlay.
-  const isFocused = useIsFocused();
-  const isFocusedRef = useRef(isFocused);
   const openedTrailerRef = useRef(false);
-  useEffect(() => { isFocusedRef.current = isFocused; }, [isFocused]);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -58,12 +54,15 @@ export default function MovieDetailScreen() {
     // overlay (the trending freeze). If we already left, drop it silently.
     if (movie.trailerKey) {
       const url = `https://www.youtube.com/embed/${movie.trailerKey}?autoplay=1&rel=0`;
-      setTimeout(() => {
-        if (mountedRef.current && isFocusedRef.current) {
+      // Present only after navigation animations settle (presenting the modal
+      // mid-transition corrupts it into an invisible touch-eating overlay).
+      // If the screen unmounted meanwhile, drop it silently.
+      InteractionManager.runAfterInteractions(() => {
+        if (mountedRef.current) {
           openedTrailerRef.current = true;
           playTrailer(url);
         }
-      }, 300);
+      });
       return;
     }
     // A resolve is already in flight — extra taps are ignored.
@@ -79,7 +78,7 @@ export default function MovieDetailScreen() {
       // never does heavy searching; the enrich/backfill pass already saved
       // keys for everything it could match.
       const tmdb = await resolveTrailerForTitle(movie.title, movie.mediaType, settings.tmdbKey);
-      if (stale() || !isFocusedRef.current) return;
+      if (stale()) return;
       let videoKey: string | null = tmdb ? tmdb.key : null;
       if (!videoKey) {
         // The YouTube scrape has no built-in timeout, so bound it here at
@@ -88,13 +87,13 @@ export default function MovieDetailScreen() {
           firstYoutubeResultId(`${movie.title} ${movie.year || ''} official trailer`),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
         ]);
-        if (stale() || !isFocusedRef.current) return;
+        if (stale()) return;
       }
       if (!videoKey) {
         Alert.alert(`We couldn't find a trailer for "${movie.title}".`);
         return;
       }
-      if (stale() || !isFocusedRef.current) return;
+      if (stale()) return;
       openedTrailerRef.current = true;
       playTrailer(`https://www.youtube.com/embed/${videoKey}?autoplay=1&rel=0`);
     } finally {
@@ -133,7 +132,7 @@ export default function MovieDetailScreen() {
             <Text style={styles.trailerBtnText}>Trailer ▶</Text>
           )}
         </Pressable>
-        {movie.status !== 'seen' && (
+        {inLibrary && movie.status !== 'seen' && (
           <Pressable
             style={styles.seenBtn}
             onPress={() => {
@@ -144,15 +143,17 @@ export default function MovieDetailScreen() {
             <Text style={styles.seenBtnText}>Seen</Text>
           </Pressable>
         )}
-        <Pressable
-          style={styles.trashBtn}
-          onPress={() => {
-            deleteMovie(movie.id);
-            router.back();
-          }}
-        >
-          <Text style={styles.trashBtnText}>Trash</Text>
-        </Pressable>
+        {inLibrary && (
+          <Pressable
+            style={styles.trashBtn}
+            onPress={() => {
+              deleteMovie(movie.id);
+              router.back();
+            }}
+          >
+            <Text style={styles.trashBtnText}>Trash</Text>
+          </Pressable>
+        )}
       </View>
 
       {editingTitle ? (

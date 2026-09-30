@@ -107,13 +107,6 @@ export default function TrendingScreen() {
       // ＋ Watchlist: save it, then take it out of the feed.
       addToWatchlist(movie);
       setHiddenIds((h) => [...h, movie.id]);
-    } else if (dir === 'down') {
-      // Trash: remove from the feed (bin commit UI via trashBin, like Watchlist).
-      setHiddenIds((h) => [...h, movie.id]);
-    } else if (dir === 'up') {
-      // Seen: save it to the Seen list, then take it out of the feed.
-      if (!addedIds.has(movie.id)) addMovie({ ...trendingToInput(movie), status: 'seen' });
-      setHiddenIds((h) => [...h, movie.id]);
     } else if (dir === 'left') {
       // Next: cycle to the back of the feed.
       setItems((prev) =>
@@ -164,8 +157,7 @@ export default function TrendingScreen() {
               <SwipeDeck
                 cards={visible}
                 onSwipe={handleSwipe}
-                enabledDirs={['left', 'right', 'up', 'down']}
-                trashBin
+                enabledDirs={['left', 'right']}
                 toBackDirs={['left']}
                 onInfoTap={(m) => router.push(`/movie/${m.id}`)}
                 animation={settings.cardAnimation}
@@ -210,13 +202,6 @@ export default function TrendingScreen() {
           actions={{
             onAdd: addToWatchlist,
             addedIds,
-            onSeen: (t) => {
-              // Mirror the cards-view up-swipe: save as seen, out of the feed.
-              if (!addedIds.has(t.id)) addMovie({ ...trendingToInput(t), status: 'seen' });
-              setHiddenIds((h) => [...h, t.id]);
-            },
-            onRemove: (t) => setHiddenIds((h) => [...h, t.id]),
-            removeLabel: 'Trash',
           }}
           emptyText={
             filtersActive(filters)
