@@ -8,6 +8,7 @@ import { router } from 'expo-router';
 import { useStore } from '../lib/store';
 import { bestMatch, bestMatchKeyless, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
 import { parseYouTubeId, fetchYouTubeTitle } from '../lib/youtube';
+import { isTikTokUrl, fetchTikTokInfo } from '../lib/tiktok';
 import { posterUrl } from '../lib/types';
 import ClapboardPoster from '../components/ClapboardPoster';
 
@@ -23,11 +24,15 @@ export default function ImportScreen() {
   const [ytUrl, setYtUrl] = useState('');
   const [ytWorking, setYtWorking] = useState(false);
   const [ytMessage, setYtMessage] = useState<string | null>(null);
+  const [ttUrl, setTtUrl] = useState('');
+  const [ttWorking, setTtWorking] = useState(false);
+  const [ttMessage, setTtMessage] = useState<string | null>(null);
   const [fbFailed, setFbFailed] = useState(false);
 
   // Run ids: editing a field mid-run cancels that run's completion UI.
   const fbRunRef = useRef(0);
   const ytRunRef = useRef(0);
+  const ttRunRef = useRef(0);
 
   // ---- Card 1: live search-as-you-type -------------------------------------
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -218,6 +223,83 @@ export default function ImportScreen() {
     }
   };
 
+  // ---- Card 4: TikTok link ---------------------------------------------------
+  const onTtChange = (text: string) => {
+    setTtUrl(text);
+    ttRunRef.current += 1; // cancel any in-flight run's completion
+    setTtMessage(null);
+  };
+
+  /** TikTok import: oEmbed caption (caption-first step), then TMDB/keyless match. */
+  const doFetchTt = async () => {
+    const link = ttUrl.trim();
+    if (!link) return;
+    const runId = ++ttRunRef.current;
+    setTtMessage(null);
+    if (!isTikTokUrl(link)) {
+      setTtMessage("That doesn't look like a TikTok link — use a tiktok.com or vm.tiktok.com link.");
+      return;
+    }
+    setTtWorking(true);
+    try {
+      const info = await fetchTikTokInfo(link);
+      if (runId !== ttRunRef.current) return;
+      if (!info) {
+        setTtMessage("Couldn't read that video (it may be private or removed).");
+        return;
+      }
+      const match = settings.tmdbKey
+        ? await bestMatch(info.caption, settings.tmdbKey)
+        : await bestMatchKeyless(info.caption);
+      if (runId !== ttRunRef.current) return;
+      const caption = `${info.caption} — ${info.author}`;
+      if (match) {
+        let imdbRating = 0, overview = match.overview, genres = match.genres;
+        let cast: string[] = [];
+        if (match.cinemetaId) {
+          try {
+            const meta = await fetchKeylessMeta(match.cinemetaId, match.mediaType);
+            if (meta) {
+              const r = parseFloat(meta.imdbRating ?? '');
+              if (Number.isFinite(r)) imdbRating = r;
+              if (meta.description) overview = meta.description;
+              if (meta.genres?.length) genres = meta.genres.slice(0, 3);
+              if (meta.cast?.length) cast = meta.cast.slice(0, 3);
+            }
+          } catch { /* keep the slim fields */ }
+        } else {
+          imdbRating = await fetchImdbRating(match.tmdbID, match.mediaType, match.title, settings.tmdbKey);
+        }
+        addMovie({
+          title: match.title, year: match.year, mediaType: match.mediaType, genres,
+          overview, posterPath: match.posterPath, reelURL: link,
+          caption, notes: '', status: 'watchlist', tmdbID: match.tmdbID, imdbRating,
+          originalLanguage: match.originalLanguage, cast,
+          needsReview: false,
+        });
+        if (runId !== ttRunRef.current) return;
+        setTtUrl('');
+        Alert.alert('Fetch complete', `“${match.title}” added to watchlist.`, [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+        return;
+      }
+      addMovie({
+        title: info.caption, year: 0, mediaType: 'movie', genres: [],
+        overview: '', posterPath: '', reelURL: link,
+        caption, notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
+        originalLanguage: '', cast: [], needsReview: true,
+      });
+      if (runId !== ttRunRef.current) return;
+      setTtUrl('');
+      Alert.alert('Fetch complete', `Saved “${info.caption}” — couldn't validate the title.`, [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } finally {
+      setTtWorking(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.section}>
@@ -352,6 +434,47 @@ export default function ImportScreen() {
         </View>
         {!!ytMessage && <Text style={styles.error}>{ytMessage}</Text>}
       </View>
+
+      <View style={styles.divider} />
+
+      <View style={styles.section}>
+        <View style={styles.headingRow}>
+          <View style={styles.ttBadge}>
+            <LinearGradient
+              colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.06)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <Ionicons name="logo-tiktok" size={20} color="#fff" />
+          </View>
+          <Text style={styles.heading}>TikTok</Text>
+        </View>
+        <Text style={styles.body}>Paste a TikTok link — the full one or the short share link.</Text>
+        <View style={styles.fetchRow}>
+          <TextInput
+            style={[styles.input, styles.inputFlex]}
+            value={ttUrl}
+            onChangeText={onTtChange}
+            placeholder="Paste TikTok link here"
+            placeholderTextColor="#8E8E93"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable
+            style={[styles.fetchButton, ttWorking && styles.buttonDisabled]}
+            onPress={doFetchTt}
+            disabled={ttWorking || !ttUrl.trim()}
+          >
+            {ttWorking ? (
+              <ActivityIndicator color="#000" />
+            ) : (
+              <Text style={styles.fetchButtonText}>Fetch</Text>
+            )}
+          </Pressable>
+        </View>
+        {!!ttMessage && <Text style={styles.error}>{ttMessage}</Text>}
+      </View>
     </ScrollView>
   );
 }
@@ -369,6 +492,10 @@ const styles = StyleSheet.create({
   },
   ytBadge: {
     backgroundColor: '#FF0000', borderRadius: 8, width: 42, height: 30,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  ttBadge: {
+    backgroundColor: '#000', borderWidth: 1, borderColor: '#3a3a3c', borderRadius: 10, width: 40, height: 40,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
   body: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 21, marginBottom: 14 },
