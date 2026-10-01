@@ -5,6 +5,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Updates from 'expo-updates';
 import Constants from 'expo-constants';
 import { FontAwesome } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import { useStore } from '../../lib/store';
 import { useAuth } from '../../lib/auth';
 import { getSupabase } from '../../lib/supabase';
@@ -219,6 +220,16 @@ export default function SettingsScreen() {
           Build {Updates.updateId ? Updates.updateId.slice(0, 8) : 'dev'}
           {Updates.createdAt ? ` · ${new Date(Updates.createdAt).toLocaleString()}` : ''}
         </Text>
+      </View>
+
+      <View style={[styles.accountBox, styles.section]}>
+        <Text style={styles.heading}>Privacy</Text>
+        <Text style={styles.body}>
+          No login required, no ads, no tracking. Your list is saved on this phone and backed up so you don&rsquo;t lose it.
+        </Text>
+        <Pressable style={styles.feedbackRow} onPress={() => router.push('/privacy')}>
+          <Text style={styles.feedbackText}>Read Privacy Policy</Text>
+        </Pressable>
       </View>
 
       <View style={[styles.accountBox, styles.section]}>

@@ -81,6 +81,7 @@ interface Store {
   cycleToBack: (id: string) => void;
   enrichLibrary: () => Promise<void>;
   setOnboardingSeen: () => void;
+  setPrivacySeen: () => void;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -94,7 +95,7 @@ export function useStore(): Store {
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [ready, setReady] = useState(false);
-  const [settings, setSettings] = useState<Settings>({ tmdbKey: BAKED_TMDB_KEY, onboardingSeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles' });
+  const [settings, setSettings] = useState<Settings>({ tmdbKey: BAKED_TMDB_KEY, onboardingSeen: false, privacySeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles' });
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'error'>('idle');
@@ -132,7 +133,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         }
         if (settingsRaw) {
           const parsed = JSON.parse(settingsRaw);
-          setSettings({ onboardingSeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles', ...parsed, tmdbKey: parsed.tmdbKey || BAKED_TMDB_KEY });
+          setSettings({ onboardingSeen: false, privacySeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles', ...parsed, tmdbKey: parsed.tmdbKey || BAKED_TMDB_KEY });
         }
       } catch {
         // Corrupt storage: start fresh with seeds.
@@ -434,6 +435,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     persistSettings({ ...settings, onboardingSeen: true });
   }, [settings, persistSettings]);
 
+  const setPrivacySeen = useCallback(() => {
+    persistSettings({ ...settings, privacySeen: true });
+  }, [settings, persistSettings]);
+
   /** Paste a reel link → read its caption → TMDB match → add to Inbox. */
   const importReel = useCallback(async (url: string): Promise<ReelImportOutcome> => {
     const clean = url.trim();
@@ -558,8 +563,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     movies, ready, settings, importing, importMessage, syncState, lastSyncAt,
     moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary,
     clearWatchlist, clearSeen,
-    importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen,
-  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen]);
+    importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen, setPrivacySeen,
+  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen, setPrivacySeen]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

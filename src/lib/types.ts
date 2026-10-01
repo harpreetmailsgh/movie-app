@@ -28,6 +28,7 @@ export type ViewMode = 'cards' | 'tiles' | 'list';
 export interface Settings {
   tmdbKey: string;
   onboardingSeen: boolean;
+  privacySeen: boolean;
   cardAnimation: CardAnimation;
   deckStyle: DeckStyle;
   watchlistView: ViewMode;
