@@ -215,7 +215,7 @@ export default function SettingsScreen() {
 
       <View style={[styles.accountBox, styles.section]}>
         <Text style={styles.heading}>About</Text>
-        <Text style={styles.body}>Movie Recommender v{APP_VERSION}</Text>
+        <Text style={styles.body}>Movie Deck v{APP_VERSION}</Text>
         <Text style={styles.buildStamp} selectable>
           Build {Updates.updateId ? Updates.updateId.slice(0, 8) : 'dev'}
           {Updates.createdAt ? ` · ${new Date(Updates.createdAt).toLocaleString()}` : ''}

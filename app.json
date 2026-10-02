@@ -18,7 +18,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.harpreetmails.movieapp"
     },
-    "name": "Movie Recommender",
+    "name": "Movie Deck",
     "orientation": "portrait",
     "plugins": [
       "expo-router",
@@ -39,7 +39,7 @@
       "resizeMode": "contain"
     },
     "userInterfaceStyle": "dark",
-    "version": "1.6.25",
+    "version": "1.6.26",
     "web": {
       "favicon": "./assets/favicon.png"
     },
