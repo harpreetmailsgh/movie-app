@@ -1,10 +1,10 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator, Alert,
 } from 'react-native';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../lib/store';
 import { bestMatch, bestMatchKeyless, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
 import { parseYouTubeId, fetchYouTubeTitle } from '../lib/youtube';
@@ -17,6 +17,10 @@ const SEARCH_DEBOUNCE_MS = 500;
 
 export default function ImportScreen() {
   const { importReel, importing, importMessage, settings, addMovie } = useStore();
+  // Deep link from the iOS share extension: movierecommender://import?sharedUrl=...
+  const { sharedUrl } = useLocalSearchParams<{ sharedUrl?: string }>();
+  /** After a share-extension import, land on the Watchlist instead of going back. */
+  const doneFromShare = () => (sharedUrl ? router.replace('/(tabs)') : router.back());
   const [url, setUrl] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TmdbMatch[]>([]);
@@ -121,8 +125,8 @@ export default function ImportScreen() {
     setFbFailed(false);
   };
 
-  const doFetchFb = async () => {
-    const link = url.trim();
+  const doFetchFb = async (linkOverride?: string) => {
+    const link = (linkOverride ?? url).trim();
     if (!link) return;
     const runId = ++fbRunRef.current;
     setFbFailed(false);
@@ -139,7 +143,7 @@ export default function ImportScreen() {
           : savedForReview.length
             ? `Saved “${savedForReview.join('”, “')}” — couldn't validate the title.`
             : 'Saved to your Watchlist — couldn\'t identify the movie.';
-      Alert.alert('Fetch complete', message, [{ text: 'OK', onPress: () => router.back() }]);
+      Alert.alert('Fetch complete', message, [{ text: 'OK', onPress: doneFromShare }]);
     } else {
       // Error case: show the store's specific message inline, keep the link for editing.
       setFbFailed(true);
@@ -154,8 +158,8 @@ export default function ImportScreen() {
   };
 
   /** YouTube import: oEmbed title (caption-first step), then TMDB/keyless match. */
-  const doFetchYt = async () => {
-    const link = ytUrl.trim();
+  const doFetchYt = async (linkOverride?: string) => {
+    const link = (linkOverride ?? ytUrl).trim();
     if (!link) return;
     const runId = ++ytRunRef.current;
     setYtMessage(null);
@@ -203,7 +207,7 @@ export default function ImportScreen() {
         if (runId !== ytRunRef.current) return;
         setYtUrl('');
         Alert.alert('Fetch complete', `“${match.title}” added to watchlist.`, [
-          { text: 'OK', onPress: () => router.back() },
+          { text: 'OK', onPress: doneFromShare },
         ]);
         return;
       }
@@ -216,7 +220,7 @@ export default function ImportScreen() {
       if (runId !== ytRunRef.current) return;
       setYtUrl('');
       Alert.alert('Fetch complete', `Saved “${info.title}” — couldn't validate the title.`, [
-        { text: 'OK', onPress: () => router.back() },
+        { text: 'OK', onPress: doneFromShare },
       ]);
     } finally {
       setYtWorking(false);
@@ -231,8 +235,8 @@ export default function ImportScreen() {
   };
 
   /** TikTok import: oEmbed caption (caption-first step), then TMDB/keyless match. */
-  const doFetchTt = async () => {
-    const link = ttUrl.trim();
+  const doFetchTt = async (linkOverride?: string) => {
+    const link = (linkOverride ?? ttUrl).trim();
     if (!link) return;
     const runId = ++ttRunRef.current;
     setTtMessage(null);
@@ -280,7 +284,7 @@ export default function ImportScreen() {
         if (runId !== ttRunRef.current) return;
         setTtUrl('');
         Alert.alert('Fetch complete', `“${match.title}” added to watchlist.`, [
-          { text: 'OK', onPress: () => router.back() },
+          { text: 'OK', onPress: doneFromShare },
         ]);
         return;
       }
@@ -293,12 +297,42 @@ export default function ImportScreen() {
       if (runId !== ttRunRef.current) return;
       setTtUrl('');
       Alert.alert('Fetch complete', `Saved “${info.caption}” — couldn't validate the title.`, [
-        { text: 'OK', onPress: () => router.back() },
+        { text: 'OK', onPress: doneFromShare },
       ]);
     } finally {
       setTtWorking(false);
     }
   };
+
+  // ---- Share-extension deep link --------------------------------------------
+  // The iOS share extension opens movierecommender://import?sharedUrl=... .
+  // Route the link to the right card and run its import automatically —
+  // the whole flow the user asked for: share in the reel app, movie saved.
+  const sharedHandled = useRef(false);
+  useEffect(() => {
+    if (sharedHandled.current || !sharedUrl) return;
+    sharedHandled.current = true;
+    const link = String(sharedUrl);
+    if (isTikTokUrl(link)) {
+      // One-shot deep-link init: seeding the card inputs from the incoming URL.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTtUrl(link);
+      doFetchTt(link);
+    } else {
+      let host = '';
+      try { host = new URL(link).hostname.toLowerCase(); } catch { /* fall through to reel card */ }
+      if (host.includes('youtube.com') || host.includes('youtu.be')) {
+        setYtUrl(link);
+        doFetchYt(link);
+      } else {
+        setUrl(link);
+        doFetchFb(link);
+      }
+    }
+    // The fetch functions are plain per-render closures; the guard ref above
+    // keeps this a one-shot, so no dependency tracking is needed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedUrl]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -381,7 +415,7 @@ export default function ImportScreen() {
           />
           <Pressable
             style={[styles.fetchButton, importing && styles.buttonDisabled]}
-            onPress={doFetchFb}
+            onPress={() => doFetchFb()}
             disabled={importing || !url.trim()}
           >
             {importing ? (
@@ -422,7 +456,7 @@ export default function ImportScreen() {
           />
           <Pressable
             style={[styles.fetchButton, ytWorking && styles.buttonDisabled]}
-            onPress={doFetchYt}
+            onPress={() => doFetchYt()}
             disabled={ytWorking || !ytUrl.trim()}
           >
             {ytWorking ? (
@@ -463,7 +497,7 @@ export default function ImportScreen() {
           />
           <Pressable
             style={[styles.fetchButton, ttWorking && styles.buttonDisabled]}
-            onPress={doFetchTt}
+            onPress={() => doFetchTt()}
             disabled={ttWorking || !ttUrl.trim()}
           >
             {ttWorking ? (

@@ -21,7 +21,15 @@
     "name": "Movie Recommender",
     "orientation": "portrait",
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-share-extension",
+        {
+          "activationRules": [{ "type": "url", "max": 1 }, { "type": "text" }],
+          "backgroundColor": { "red": 0, "green": 0, "blue": 0, "alpha": 1 },
+          "height": 300
+        }
+      ]
     ],
     "scheme": "movierecommender",
     "slug": "movie-app",
@@ -31,7 +39,7 @@
       "resizeMode": "contain"
     },
     "userInterfaceStyle": "dark",
-    "version": "1.6.24",
+    "version": "1.6.25",
     "web": {
       "favicon": "./assets/favicon.png"
     },
