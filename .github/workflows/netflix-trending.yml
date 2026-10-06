@@ -2,7 +2,10 @@ name: Netflix trending data
 
 on:
   schedule:
-    - cron: '0 15 * * 2'  # Tuesdays 15:00 UTC, after Netflix's Tuesday publish
+    - cron: '7 19 * * 2'  # Tuesdays 19:07 UTC (3:07 PM EDT): after Netflix's Tuesday
+      # TSV publish (verified 2026-10-06 the new week's data wasn't live at 16:06 UTC,
+      # so 15:00 UTC fired before the data existed). :07 avoids GitHub's top-of-hour
+      # scheduler crush, which was delaying runs by hours.
   workflow_dispatch:
 
 # The push step writes new JSONs to the trending-data branch via GITHUB_TOKEN.
