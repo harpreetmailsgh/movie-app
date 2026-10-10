@@ -16,7 +16,8 @@
     "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.harpreetmails.moviedeck"
+      "bundleIdentifier": "com.harpreetmails.moviedeck",
+      "deploymentTarget": "16.4"
     },
     "name": "Movie Deck",
     "orientation": "portrait",
