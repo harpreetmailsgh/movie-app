@@ -43,8 +43,7 @@
           },
           "height": 300
         }
-      ],
-      "./plugins/withAllTargetsDeploymentTarget.js"
+      ]
     ],
     "scheme": "movierecommender",
     "slug": "movie-app",
