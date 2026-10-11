@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet, ActivityIndicator, Pressable, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Pressable, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -11,6 +11,7 @@ import TilesView from '../../components/TilesView';
 import ListView from '../../components/ListView';
 import { useSharedFilters, applyFilters } from '../../lib/sharedFilters';
 import FilterBar, { filtersActive } from '../../components/FilterBar';
+import MovieProgressBar from '../../components/MovieProgressBar';
 
 export default function SeenScreen() {
   const {
@@ -99,7 +100,7 @@ export default function SeenScreen() {
   if (!ready) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color="#fff" />
+        <MovieProgressBar indeterminate size="small" />
         <Text style={styles.dim}>Loading your seen movies…</Text>
       </View>
     );

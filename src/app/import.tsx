@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator, Alert,
+  View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator,
 } from 'react-native';
+import { FontAwesome6 } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../lib/store';
 import { bestMatch, bestMatchKeyless, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
@@ -9,6 +10,7 @@ import { parseYouTubeId, fetchYouTubeTitle } from '../lib/youtube';
 import { isTikTokUrl, fetchTikTokInfo } from '../lib/tiktok';
 import { posterUrl } from '../lib/types';
 import ClapboardPoster from '../components/ClapboardPoster';
+import MovieProgressBar from '../components/MovieProgressBar';
 
 const FIELD_BG = '#E9E9EE';
 const SEARCH_DEBOUNCE_MS = 500;
@@ -30,6 +32,8 @@ export default function ImportScreen() {
   const [ttWorking, setTtWorking] = useState(false);
   const [ttMessage, setTtMessage] = useState<string | null>(null);
   const [fbFailed, setFbFailed] = useState(false);
+  /** Inline results card data — replaces the old Alert.alert popup. */
+  const [fetchResults, setFetchResults] = useState<{ title: string; unverified: boolean }[] | null>(null);
 
   // Run ids: editing a field mid-run cancels that run's completion UI.
   const fbRunRef = useRef(0);
@@ -126,6 +130,7 @@ export default function ImportScreen() {
     setFbFailed(false);
     setYtMessage(null);
     setTtMessage(null);
+    setFetchResults(null);
   };
 
   /** Route one link to the matching import — same routing as the share-extension deep link. */
@@ -153,20 +158,17 @@ export default function ImportScreen() {
     if (!target) return;
     const runId = ++fbRunRef.current;
     setFbFailed(false);
+    setFetchResults(null);
     const outcome = await importReel(target);
     if (runId !== fbRunRef.current) return; // user edited mid-run — ignore stale completion
     if (outcome.ok) {
       setLink('');
       const { added, alreadyHave, savedForReview } = outcome;
-      const message = added.length
-        ? `“${added.join('”, “')}” added to watchlist.` +
-          (alreadyHave.length ? ` Already in your list: “${alreadyHave.join('”, “')}”.` : '')
-        : alreadyHave.length
-          ? `Already in your watchlist: “${alreadyHave.join('”, “')}”.`
-          : savedForReview.length
-            ? `Saved “${savedForReview.join('”, “')}” — couldn't validate the title.`
-            : 'Saved to your Watchlist — couldn\'t identify the movie.';
-      Alert.alert('Fetch complete', message, [{ text: 'OK', onPress: doneFromShare }]);
+      setFetchResults([
+        ...added.map((t) => ({ title: t, unverified: false })),
+        ...alreadyHave.map((t) => ({ title: t, unverified: false })),
+        ...savedForReview.map((t) => ({ title: t, unverified: true })),
+      ].slice(0, 10));
     } else {
       // Error case: show the store's specific message inline, keep the link for editing.
       setFbFailed(true);
@@ -180,6 +182,7 @@ export default function ImportScreen() {
     if (!target) return;
     const runId = ++ytRunRef.current;
     setYtMessage(null);
+    setFetchResults(null);
     if (!parseYouTubeId(target)) {
       setYtMessage("That doesn't look like a YouTube link — use a watch, Shorts, or youtu.be link.");
       return;
@@ -223,9 +226,7 @@ export default function ImportScreen() {
         });
         if (runId !== ytRunRef.current) return;
         setLink('');
-        Alert.alert('Fetch complete', `“${match.title}” added to watchlist.`, [
-          { text: 'OK', onPress: doneFromShare },
-        ]);
+        setFetchResults([{ title: match.title, unverified: false }]);
         return;
       }
       addMovie({
@@ -236,9 +237,7 @@ export default function ImportScreen() {
       });
       if (runId !== ytRunRef.current) return;
       setLink('');
-      Alert.alert('Fetch complete', `Saved “${info.title}” — couldn't validate the title.`, [
-        { text: 'OK', onPress: doneFromShare },
-      ]);
+      setFetchResults([{ title: info.title, unverified: true }]);
     } finally {
       setYtWorking(false);
     }
@@ -251,6 +250,7 @@ export default function ImportScreen() {
     if (!target) return;
     const runId = ++ttRunRef.current;
     setTtMessage(null);
+    setFetchResults(null);
     if (!isTikTokUrl(target)) {
       setTtMessage("That doesn't look like a TikTok link — use a tiktok.com or vm.tiktok.com link.");
       return;
@@ -294,9 +294,7 @@ export default function ImportScreen() {
         });
         if (runId !== ttRunRef.current) return;
         setLink('');
-        Alert.alert('Fetch complete', `“${match.title}” added to watchlist.`, [
-          { text: 'OK', onPress: doneFromShare },
-        ]);
+        setFetchResults([{ title: match.title, unverified: false }]);
         return;
       }
       addMovie({
@@ -307,9 +305,7 @@ export default function ImportScreen() {
       });
       if (runId !== ttRunRef.current) return;
       setLink('');
-      Alert.alert('Fetch complete', `Saved “${info.caption}” — couldn't validate the title.`, [
-        { text: 'OK', onPress: doneFromShare },
-      ]);
+      setFetchResults([{ title: info.caption, unverified: true }]);
     } finally {
       setTtWorking(false);
     }
@@ -393,7 +389,13 @@ export default function ImportScreen() {
 
       <View style={styles.section}>
         <Text style={styles.heading}>🔗&nbsp; Add from a link</Text>
-        <Text style={styles.body}>Paste a TikTok, YouTube, Facebook, or Instagram link — the right import runs automatically.</Text>
+        <View style={styles.brandIcons}>
+          <FontAwesome6 name="tiktok" size={24} color="#fff" />
+          <FontAwesome6 name="youtube" size={24} color="#fff" />
+          <FontAwesome6 name="facebook-f" size={24} color="#fff" />
+          <FontAwesome6 name="instagram" size={24} color="#fff" />
+        </View>
+        <Text style={styles.body}>Paste a link — import runs automatically.</Text>
         <View style={styles.fetchRow}>
           <TextInput
             style={[styles.input, styles.inputFlex]}
@@ -409,16 +411,30 @@ export default function ImportScreen() {
             onPress={submitLink}
             disabled={anyWorking || !link.trim()}
           >
-            {anyWorking ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={styles.fetchButtonText}>Fetch</Text>
-            )}
+            <Text style={styles.fetchButtonText}>Fetch</Text>
           </Pressable>
         </View>
+        {anyWorking && (
+          <View style={styles.progressWrap}>
+            <MovieProgressBar indeterminate />
+          </View>
+        )}
         {fbFailed && !!importMessage && <Text style={styles.error}>{importMessage}</Text>}
         {!!ytMessage && <Text style={styles.error}>{ytMessage}</Text>}
         {!!ttMessage && <Text style={styles.error}>{ttMessage}</Text>}
+        {fetchResults && fetchResults.length > 0 && (
+          <View style={styles.resultsCard}>
+            <Text style={styles.resultsHeader}>{fetchResults.length} titles fetched</Text>
+            {fetchResults.map((r, i) => (
+              <Text key={`${i}-${r.title}`} style={styles.resultsRow}>
+                {i + 1}. {r.title}{r.unverified ? ' (unverified)' : ''}
+              </Text>
+            ))}
+            <Pressable style={styles.resultsDone} onPress={doneFromShare}>
+              <Text style={styles.resultsDoneText}>Done</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     </ScrollView>
   );
@@ -443,6 +459,18 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.5 },
   fetchButtonText: { color: '#000', fontSize: 15, fontWeight: '700' },
+  brandIcons: { flexDirection: 'row', gap: 20, marginTop: 12, marginBottom: 12 },
+  progressWrap: { marginTop: 12 },
+  resultsCard: {
+    backgroundColor: '#1c1c1e', borderRadius: 14, padding: 16, marginTop: 14,
+  },
+  resultsHeader: { color: '#fff', fontSize: 16, fontWeight: '800', marginBottom: 10 },
+  resultsRow: { color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 24 },
+  resultsDone: {
+    backgroundColor: '#fff', borderRadius: 12, paddingVertical: 12,
+    alignItems: 'center', marginTop: 14,
+  },
+  resultsDoneText: { color: '#000', fontSize: 15, fontWeight: '700' },
   error: { color: '#ff453a', fontSize: 14, marginTop: 12, lineHeight: 20 },
   loader: { marginTop: 16 },
   result: {

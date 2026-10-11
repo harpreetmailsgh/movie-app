@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, Image, Pressable, StyleSheet, Linking, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Image, Pressable, StyleSheet, Linking, TextInput, Alert } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useStore } from '../../lib/store';
 import { getFeedItem } from '../../lib/feedCache';
@@ -7,6 +7,7 @@ import { posterUrl, tmdbUrl } from '../../lib/types';
 import { resolveTrailerForTitle } from '../../lib/tmdb';
 import { firstYoutubeResultId } from '../../lib/youtube';
 import ClapboardPoster from '../../components/ClapboardPoster';
+import MovieProgressBar from '../../components/MovieProgressBar';
 
 export default function MovieDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -99,7 +100,7 @@ export default function MovieDetailScreen() {
       <View style={styles.actionRow}>
         <Pressable style={styles.trailerBtn} onPress={openTrailer} disabled={resolvingTrailer}>
           {resolvingTrailer ? (
-            <ActivityIndicator color="#fff" size="small" />
+            <MovieProgressBar indeterminate size="small" />
           ) : (
             <Text style={styles.trailerBtnText}>Trailer ▶</Text>
           )}

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,7 @@ import TilesView from '../../components/TilesView';
 import ListView from '../../components/ListView';
 import { useSharedFilters, applyFilters } from '../../lib/sharedFilters';
 import FilterBar from '../../components/FilterBar';
+import MovieProgressBar from '../../components/MovieProgressBar';
 
 export default function WatchlistScreen() {
   const {
@@ -91,7 +92,7 @@ export default function WatchlistScreen() {
   if (!ready) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color="#fff" />
+        <MovieProgressBar indeterminate size="small" />
         <Text style={styles.dim}>Loading your watchlist…</Text>
       </View>
     );

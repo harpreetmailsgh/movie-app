@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Image, Pressable, StyleSheet, Linking, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, Image, Pressable, StyleSheet, Linking, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Movie, posterUrl, tmdbUrl } from '../lib/types';
 import { resolveTrailerForTitle } from '../lib/tmdb';
 import { firstYoutubeResultId } from '../lib/youtube';
 import { useStore } from '../lib/store';
 import ClapboardPoster from './ClapboardPoster';
+import MovieProgressBar from './MovieProgressBar';
 
 export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTap?: () => void }) {
   const { settings, revalidateTitle, deleteMovie, playTrailer } = useStore();
@@ -123,7 +124,7 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
               {!!sourceUrl && <Text style={styles.linkDot}>·</Text>}
               <Pressable onPress={openTrailer} hitSlop={8} style={styles.trailerBtn} disabled={resolvingTrailer}>
                 {resolvingTrailer ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                  <MovieProgressBar indeterminate size="small" />
                 ) : (
                   <Text style={styles.trailerBtnText}>Trailer ▶</Text>
                 )}

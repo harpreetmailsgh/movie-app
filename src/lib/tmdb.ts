@@ -159,7 +159,7 @@ export async function bestMatches(text: string, apiKey?: string): Promise<TmdbMa
   const found: TmdbMatch[] = [];
   const seen = new Set<string>();
   // "Label: value" lines are caption metadata, not titles — skip them.
-  const list = candidates(text).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)).slice(0, 12);
+  const list = candidates(text).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)).slice(0, 10);
   // Caption-level hint ("series"/"movie") breaks exact movie-vs-tv title ties.
   const tvHint = /\b(series|shows?|seasons?|episodes?)\b/i.test(text);
   const movieHint = /\bfilms?\b|\bmovies?\b/i.test(text);
