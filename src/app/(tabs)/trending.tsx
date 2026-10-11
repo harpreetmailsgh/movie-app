@@ -132,7 +132,7 @@ export default function TrendingScreen() {
     if (error) {
       return (
         <View style={styles.center}>
-          <Text style={styles.dim}>Couldn&apos;t load trending movies in your location. Please try again later</Text>
+          <Text style={styles.dim}>Couldn&apos;t load trending movies in your location. Please try again later.</Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Retry"
