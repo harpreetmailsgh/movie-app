@@ -46,7 +46,7 @@ index 3816339..27f41d1 100644
          PRODUCT_BUNDLE_IDENTIFIER: `"${bundleIdentifier}"`,
          PRODUCT_NAME: `"${targetName}"`,
 diff --git a/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift b/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift
-index 7f9f6d8..79614d6 100644
+index 7f9f6d8..f65bb41 100644
 --- a/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift
 +++ b/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift
 @@ -1,10 +1,7 @@
@@ -61,7 +61,7 @@ index 7f9f6d8..79614d6 100644
  #if canImport(FirebaseCore)
  import FirebaseCore
  #endif
-@@ -12,313 +9,250 @@ import FirebaseCore
+@@ -12,60 +9,29 @@ import FirebaseCore
  import FirebaseAuth
  #endif
  
@@ -69,7 +69,11 @@ index 7f9f6d8..79614d6 100644
 -  override func sourceURL(for bridge: RCTBridge) -> URL? {
 -    self.bundleURL()
 -  }
--  
++// Headless share extension: extract the shared URL and hand it off to the
++// host app via deep link, then dismiss. No UI is ever shown — this replaces
++// the previous JS-driven UI which rendered as a blank black screen.
++class ShareExtensionViewController: UIViewController {
+ 
 -  override func bundleURL() -> URL? {
 -#if DEBUG
 -    let settings = RCTBundleURLProvider.sharedSettings()
@@ -92,11 +96,9 @@ index 7f9f6d8..79614d6 100644
 -#endif
 -  }
 -}
--
-+// Headless share extension: extract the shared URL and hand it off to the
-+// host app via deep link, then dismiss. No UI is ever shown — this replaces
-+// the previous JS-driven UI which rendered as a blank black screen.
- class ShareExtensionViewController: UIViewController {
++  // MARK: - Diagnostic state (v1.6.27)
+ 
+-class ShareExtensionViewController: UIViewController {
 -  private let loadingIndicator = UIActivityIndicatorView(style: .large)
 -  var reactNativeFactory: RCTReactNativeFactory?
 -  var reactNativeFactoryDelegate: RCTReactNativeFactoryDelegate?
@@ -106,18 +108,6 @@ index 7f9f6d8..79614d6 100644
 -    print("🧹 ShareExtensionViewController deinit")
 -    cleanupAfterClose()
 -  }
--  
--  override func viewWillDisappear(_ animated: Bool) {
--    super.viewWillDisappear(animated)
--    // Start cleanup earlier to ensure proper surface teardown
--    if isBeingDismissed {
--      cleanupAfterClose()
--    }
--  }
--  
-+
-+  // MARK: - Diagnostic state (v1.6.27)
-+
 +  /// Set the first time `finish` runs so collection completion and the 5s
 +  /// timeout can never double-dismiss.
 +  private var didFinish = false
@@ -126,10 +116,17 @@ index 7f9f6d8..79614d6 100644
 +  private var openResolved = false
 +  /// Share payload written by `getShareData`; mutated only on the main queue.
 +  private var collected: [String: Any] = [:]
-+
+ 
+-  override func viewWillDisappear(_ animated: Bool) {
+-    super.viewWillDisappear(animated)
+-    // Start cleanup earlier to ensure proper surface teardown
+-    if isBeingDismissed {
+-      cleanupAfterClose()
+-    }
+-  }
 +  private var progressSpinner: UIActivityIndicatorView?
 +  private var progressLabel: UILabel?
-+
+ 
    override func viewDidLoad() {
      super.viewDidLoad()
 -    setupLoadingIndicator()
@@ -137,15 +134,15 @@ index 7f9f6d8..79614d6 100644
 -    
 -    // Set the contentScaleFactor for the main view of this view controller
 -    self.view.contentScaleFactor = UIScreen.main.scale
--    
 +    slog("viewDidLoad entry")
-+
++    slog("CACHE_BUST_20261011_1535")
+ 
  #if canImport(FirebaseCore)
      if Bundle.main.object(forInfoDictionaryKey: "WithFirebase") as? Bool ?? false {
-       FirebaseApp.configure()
+@@ -73,223 +39,190 @@ class ShareExtensionViewController: UIViewController {
      }
  #endif
--    
+ 
 -    loadReactNativeContent()
 -    setupNotificationCenterObserver()
 -  }
@@ -155,62 +152,36 @@ index 7f9f6d8..79614d6 100644
 -    // we need to clean up when the view is closed via a swipe
 -    cleanupAfterClose()
 -  }
--  
++    slog(extensionContext == nil ? "extensionContext nil" : "extensionContext ok")
+ 
 -  func close() {
 -    self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
 -    // we need to clean up when the view is closed via the close() method in react native
 -    cleanupAfterClose()
-+
-+    slog(extensionContext == nil ? "extensionContext nil" : "extensionContext ok")
-+
+-  }
 +    view.backgroundColor = .systemBackground
-+
-+    let spinner = UIActivityIndicatorView(style: .large)
-+    spinner.translatesAutoresizingMaskIntoConstraints = false
-+    spinner.startAnimating()
-+    view.addSubview(spinner)
-+
-+    let statusLabel = UILabel()
-+    statusLabel.translatesAutoresizingMaskIntoConstraints = false
-+    statusLabel.text = "Sending to Movie Deck…"
-+    statusLabel.textAlignment = .center
-+    statusLabel.numberOfLines = 0
-+    view.addSubview(statusLabel)
-+
-+    NSLayoutConstraint.activate([
-+      spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-+      spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -20),
-+      statusLabel.topAnchor.constraint(equalTo: spinner.bottomAnchor, constant: 16),
-+      statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-+      statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 24),
-+      statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24),
-+    ])
-+
-+    progressSpinner = spinner
-+    progressLabel = statusLabel
-+
-+    getShareData()
-+
-+    // Diagnostic timeout: if a provider never responds, the sheet must still
-+    // dismiss. `finish` is idempotent, so this is a no-op when collection
-+    // already completed.
-+    DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-+      self?.slog("timeout fired")
-+      self?.finish(timedOut: true)
-+    }
-   }
--  
+ 
 -  private func loadReactNativeContent() {
 -    getShareData { [weak self] sharedData in
 -      guard let self = self else {
 -        print("❌ Self was deallocated")
 -        return
 -      }
--      
++    let spinner = UIActivityIndicatorView(style: .large)
++    spinner.translatesAutoresizingMaskIntoConstraints = false
++    spinner.startAnimating()
++    view.addSubview(spinner)
+ 
 -      reactNativeFactoryDelegate = ReactNativeDelegate()
 -      reactNativeFactoryDelegate!.dependencyProvider = RCTAppDependencyProvider()
 -      reactNativeFactory = RCTReactNativeFactory(delegate: reactNativeFactoryDelegate!)
--      
++    let statusLabel = UILabel()
++    statusLabel.translatesAutoresizingMaskIntoConstraints = false
++    statusLabel.text = "Sending to Movie Deck…"
++    statusLabel.textAlignment = .center
++    statusLabel.numberOfLines = 0
++    view.addSubview(statusLabel)
+ 
 -      var initialProps = sharedData ?? [:]
 -      
 -      // Capture current view's properties before replacing it
@@ -235,37 +206,36 @@ index 7f9f6d8..79614d6 100644
 -          withModuleName: "shareExtension",
 -          initialProperties: initialProps
 -      )
--      
++    NSLayoutConstraint.activate([
++      spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
++      spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -20),
++      statusLabel.topAnchor.constraint(equalTo: spinner.bottomAnchor, constant: 16),
++      statusLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
++      statusLabel.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 24),
++      statusLabel.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24),
++    ])
+ 
 -      let backgroundFromInfoPlist = Bundle.main.object(forInfoDictionaryKey: "ShareExtensionBackgroundColor") as? [String: CGFloat]
 -      let heightFromInfoPlist = Bundle.main.object(forInfoDictionaryKey: "ShareExtensionHeight") as? CGFloat
--      
++    progressSpinner = spinner
++    progressLabel = statusLabel
+ 
 -      configureRootView(reactNativeRootView, withBackgroundColorDict: backgroundFromInfoPlist, withHeight: heightFromInfoPlist)
 -      view.addSubview(reactNativeRootView)
--
++    getShareData()
+ 
 -      // Hide loading indicator once React content is ready
 -      self.loadingIndicator.stopAnimating()
 -      self.loadingIndicator.removeFromSuperview()
-+
-+  // MARK: - File logging (diagnostic infra)
-+
-+  /// Appends a timestamped line to `share-extension.log` at the root of the
-+  /// App Group container, ring-capped at ~200 lines. Never crashes: if the
-+  /// container URL is unavailable it silently does nothing.
-+  private func slog(_ message: String) {
-+    let groupId = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String ?? "group.com.harpreetmails.moviedeck"
-+    guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId) else { return }
-+    let logURL = containerURL.appendingPathComponent("share-extension.log")
-+    let timestamp = ISO8601DateFormatter().string(from: Date())
-+    var lines: [String] = []
-+    if let existing = try? String(contentsOf: logURL, encoding: .utf8) {
-+      lines = existing.components(separatedBy: .newlines).filter { !$0.isEmpty }
++    // Diagnostic timeout: if a provider never responds, the sheet must still
++    // dismiss. `finish` is idempotent, so this is a no-op when collection
++    // already completed.
++    DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
++      self?.slog("timeout fired")
++      self?.finish(timedOut: true)
      }
-+    lines = Array(lines.suffix(199))
-+    lines.append("\(timestamp) \(message)")
-+    let content = lines.joined(separator: "\n") + "\n"
-+    try? content.write(to: logURL, atomically: true, encoding: .utf8)
    }
--  
+ 
 -  private func configureRootView(_ rootView: UIView, withBackgroundColorDict dict: [String: CGFloat]?, withHeight: CGFloat?) {
 -    rootView.backgroundColor = backgroundColor(from: dict)
 -
@@ -282,40 +252,25 @@ index 7f9f6d8..79614d6 100644
 -        width: screenBounds.width,
 -        height: withHeight
 -      )
-+
-+  // MARK: - Finish path (collection completion and timeout share this)
-+
-+  /// Single finish path. Extracts the URL from `collected` and opens the
-+  /// deep link; `completeRequest` fires only in the open's completion handler
-+  /// (or the 3s fallback timer). Timeout/no-URL dismisses silently — there is
-+  /// no blocking failure dialog (v1.6.28's invisible OK dialog froze YouTube).
-+  private func finish(timedOut: Bool) {
-+    guard !didFinish else { return }
-+    didFinish = true
-+
-+    // Prefer the directly shared URL; otherwise take the first URL in the shared text.
-+    var urlString: String?
-+    if let directURL = collected["url"] as? String, !directURL.isEmpty {
-+      urlString = directURL
-+    } else if let text = collected["text"] as? String {
-+      urlString = firstURL(in: text)
-+    }
-+
-+    if let urlString = urlString,
-+       let encoded = urlString.addingPercentEncoding(withAllowedCharacters: .shareExtensionQueryValueAllowed),
-+       let deepLink = URL(string: "movierecommender://import?sharedUrl=" + encoded) {
-+      // Log the host only — never the full URL (privacy).
-+      slog("extracted host=\(URL(string: urlString)?.host ?? "none")")
-+      openDeepLink(deepLink)
-     } else {
+-    } else {
 -      rootView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 -      frame = screenBounds
-+      // Never open the app with nothing usable — dismiss silently.
-+      slog("open deepLink no: \(timedOut ? "timed out with nothing usable" : "no URL extracted")")
-+      dismissExtension()
++  // MARK: - File logging (diagnostic infra)
++
++  /// Appends a timestamped line to `share-extension.log` at the root of the
++  /// App Group container, ring-capped at ~200 lines. Never crashes: if the
++  /// container URL is unavailable it silently does nothing.
++  private func slog(_ message: String) {
++    let groupId = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String ?? "group.com.harpreetmails.moviedeck"
++    guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId) else { return }
++    let logURL = containerURL.appendingPathComponent("share-extension.log")
++    let timestamp = ISO8601DateFormatter().string(from: Date())
++    var lines: [String] = []
++    if let existing = try? String(contentsOf: logURL, encoding: .utf8) {
++      lines = existing.components(separatedBy: .newlines).filter { !$0.isEmpty }
      }
 -    rootView.frame = frame
-   }
+-  }
 -  
 -  private func setupLoadingIndicator() {
 -    view.addSubview(loadingIndicator)
@@ -325,8 +280,12 @@ index 7f9f6d8..79614d6 100644
 -      loadingIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor)
 -    ])
 -    loadingIndicator.startAnimating()
--  }
--  
++    lines = Array(lines.suffix(199))
++    lines.append("\(timestamp) \(message)")
++    let content = lines.joined(separator: "\n") + "\n"
++    try? content.write(to: logURL, atomically: true, encoding: .utf8)
+   }
+ 
 -  private func openHostApp(path: String?) {
 -    guard let scheme = Bundle.main.object(forInfoDictionaryKey: "HostAppScheme") as? String else { return }
 -    var urlComponents = URLComponents()
@@ -348,10 +307,42 @@ index 7f9f6d8..79614d6 100644
 -        }
 -        urlComponents.queryItems = queryItems
 -      }
--      
++  // MARK: - Finish path (collection completion and timeout share this)
++
++  /// Single finish path. Extracts the URL from `collected` and opens the
++  /// deep link; `completeRequest` fires only in the open's completion handler
++  /// (or the 3s fallback timer). Timeout/no-URL dismisses silently — there is
++  /// no blocking failure dialog (v1.6.28's invisible OK dialog froze YouTube).
++  private func finish(timedOut: Bool) {
++    guard !didFinish else { return }
++    didFinish = true
++
++    // Prefer the directly shared URL; otherwise take the first URL in the shared text.
++    var urlString: String?
++    if let directURL = collected["url"] as? String, !directURL.isEmpty {
++      urlString = directURL
++    } else if let text = collected["text"] as? String {
++      urlString = firstURL(in: text)
++    }
+ 
 -      let pathWithSlashEnsured = pathWithoutQuery.hasPrefix("/") ? pathWithoutQuery : "/\(pathWithoutQuery)"
 -      urlComponents.path = pathWithSlashEnsured
-+
++    if let urlString = urlString,
++       let encoded = urlString.addingPercentEncoding(withAllowedCharacters: .shareExtensionQueryValueAllowed),
++       let deepLink = URL(string: "movierecommender://import?sharedUrl=" + encoded) {
++      // Log the host only — never the full URL (privacy).
++      slog("extracted host=\(URL(string: urlString)?.host ?? "none")")
++      openDeepLink(deepLink)
++    } else {
++      // Never open the app with nothing usable — dismiss silently.
++      slog("open deepLink no: \(timedOut ? "timed out with nothing usable" : "no URL extracted")")
++      dismissExtension()
+     }
++  }
+ 
+-    guard let url = urlComponents.url else { return }
+-    openURL(url)
+-    self.close()
 +  /// Opens the deep link, preferring the responder-chain `UIApplication.open`
 +  /// (the pre-Swift-rewrite approach that worked) with `extensionContext.open`
 +  /// as the fallback. `completeRequest` fires only in the open's completion
@@ -375,16 +366,11 @@ index 7f9f6d8..79614d6 100644
 +    } else {
 +      slog("open via extensionContext fallback")
 +      extensionContext?.open(deepLink, completionHandler: completion)
-     }
--    
--    guard let url = urlComponents.url else { return }
--    openURL(url)
--    self.close()
++    }
    }
--  
+ 
 -  @objc @discardableResult private func openURL(_ url: URL) -> Bool {
 -    // Method 1: Try responder chain to find UIApplication
-+
 +  /// Walks the responder chain from `self` to find `UIApplication`, then opens
 +  /// the URL. Returns false when no application was found. Restores the
 +  /// pre-Swift-rewrite approach that worked before commit 6cd4ba9.
@@ -396,8 +382,7 @@ index 7f9f6d8..79614d6 100644
 +        application.open(url, options: [:], completionHandler: completion)
          return true
        }
--      responder = responder?.next
-+      responder = responder?.next
+       responder = responder?.next
      }
 -
 -    // Method 2: Try selector-based approach as fallback
@@ -413,7 +398,7 @@ index 7f9f6d8..79614d6 100644
 -
      return false
    }
--  
+ 
 -  private func setupNotificationCenterObserver() {
 -    NotificationCenter.default.addObserver(forName: NSNotification.Name("close"), object: nil, queue: nil) { [weak self] _ in
 -      DispatchQueue.main.async {
@@ -430,7 +415,6 @@ index 7f9f6d8..79614d6 100644
 -        }
 -      }
 -    }
-+
 +  /// Removes the progress UI and dismisses the extension. Called only from the
 +  /// deep-link open completion handler, the 3s fallback timer, or the no-URL
 +  /// silent-dismiss path.
@@ -439,7 +423,7 @@ index 7f9f6d8..79614d6 100644
 +    slog("completeRequest called")
 +    extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
    }
--  
+ 
 -  private func cleanupAfterClose() {
 -    if isCleanedUp { return }
 -    isCleanedUp = true
@@ -457,7 +441,6 @@ index 7f9f6d8..79614d6 100644
 -    reactNativeFactoryDelegate = nil
 -    
 -    print("🧹 ShareExtensionViewController cleaned up")
-+
 +  private func removeProgressUI() {
 +    progressSpinner?.stopAnimating()
 +    progressSpinner?.removeFromSuperview()
@@ -465,7 +448,7 @@ index 7f9f6d8..79614d6 100644
 +    progressLabel?.removeFromSuperview()
 +    progressLabel = nil
    }
--  
+ 
 -  private func backgroundColor(from dict: [String: CGFloat]?) -> UIColor {
 -    guard let dict = dict else { return .systemBackground }
 -    let red = dict["red"] ?? 255.0
@@ -473,7 +456,6 @@ index 7f9f6d8..79614d6 100644
 -    let blue = dict["blue"] ?? 255.0
 -    let alpha = dict["alpha"] ?? 1
 -    return UIColor(red: red / 255.0, green: green / 255.0, blue: blue / 255.0, alpha: alpha)
-+
 +  // Returns the first `https?://...` URL found in `text`, or nil.
 +  private func firstURL(in text: String) -> String? {
 +    guard let regex = try? NSRegularExpression(pattern: "https?://[^\\s)]+", options: []) else { return nil }
@@ -482,9 +464,8 @@ index 7f9f6d8..79614d6 100644
 +          let matchRange = Range(match.range, in: text) else { return nil }
 +    return String(text[matchRange])
    }
--  
+ 
 -  private func getShareData(completion: @escaping ([String: Any]?) -> Void) {
-+
 +  private func getShareData() {
      guard let extensionItems = extensionContext?.inputItems as? [NSExtensionItem] else {
 -      completion(nil)
@@ -494,15 +475,12 @@ index 7f9f6d8..79614d6 100644
      }
 -    
 -    var sharedItems: [String: Any] = [:]
--    
 +    slog("inputItems count=\(extensionItems.count)")
-+
+ 
      let group = DispatchGroup()
--    
-+
+ 
      let fileManager = FileManager.default
--    
-+
+ 
 +    var attachmentIndex = 0
      for item in extensionItems {
        for provider in item.attachments ?? [] {
@@ -522,52 +500,22 @@ index 7f9f6d8..79614d6 100644
                if let sharedURL = urlItem as? URL {
                  if sharedURL.isFileURL {
                    // Screenshot overlay sends public.url (file URLs) instead of public.image
-                   let fileExtension = sharedURL.pathExtension.lowercased()
-                   let imageExtensions = ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "tif", "heic", "heif", "webp"]
-                   var isImage = imageExtensions.contains(fileExtension)
--                  
-+
-                   if !isImage, let resourceValues = try? sharedURL.resourceValues(forKeys: [.typeIdentifierKey]),
-                      let typeIdentifier = resourceValues.typeIdentifier {
-                     isImage = UTType(typeIdentifier)?.conforms(to: .image) ?? false
+@@ -303,12 +236,14 @@ class ShareExtensionViewController: UIViewController {
                    }
--                  
-+
+ 
                    guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String else {
 +                    self.slog("fileURL branch: AppGroup missing")
                      print("Could not find AppGroup in info.plist")
                      group.leave()
                      return
                    }
--                  
-+
+ 
                    guard let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else {
 +                    self.slog("fileURL branch: container URL missing")
                      print("Could not set up file manager container URL for app group")
                      group.leave()
                      return
-                   }
--                  
-+
-                   let tempFilePath = sharedURL.path
-                   let fileName = sharedURL.lastPathComponent
--                  
-+
-                   let sharedDataUrl = containerUrl.appendingPathComponent("sharedData")
--                  
-+
-                   if !fileManager.fileExists(atPath: sharedDataUrl.path) {
-                     do {
-                       try fileManager.createDirectory(at: sharedDataUrl, withIntermediateDirectories: true)
-@@ -326,24 +260,24 @@ class ShareExtensionViewController: UIViewController {
-                       print("Failed to create sharedData directory: \(error)")
-                     }
-                   }
--                  
-+
-                   let persistentURL = sharedDataUrl.appendingPathComponent(fileName)
--                  
-+
+@@ -332,18 +267,18 @@ class ShareExtensionViewController: UIViewController {
                    do {
                      try fileManager.copyItem(atPath: tempFilePath, toPath: persistentURL.path)
                      let key = isImage ? "images" : "files"
@@ -591,7 +539,7 @@ index 7f9f6d8..79614d6 100644
                  }
                }
                group.leave()
-@@ -351,250 +285,15 @@ class ShareExtensionViewController: UIViewController {
+@@ -351,250 +286,15 @@ class ShareExtensionViewController: UIViewController {
            }
          }
  
@@ -846,14 +794,12 @@ index 7f9f6d8..79614d6 100644
                }
                group.leave()
              }
-@@ -602,9 +301,19 @@ class ShareExtensionViewController: UIViewController {
-         }
+@@ -603,8 +303,18 @@ class ShareExtensionViewController: UIViewController {
        }
      }
--    
+ 
 -    group.notify(queue: .main) {
 -      completion(sharedItems.isEmpty ? nil : sharedItems)
-+
 +    group.notify(queue: .main) { [weak self] in
 +      self?.finish(timedOut: false)
      }
