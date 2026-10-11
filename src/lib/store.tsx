@@ -5,6 +5,7 @@ import { Movie, EntryStatus, Settings, ViewMode } from './types';
 import { seedMovies, backfillSeedData, normalizeMovie } from './seed';
 import { bestMatch, bestMatchKeyless, bestMatches, fetchImdbRating, fetchReelText, fetchReelTitle, searchTitlesKeyless, fetchKeylessMeta } from './tmdb';
 import { pickRandomTitles } from './testMovies';
+import { fetchFrameOcrText } from './frameOcr';
 import { useAuth } from './auth';
 import { getSupabase } from './supabase';
 import {
@@ -456,9 +457,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return empty;
       }
       // A reel can list several titles — identify and add every one of them.
-      const matches = settings.tmdbKey
+      let matches = settings.tmdbKey
         ? await bestMatches(text, settings.tmdbKey)
         : await bestMatches(text);
+      // Zero caption matches: fall back to reading on-screen text from video
+      // frames (backlog item 35). Skipped entirely when the caption matched,
+      // and fetchFrameOcrText is a no-op when the native module is absent
+      // (Expo Go), so the flow below behaves exactly as before.
+      if (matches.length === 0) {
+        setImportMessage('Reading video frames…');
+        const ocrText = await fetchFrameOcrText(clean);
+        if (ocrText) {
+          matches = settings.tmdbKey
+            ? await bestMatches(ocrText, settings.tmdbKey)
+            : await bestMatches(ocrText);
+        }
+      }
       const have = new Set<string>();
       for (const m of moviesRef.current) {
         for (const k of allKeys(m.title, m.year, m.mediaType, m.tmdbID)) have.add(k);
