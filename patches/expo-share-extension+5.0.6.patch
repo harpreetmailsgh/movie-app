@@ -12,7 +12,7 @@ index 3816339..27f41d1 100644
          PRODUCT_BUNDLE_IDENTIFIER: `"${bundleIdentifier}"`,
          PRODUCT_NAME: `"${targetName}"`,
 diff --git a/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift b/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift
-index 7f9f6d8..f8b92c2 100644
+index 7f9f6d8..f92162c 100644
 --- a/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift
 +++ b/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift
 @@ -1,10 +1,7 @@
@@ -116,8 +116,16 @@ index 7f9f6d8..f8b92c2 100644
 -      guard let self = self else {
 -        print("❌ Self was deallocated")
 -        return
--      }
--      
++      guard let self = self else { return }
++
++      // Prefer the directly shared URL; otherwise take the first URL in the shared text.
++      var urlString: String?
++      if let directURL = sharedData?["url"] as? String, !directURL.isEmpty {
++        urlString = directURL
++      } else if let text = sharedData?["text"] as? String {
++        urlString = self.firstURL(in: text)
+       }
+ 
 -      reactNativeFactoryDelegate = ReactNativeDelegate()
 -      reactNativeFactoryDelegate!.dependencyProvider = RCTAppDependencyProvider()
 -      reactNativeFactory = RCTReactNativeFactory(delegate: reactNativeFactoryDelegate!)
@@ -212,25 +220,23 @@ index 7f9f6d8..f8b92c2 100644
 -          return URLQueryItem(name: name, value: value)
 -        }
 -        urlComponents.queryItems = queryItems
-+      guard let self = self else { return }
-+
-+      // Prefer the directly shared URL; otherwise take the first URL in the shared text.
-+      var urlString: String?
-+      if let directURL = sharedData?["url"] as? String, !directURL.isEmpty {
-+        urlString = directURL
-+      } else if let text = sharedData?["text"] as? String {
-+        urlString = self.firstURL(in: text)
++      if let urlString = urlString,
++         let encoded = urlString.addingPercentEncoding(withAllowedCharacters: .shareExtensionQueryValueAllowed),
++         let deepLink = URL(string: "movierecommender://import?sharedUrl=" + encoded) {
++        self.extensionContext?.open(deepLink, completionHandler: nil)
        }
  
 -      let pathWithSlashEnsured = pathWithoutQuery.hasPrefix("/") ? pathWithoutQuery : "/\(pathWithoutQuery)"
 -      urlComponents.path = pathWithSlashEnsured
--    }
++      // Always dismiss — silently, even when there was no URL.
++      self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+     }
 -    
 -    guard let url = urlComponents.url else { return }
 -    openURL(url)
 -    self.close()
--  }
--  
+   }
+ 
 -  @objc @discardableResult private func openURL(_ url: URL) -> Bool {
 -    // Method 1: Try responder chain to find UIApplication
 -    var responder: UIResponder? = self
@@ -238,14 +244,10 @@ index 7f9f6d8..f8b92c2 100644
 -      if let application = responder as? UIApplication {
 -        application.open(url, options: [:], completionHandler: nil)
 -        return true
-+      if let urlString = urlString,
-+         let encoded = urlString.addingPercentEncoding(withAllowedCharacters: .shareExtensionQueryValueAllowed),
-+         let deepLink = URL(string: "movierecommender://import?sharedUrl=" + encoded) {
-+        self.extensionContext?.open(deepLink, completionHandler: nil)
-       }
+-      }
 -      responder = responder?.next
 -    }
- 
+-
 -    // Method 2: Try selector-based approach as fallback
 -    let selector = NSSelectorFromString("openURL:")
 -    var responder2: UIResponder? = self
@@ -255,13 +257,11 @@ index 7f9f6d8..f8b92c2 100644
 -        return true
 -      }
 -      responder2 = responder2?.next
-+      // Always dismiss — silently, even when there was no URL.
-+      self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
-     }
+-    }
 -
 -    return false
-   }
- 
+-  }
+-  
 -  private func setupNotificationCenterObserver() {
 -    NotificationCenter.default.addObserver(forName: NSNotification.Name("close"), object: nil, queue: nil) { [weak self] _ in
 -      DispatchQueue.main.async {
@@ -316,35 +316,258 @@ index 7f9f6d8..f8b92c2 100644
    }
  
    private func getShareData(completion: @escaping ([String: Any]?) -> Void) {
-@@ -389,11 +171,13 @@ class ShareExtensionViewController: UIViewController {
+@@ -351,21 +133,6 @@ class ShareExtensionViewController: UIViewController {
+           }
+         }
  
-               guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String else {
-                 print("Could not find AppGroup in info.plist")
-+                group.leave()
-                 return
-               }
- 
-               guard let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else {
-                 print("Could not set up file manager container URL for app group")
-+                group.leave()
-                 return
-               }
- 
-@@ -495,11 +279,13 @@ class ShareExtensionViewController: UIViewController {
- 
-               guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String else {
-                 print("Could not find AppGroup in info.plist")
-+                group.leave()
-                 return
-               }
- 
-               guard let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else {
-                 print("Could not set up file manager container URL for app group")
-+                group.leave()
-                 return
-               }
- 
-@@ -608,3 +394,13 @@ class ShareExtensionViewController: UIViewController {
+-        // Check for propertyList separately (not else-if) to handle preprocessing results
+-        // Safari provides both URL and propertyList when JavaScript preprocessing is enabled
+-        if provider.hasItemConformingToTypeIdentifier(UTType.propertyList.identifier) {
+-          group.enter()
+-          provider.loadItem(forTypeIdentifier: UTType.propertyList.identifier, options: nil) { (item, error) in
+-            DispatchQueue.main.async {
+-              if let itemDict = item as? NSDictionary,
+-                 let results = itemDict[NSExtensionJavaScriptPreprocessingResultsKey] as? NSDictionary {
+-                sharedItems["preprocessingResults"] = results
+-              }
+-              group.leave()
+-            }
+-          }
+-        }
+-
+         // Only check for plain text if no URL was found
+         if !provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) && provider.hasItemConformingToTypeIdentifier(UTType.text.identifier) {
+           group.enter()
+@@ -377,228 +144,6 @@ class ShareExtensionViewController: UIViewController {
+               group.leave()
+             }
+           }
+-        } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+-          group.enter()
+-          provider.loadItem(forTypeIdentifier: UTType.image.identifier, options: nil) { (imageItem, error) in
+-            DispatchQueue.main.async {
+-              
+-              // Ensure the array exists
+-              if sharedItems["images"] == nil {
+-                sharedItems["images"] = [String]()
+-              }
+-              
+-              guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String else {
+-                print("Could not find AppGroup in info.plist")
+-                return
+-              }
+-              
+-              guard let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else {
+-                print("Could not set up file manager container URL for app group")
+-                return
+-              }
+-              
+-              if let imageUri = imageItem as? NSURL {
+-                if let tempFilePath = imageUri.path {
+-                  let fileExtension = imageUri.pathExtension ?? "jpg"
+-                  let fileName = UUID().uuidString + "." + fileExtension
+-                  
+-                  let sharedDataUrl = containerUrl.appendingPathComponent("sharedData")
+-                  
+-                  if !fileManager.fileExists(atPath: sharedDataUrl.path) {
+-                    do {
+-                      try fileManager.createDirectory(at: sharedDataUrl, withIntermediateDirectories: true)
+-                    } catch {
+-                      print("Failed to create sharedData directory: \(error)")
+-                    }
+-                  }
+-                  
+-                  let persistentURL = sharedDataUrl.appendingPathComponent(fileName)
+-                  
+-                  do {
+-                    try fileManager.copyItem(atPath: tempFilePath, toPath: persistentURL.path)
+-                    if var videoArray = sharedItems["images"] as? [String] {
+-                      videoArray.append(persistentURL.absoluteString)
+-                      sharedItems["images"] = videoArray
+-                    }
+-                  } catch {
+-                    print("Failed to copy image: \(error)")
+-                  }
+-                }
+-              } else if let image = imageItem as? UIImage {
+-                // Handle UIImage if needed (e.g., save to disk and get the file path)
+-                if let imageData = image.jpegData(compressionQuality: 1.0) {
+-                  let fileName = UUID().uuidString + ".jpg"
+-                  
+-                  let sharedDataUrl = containerUrl.appendingPathComponent("sharedData")
+-                  
+-                  if !fileManager.fileExists(atPath: sharedDataUrl.path) {
+-                    do {
+-                      try fileManager.createDirectory(at: sharedDataUrl, withIntermediateDirectories: true)
+-                    } catch {
+-                      print("Failed to create sharedData directory: \(error)")
+-                    }
+-                  }
+-                  
+-                  let persistentURL = sharedDataUrl.appendingPathComponent(fileName)
+-                  
+-                  do {
+-                    try imageData.write(to: persistentURL)
+-                    if var imageArray = sharedItems["images"] as? [String] {
+-                      imageArray.append(persistentURL.absoluteString)
+-                      sharedItems["images"] = imageArray
+-                    }
+-                  } catch {
+-                    print("Failed to save image: \(error)")
+-                  }
+-                }
+-              } else if let image = imageItem as? Data {
+-                print("📸 Handling Data type image")
+-                let fileName = UUID().uuidString + ".jpg"
+-                let sharedDataUrl = containerUrl.appendingPathComponent("sharedData")
+-
+-                if !fileManager.fileExists(atPath: sharedDataUrl.path) {
+-                  do {
+-                    try fileManager.createDirectory(at: sharedDataUrl, withIntermediateDirectories: true)
+-                  } catch {
+-                    print("Failed to create sharedData directory: \(error)")
+-                  }
+-                }
+-
+-                let persistentURL = sharedDataUrl.appendingPathComponent(fileName)
+-
+-                do {
+-                  try image.write(to: persistentURL)
+-                  if var imageArray = sharedItems["images"] as? [String] {
+-                    imageArray.append(persistentURL.path)
+-                    sharedItems["images"] = imageArray
+-                  }
+-                  print("📸 Successfully saved Data type image to: \(persistentURL.path)")
+-                } catch {
+-                  print("Failed to save Data image: \(error)")
+-                }
+-              } else {
+-                print("imageItem is not a recognized type")
+-              }
+-              group.leave()
+-            }
+-          }
+-        } else if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+-          group.enter()
+-          provider.loadItem(forTypeIdentifier: UTType.movie.identifier, options: nil) { (videoItem, error) in
+-            DispatchQueue.main.async {
+-              print("videoItem type: \(type(of: videoItem))")
+-              
+-              // Ensure the array exists
+-              if sharedItems["videos"] == nil {
+-                sharedItems["videos"] = [String]()
+-              }
+-              
+-              guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String else {
+-                print("Could not find AppGroup in info.plist")
+-                return
+-              }
+-              
+-              guard let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else {
+-                print("Could not set up file manager container URL for app group")
+-                return
+-              }
+-              
+-              // Check if videoItem is NSURL
+-              if let videoUri = videoItem as? NSURL {
+-                if let tempFilePath = videoUri.path {
+-                  let fileExtension = videoUri.pathExtension ?? "mov"
+-                  let fileName = UUID().uuidString + "." + fileExtension
+-                  
+-                  let sharedDataUrl = containerUrl.appendingPathComponent("sharedData")
+-                  
+-                  if !fileManager.fileExists(atPath: sharedDataUrl.path) {
+-                    do {
+-                      try fileManager.createDirectory(at: sharedDataUrl, withIntermediateDirectories: true)
+-                    } catch {
+-                      print("Failed to create sharedData directory: \(error)")
+-                    }
+-                  }
+-                  
+-                  let persistentURL = sharedDataUrl.appendingPathComponent(fileName)
+-                  
+-                  do {
+-                    try fileManager.copyItem(atPath: tempFilePath, toPath: persistentURL.path)
+-                    if var videoArray = sharedItems["videos"] as? [String] {
+-                      videoArray.append(persistentURL.path)
+-                      sharedItems["videos"] = videoArray
+-                    }
+-                  } catch {
+-                    print("Failed to copy video: \(error)")
+-                  }
+-                }
+-              }
+-              // Check if videoItem is NSData
+-              else if let videoData = videoItem as? NSData {
+-                let fileExtension = "mov" // Using mov as default type extension
+-                let fileName = UUID().uuidString + "." + fileExtension
+-                
+-                let sharedDataUrl = containerUrl.appendingPathComponent("sharedData")
+-                
+-                if !fileManager.fileExists(atPath: sharedDataUrl.path) {
+-                  do {
+-                    try fileManager.createDirectory(at: sharedDataUrl, withIntermediateDirectories: true)
+-                  } catch {
+-                    print("Failed to create sharedData directory: \(error)")
+-                  }
+-                }
+-                
+-                let persistentURL = sharedDataUrl.appendingPathComponent(fileName)
+-                
+-                do {
+-                  try videoData.write(to: persistentURL)
+-                  if var videoArray = sharedItems["videos"] as? [String] {
+-                    videoArray.append(persistentURL.path)
+-                    sharedItems["videos"] = videoArray
+-                  }
+-                } catch {
+-                  print("Failed to save video: \(error)")
+-                }
+-              }
+-              // Check if videoItem is AVAsset
+-              else if let asset = videoItem as? AVAsset {
+-                let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough)
+-                
+-                let fileExtension = "mov" // Using mov as default type extension
+-                let fileName = UUID().uuidString + "." + fileExtension
+-                
+-                let sharedDataUrl = containerUrl.appendingPathComponent("sharedData")
+-                
+-                if !fileManager.fileExists(atPath: sharedDataUrl.path) {
+-                  do {
+-                    try fileManager.createDirectory(at: sharedDataUrl, withIntermediateDirectories: true)
+-                  } catch {
+-                    print("Failed to create sharedData directory: \(error)")
+-                  }
+-                }
+-                
+-                let persistentURL = sharedDataUrl.appendingPathComponent(fileName)
+-                
+-                exportSession?.outputURL = persistentURL
+-                exportSession?.outputFileType = .mov
+-                exportSession?.exportAsynchronously {
+-                  switch exportSession?.status {
+-                  case .completed:
+-                    if var videoArray = sharedItems["videos"] as? [String] {
+-                      videoArray.append(persistentURL.absoluteString)
+-                      sharedItems["videos"] = videoArray
+-                    }
+-                  case .failed:
+-                    print("Failed to export video: \(String(describing: exportSession?.error))")
+-                  default:
+-                    break
+-                  }
+-                }
+-              } else {
+-                print("videoItem is not a recognized type")
+-              }
+-              group.leave()
+-            }
+-          }
+         }
+       }
+     }
+@@ -608,3 +153,13 @@ class ShareExtensionViewController: UIViewController {
      }
    }
  }
