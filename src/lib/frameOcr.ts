@@ -12,10 +12,20 @@
 
 declare const require: any;
 
+// Static (string-literal) requires only: Metro's transformer rejects dynamic
+// `require(variable)` calls with "Invalid call ... require(id)" at bundle
+// time. The try/catch still guards runtime absence (e.g. Expo Go lacks the
+// frame-ocr native module, so requireNativeModule throws → caught → null).
+const LOADERS: Record<string, () => any> = {
+  'frame-ocr': () => require('frame-ocr'),
+  'expo-video-thumbnails': () => require('expo-video-thumbnails'),
+};
+
 /** Guarded require — null instead of throwing when the module is absent. */
 function tryRequire(id: string): any | null {
   try {
-    const mod = require(id);
+    const load = LOADERS[id];
+    const mod = load ? load() : null;
     return mod ?? null;
   } catch {
     return null;
