@@ -397,7 +397,7 @@ index 7f9f6d8..79614d6 100644
          return true
        }
 -      responder = responder?.next
-+      responder = responder.next
++      responder = responder?.next
      }
 -
 -    // Method 2: Try selector-based approach as fallback
