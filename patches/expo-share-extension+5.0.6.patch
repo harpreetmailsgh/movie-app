@@ -138,7 +138,7 @@ index 7f9f6d8..cf88975 100644
  
  #if canImport(FirebaseCore)
      if Bundle.main.object(forInfoDictionaryKey: "WithFirebase") as? Bool ?? false {
-@@ -73,223 +38,184 @@ class ShareExtensionViewController: UIViewController {
+@@ -73,223 +38,191 @@ class ShareExtensionViewController: UIViewController {
      }
  #endif
  
@@ -496,7 +496,15 @@ index 7f9f6d8..cf88975 100644
            provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { (urlItem, error) in
              DispatchQueue.main.async {
 +              self.slog("loadItem finish \(UTType.url.identifier) error=\(error?.localizedDescription ?? "none")")
-               if let sharedURL = urlItem as? URL {
++              if let item = urlItem { self.slog("urlItem type=\(type(of: item))") } else { self.slog("urlItem nil") }
+-              if let sharedURL = urlItem as? URL {
++              var sharedURL: URL?
++              if let u = urlItem as? URL {
++                sharedURL = u            // covers NSURL via Swift bridging
++              } else if let s = urlItem as? String {
++                sharedURL = URL(string: s.trimmingCharacters(in: .whitespacesAndNewlines))
++              }
++              if let sharedURL = sharedURL {
                  if sharedURL.isFileURL {
                    // Screenshot overlay sends public.url (file URLs) instead of public.image
 @@ -303,12 +229,14 @@ class ShareExtensionViewController: UIViewController {
@@ -514,7 +522,7 @@ index 7f9f6d8..cf88975 100644
                      print("Could not set up file manager container URL for app group")
                      group.leave()
                      return
-@@ -332,18 +260,18 @@ class ShareExtensionViewController: UIViewController {
+@@ -332,18 +260,20 @@ class ShareExtensionViewController: UIViewController {
                    do {
                      try fileManager.copyItem(atPath: tempFilePath, toPath: persistentURL.path)
                      let key = isImage ? "images" : "files"
@@ -536,7 +544,10 @@ index 7f9f6d8..cf88975 100644
 -                  sharedItems["url"] = sharedURL.absoluteString
 +                  self.collected["url"] = sharedURL.absoluteString
                  }
-               }
+-              }
++               } else {
++                self.slog("url branch: unrecognized item, no URL extracted")
++              }
                group.leave()
 @@ -351,250 +279,15 @@ class ShareExtensionViewController: UIViewController {
            }
