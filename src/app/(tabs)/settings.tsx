@@ -237,6 +237,9 @@ export default function SettingsScreen() {
         <Pressable style={styles.feedbackRow} onPress={() => setFeedbackOpen(true)}>
           <Text style={styles.feedbackText}>Send feedback</Text>
         </Pressable>
+        <Pressable style={styles.feedbackRow} onPress={() => router.push('/share-diagnostics')}>
+          <Text style={styles.feedbackText}>Share Diagnostics</Text>
+        </Pressable>
       </View>
 
       <FeedbackModal visible={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
