@@ -11,3 +11,350 @@ index 3816339..27f41d1 100644
          LD_RUNPATH_SEARCH_PATHS: `"$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"`,
          PRODUCT_BUNDLE_IDENTIFIER: `"${bundleIdentifier}"`,
          PRODUCT_NAME: `"${targetName}"`,
+diff --git a/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift b/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift
+index 7f9f6d8..f8b92c2 100644
+--- a/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift
++++ b/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift
+@@ -1,10 +1,7 @@
+ import UIKit
+-import React
+-import React_RCTAppDelegate
+-import ReactAppDependencyProvider
+ import AVFoundation
+ import UniformTypeIdentifiers
+-// if react native firebase is installed, we import and configure it
++// if firebase is installed, we import and configure it
+ #if canImport(FirebaseCore)
+ import FirebaseCore
+ #endif
+@@ -12,60 +9,13 @@ import FirebaseCore
+ import FirebaseAuth
+ #endif
+ 
+-class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
+-  override func sourceURL(for bridge: RCTBridge) -> URL? {
+-    self.bundleURL()
+-  }
+-  
+-  override func bundleURL() -> URL? {
+-#if DEBUG
+-    let settings = RCTBundleURLProvider.sharedSettings()
+-    settings.enableDev = true
+-    settings.enableMinification = false
+-    if let bundleURL = settings.jsBundleURL(forBundleRoot: ".expo/.virtual-metro-entry") {
+-      if var components = URLComponents(url: bundleURL, resolvingAgainstBaseURL: false) {
+-        components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: "shareExtension", value: "true")]
+-        return components.url ?? bundleURL
+-      }
+-      return bundleURL
+-    }
+-    fatalError("Could not create bundle URL")
+-#else
+-    guard let bundleURL = Bundle.main.url(forResource: "main", withExtension: "jsbundle") else {
+-      fatalError("Could not load bundle URL")
+-    }
+-    return bundleURL
+-    Bundle.main.url(forResource: "main", withExtension: "jsbundle")
+-#endif
+-  }
+-}
+-
++// Headless share extension: extract the shared URL and hand it off to the
++// host app via deep link, then dismiss. No UI is ever shown — this replaces
++// the previous JS-driven UI which rendered as a blank black screen.
+ class ShareExtensionViewController: UIViewController {
+-  private let loadingIndicator = UIActivityIndicatorView(style: .large)
+-  var reactNativeFactory: RCTReactNativeFactory?
+-  var reactNativeFactoryDelegate: RCTReactNativeFactoryDelegate?
+-  private var isCleanedUp = false
+-
+-  deinit {
+-    print("🧹 ShareExtensionViewController deinit")
+-    cleanupAfterClose()
+-  }
+-  
+-  override func viewWillDisappear(_ animated: Bool) {
+-    super.viewWillDisappear(animated)
+-    // Start cleanup earlier to ensure proper surface teardown
+-    if isBeingDismissed {
+-      cleanupAfterClose()
+-    }
+-  }
+ 
+   override func viewDidLoad() {
+     super.viewDidLoad()
+-    setupLoadingIndicator()
+-    isCleanedUp = false
+-    
+-    // Set the contentScaleFactor for the main view of this view controller
+-    self.view.contentScaleFactor = UIScreen.main.scale
+ 
+ #if canImport(FirebaseCore)
+     if Bundle.main.object(forInfoDictionaryKey: "WithFirebase") as? Bool ?? false {
+@@ -73,203 +23,35 @@ class ShareExtensionViewController: UIViewController {
+     }
+ #endif
+ 
+-    loadReactNativeContent()
+-    setupNotificationCenterObserver()
+-  }
+-  
+-  override func viewDidDisappear(_ animated: Bool) {
+-    super.viewDidDisappear(animated)
+-    // we need to clean up when the view is closed via a swipe
+-    cleanupAfterClose()
+-  }
+-  
+-  func close() {
+-    self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+-    // we need to clean up when the view is closed via the close() method in react native
+-    cleanupAfterClose()
+-  }
+-  
+-  private func loadReactNativeContent() {
+     getShareData { [weak self] sharedData in
+-      guard let self = self else {
+-        print("❌ Self was deallocated")
+-        return
+-      }
+-      
+-      reactNativeFactoryDelegate = ReactNativeDelegate()
+-      reactNativeFactoryDelegate!.dependencyProvider = RCTAppDependencyProvider()
+-      reactNativeFactory = RCTReactNativeFactory(delegate: reactNativeFactoryDelegate!)
+-      
+-      var initialProps = sharedData ?? [:]
+-      
+-      // Capture current view's properties before replacing it
+-      let currentBounds = self.view.bounds
+-      let currentScale = UIScreen.main.scale
+-      
+-      // Log the scale of the parent view
+-      print("[ShareExtension] self.view.contentScaleFactor before adding subview: \(self.view.contentScaleFactor)")
+-      print("[ShareExtension] UIScreen.main.scale: \(currentScale)")
+-      
+-      // Add screen metrics to initial properties for React Native
+-      // These can be used by the JS side to understand its container size and scale
+-      initialProps["initialViewWidth"] = currentBounds.width
+-      initialProps["initialViewHeight"] = currentBounds.height
+-      initialProps["pixelRatio"] = currentScale
+-      // It's also good practice to pass the font scale for accessibility
+-      // Default body size on iOS is 17pt, used as a reference for calculating fontScale.
+-      initialProps["fontScale"] = UIFont.preferredFont(forTextStyle: .body).pointSize / 17.0
+-      
+-      // Create the React Native root view
+-      let reactNativeRootView = reactNativeFactory!.rootViewFactory.view(
+-          withModuleName: "shareExtension",
+-          initialProperties: initialProps
+-      )
+-      
+-      let backgroundFromInfoPlist = Bundle.main.object(forInfoDictionaryKey: "ShareExtensionBackgroundColor") as? [String: CGFloat]
+-      let heightFromInfoPlist = Bundle.main.object(forInfoDictionaryKey: "ShareExtensionHeight") as? CGFloat
+-      
+-      configureRootView(reactNativeRootView, withBackgroundColorDict: backgroundFromInfoPlist, withHeight: heightFromInfoPlist)
+-      view.addSubview(reactNativeRootView)
+-
+-      // Hide loading indicator once React content is ready
+-      self.loadingIndicator.stopAnimating()
+-      self.loadingIndicator.removeFromSuperview()
+-    }
+-  }
+-  
+-  private func configureRootView(_ rootView: UIView, withBackgroundColorDict dict: [String: CGFloat]?, withHeight: CGFloat?) {
+-    rootView.backgroundColor = backgroundColor(from: dict)
+-
+-    // Get the screen bounds
+-    let screenBounds = UIScreen.main.bounds
+-
+-    // Calculate proper frame
+-    let frame: CGRect
+-    if let withHeight = withHeight {
+-      rootView.autoresizingMask = [.flexibleWidth, .flexibleTopMargin]
+-      frame = CGRect(
+-        x: 0,
+-        y: screenBounds.height - withHeight,
+-        width: screenBounds.width,
+-        height: withHeight
+-      )
+-    } else {
+-      rootView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+-      frame = screenBounds
+-    }
+-    rootView.frame = frame
+-  }
+-  
+-  private func setupLoadingIndicator() {
+-    view.addSubview(loadingIndicator)
+-    loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
+-    NSLayoutConstraint.activate([
+-      loadingIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+-      loadingIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+-    ])
+-    loadingIndicator.startAnimating()
+-  }
+-  
+-  private func openHostApp(path: String?) {
+-    guard let scheme = Bundle.main.object(forInfoDictionaryKey: "HostAppScheme") as? String else { return }
+-    var urlComponents = URLComponents()
+-    urlComponents.scheme = scheme
+-    urlComponents.host = ""
+-    
+-    if let path = path {
+-      let pathComponents = path.split(separator: "?", maxSplits: 1)
+-      let pathWithoutQuery = String(pathComponents[0])
+-      let queryString = pathComponents.count > 1 ? String(pathComponents[1]) : nil
+-      
+-      // Parse and set query items
+-      if let queryString = queryString {
+-        let queryItems = queryString.split(separator: "&").map { queryParam -> URLQueryItem in
+-          let paramComponents = queryParam.split(separator: "=", maxSplits: 1)
+-          let name = String(paramComponents[0])
+-          let value = paramComponents.count > 1 ? String(paramComponents[1]) : nil
+-          return URLQueryItem(name: name, value: value)
+-        }
+-        urlComponents.queryItems = queryItems
++      guard let self = self else { return }
++
++      // Prefer the directly shared URL; otherwise take the first URL in the shared text.
++      var urlString: String?
++      if let directURL = sharedData?["url"] as? String, !directURL.isEmpty {
++        urlString = directURL
++      } else if let text = sharedData?["text"] as? String {
++        urlString = self.firstURL(in: text)
+       }
+ 
+-      let pathWithSlashEnsured = pathWithoutQuery.hasPrefix("/") ? pathWithoutQuery : "/\(pathWithoutQuery)"
+-      urlComponents.path = pathWithSlashEnsured
+-    }
+-    
+-    guard let url = urlComponents.url else { return }
+-    openURL(url)
+-    self.close()
+-  }
+-  
+-  @objc @discardableResult private func openURL(_ url: URL) -> Bool {
+-    // Method 1: Try responder chain to find UIApplication
+-    var responder: UIResponder? = self
+-    while responder != nil {
+-      if let application = responder as? UIApplication {
+-        application.open(url, options: [:], completionHandler: nil)
+-        return true
++      if let urlString = urlString,
++         let encoded = urlString.addingPercentEncoding(withAllowedCharacters: .shareExtensionQueryValueAllowed),
++         let deepLink = URL(string: "movierecommender://import?sharedUrl=" + encoded) {
++        self.extensionContext?.open(deepLink, completionHandler: nil)
+       }
+-      responder = responder?.next
+-    }
+ 
+-    // Method 2: Try selector-based approach as fallback
+-    let selector = NSSelectorFromString("openURL:")
+-    var responder2: UIResponder? = self
+-    while responder2 != nil {
+-      if responder2!.responds(to: selector) {
+-        responder2!.perform(selector, with: url)
+-        return true
+-      }
+-      responder2 = responder2?.next
++      // Always dismiss — silently, even when there was no URL.
++      self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+     }
+-
+-    return false
+   }
+ 
+-  private func setupNotificationCenterObserver() {
+-    NotificationCenter.default.addObserver(forName: NSNotification.Name("close"), object: nil, queue: nil) { [weak self] _ in
+-      DispatchQueue.main.async {
+-        self?.close()
+-      }
+-    }
+-    
+-    NotificationCenter.default.addObserver(forName: NSNotification.Name("openHostApp"), object: nil, queue: nil) { [weak self] notification in
+-      DispatchQueue.main.async {
+-        if let userInfo = notification.userInfo {
+-          if let path = userInfo["path"] as? String {
+-            self?.openHostApp(path: path)
+-          }
+-        }
+-      }
+-    }
+-  }
+-  
+-  private func cleanupAfterClose() {
+-    if isCleanedUp { return }
+-    isCleanedUp = true
+-    
+-    NotificationCenter.default.removeObserver(self)
+-    
+-    // Remove React Native view and deallocate resources
+-    view.subviews.forEach { subview in
+-        if subview is RCTRootView {
+-            subview.removeFromSuperview()
+-        }
+-    }
+-    
+-    reactNativeFactory = nil
+-    reactNativeFactoryDelegate = nil
+-    
+-    print("🧹 ShareExtensionViewController cleaned up")
+-  }
+-  
+-  private func backgroundColor(from dict: [String: CGFloat]?) -> UIColor {
+-    guard let dict = dict else { return .systemBackground }
+-    let red = dict["red"] ?? 255.0
+-    let green = dict["green"] ?? 255.0
+-    let blue = dict["blue"] ?? 255.0
+-    let alpha = dict["alpha"] ?? 1
+-    return UIColor(red: red / 255.0, green: green / 255.0, blue: blue / 255.0, alpha: alpha)
++  // Returns the first `https?://...` URL found in `text`, or nil.
++  private func firstURL(in text: String) -> String? {
++    guard let regex = try? NSRegularExpression(pattern: "https?://[^\\s)]+", options: []) else { return nil }
++    let range = NSRange(text.startIndex..., in: text)
++    guard let match = regex.firstMatch(in: text, options: [], range: range),
++          let matchRange = Range(match.range, in: text) else { return nil }
++    return String(text[matchRange])
+   }
+ 
+   private func getShareData(completion: @escaping ([String: Any]?) -> Void) {
+@@ -389,11 +171,13 @@ class ShareExtensionViewController: UIViewController {
+ 
+               guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String else {
+                 print("Could not find AppGroup in info.plist")
++                group.leave()
+                 return
+               }
+ 
+               guard let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else {
+                 print("Could not set up file manager container URL for app group")
++                group.leave()
+                 return
+               }
+ 
+@@ -495,11 +279,13 @@ class ShareExtensionViewController: UIViewController {
+ 
+               guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String else {
+                 print("Could not find AppGroup in info.plist")
++                group.leave()
+                 return
+               }
+ 
+               guard let containerUrl = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else {
+                 print("Could not set up file manager container URL for app group")
++                group.leave()
+                 return
+               }
+ 
+@@ -608,3 +394,13 @@ class ShareExtensionViewController: UIViewController {
+     }
+   }
+ }
++
++private extension CharacterSet {
++  // Query-value encoding for the embedded shared URL: also escapes `& = ? + #`
++  // so the URL can't break out of the `sharedUrl` query parameter.
++  static var shareExtensionQueryValueAllowed: CharacterSet {
++    var allowed = CharacterSet.urlQueryAllowed
++    allowed.remove(charactersIn: "&=?+#")
++    return allowed
++  }
++}
