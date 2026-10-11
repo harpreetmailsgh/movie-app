@@ -46,7 +46,7 @@ index 3816339..27f41d1 100644
          PRODUCT_BUNDLE_IDENTIFIER: `"${bundleIdentifier}"`,
          PRODUCT_NAME: `"${targetName}"`,
 diff --git a/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift b/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift
-index 7f9f6d8..f65bb41 100644
+index 7f9f6d8..bb035b3 100644
 --- a/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift
 +++ b/node_modules/expo-share-extension/plugin/swift/ShareExtensionViewController.swift
 @@ -1,10 +1,7 @@
@@ -135,11 +135,11 @@ index 7f9f6d8..f65bb41 100644
 -    // Set the contentScaleFactor for the main view of this view controller
 -    self.view.contentScaleFactor = UIScreen.main.scale
 +    slog("viewDidLoad entry")
-+    slog("CACHE_BUST_20261011_1535")
++    slog("CACHE_BUST_20261011_1545")
  
  #if canImport(FirebaseCore)
      if Bundle.main.object(forInfoDictionaryKey: "WithFirebase") as? Bool ?? false {
-@@ -73,223 +39,190 @@ class ShareExtensionViewController: UIViewController {
+@@ -73,224 +39,198 @@ class ShareExtensionViewController: UIViewController {
      }
  #endif
  
@@ -152,29 +152,39 @@ index 7f9f6d8..f65bb41 100644
 -    // we need to clean up when the view is closed via a swipe
 -    cleanupAfterClose()
 -  }
-+    slog(extensionContext == nil ? "extensionContext nil" : "extensionContext ok")
- 
+-  
 -  func close() {
 -    self.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
 -    // we need to clean up when the view is closed via the close() method in react native
 -    cleanupAfterClose()
 -  }
-+    view.backgroundColor = .systemBackground
- 
+-  
 -  private func loadReactNativeContent() {
 -    getShareData { [weak self] sharedData in
 -      guard let self = self else {
 -        print("❌ Self was deallocated")
 -        return
 -      }
+-      
+-      reactNativeFactoryDelegate = ReactNativeDelegate()
+-      reactNativeFactoryDelegate!.dependencyProvider = RCTAppDependencyProvider()
+-      reactNativeFactory = RCTReactNativeFactory(delegate: reactNativeFactoryDelegate!)
++    slog(extensionContext == nil ? "extensionContext nil" : "extensionContext ok")
+ 
+-      var initialProps = sharedData ?? [:]
++    view.backgroundColor = .systemBackground
+ 
+-      // Capture current view's properties before replacing it
+-      let currentBounds = self.view.bounds
+-      let currentScale = UIScreen.main.scale
 +    let spinner = UIActivityIndicatorView(style: .large)
 +    spinner.translatesAutoresizingMaskIntoConstraints = false
 +    spinner.startAnimating()
 +    view.addSubview(spinner)
  
--      reactNativeFactoryDelegate = ReactNativeDelegate()
--      reactNativeFactoryDelegate!.dependencyProvider = RCTAppDependencyProvider()
--      reactNativeFactory = RCTReactNativeFactory(delegate: reactNativeFactoryDelegate!)
+-      // Log the scale of the parent view
+-      print("[ShareExtension] self.view.contentScaleFactor before adding subview: \(self.view.contentScaleFactor)")
+-      print("[ShareExtension] UIScreen.main.scale: \(currentScale)")
 +    let statusLabel = UILabel()
 +    statusLabel.translatesAutoresizingMaskIntoConstraints = false
 +    statusLabel.text = "Sending to Movie Deck…"
@@ -182,16 +192,6 @@ index 7f9f6d8..f65bb41 100644
 +    statusLabel.numberOfLines = 0
 +    view.addSubview(statusLabel)
  
--      var initialProps = sharedData ?? [:]
--      
--      // Capture current view's properties before replacing it
--      let currentBounds = self.view.bounds
--      let currentScale = UIScreen.main.scale
--      
--      // Log the scale of the parent view
--      print("[ShareExtension] self.view.contentScaleFactor before adding subview: \(self.view.contentScaleFactor)")
--      print("[ShareExtension] UIScreen.main.scale: \(currentScale)")
--      
 -      // Add screen metrics to initial properties for React Native
 -      // These can be used by the JS side to understand its container size and scale
 -      initialProps["initialViewWidth"] = currentBounds.width
@@ -496,11 +496,20 @@ index 7f9f6d8..f65bb41 100644
 +          slog("loadItem start \(UTType.url.identifier)")
            provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { (urlItem, error) in
              DispatchQueue.main.async {
+-              if let sharedURL = urlItem as? URL {
 +              self.slog("loadItem finish \(UTType.url.identifier) error=\(error?.localizedDescription ?? "none")")
-               if let sharedURL = urlItem as? URL {
++              if let item = urlItem { self.slog("urlItem type=\(type(of: item))") } else { self.slog("urlItem nil") }
++              var sharedURL: URL?
++              if let u = urlItem as? URL {
++                sharedURL = u            // covers NSURL via Swift bridging
++              } else if let s = urlItem as? String {
++                sharedURL = URL(string: s.trimmingCharacters(in: .whitespacesAndNewlines))
++              }
++              if let sharedURL = sharedURL {
                  if sharedURL.isFileURL {
                    // Screenshot overlay sends public.url (file URLs) instead of public.image
-@@ -303,12 +236,14 @@ class ShareExtensionViewController: UIViewController {
+                   let fileExtension = sharedURL.pathExtension.lowercased()
+@@ -303,12 +243,14 @@ class ShareExtensionViewController: UIViewController {
                    }
  
                    guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String else {
@@ -515,7 +524,7 @@ index 7f9f6d8..f65bb41 100644
                      print("Could not set up file manager container URL for app group")
                      group.leave()
                      return
-@@ -332,18 +267,18 @@ class ShareExtensionViewController: UIViewController {
+@@ -332,18 +274,18 @@ class ShareExtensionViewController: UIViewController {
                    do {
                      try fileManager.copyItem(atPath: tempFilePath, toPath: persistentURL.path)
                      let key = isImage ? "images" : "files"
@@ -539,7 +548,7 @@ index 7f9f6d8..f65bb41 100644
                  }
                }
                group.leave()
-@@ -351,250 +286,15 @@ class ShareExtensionViewController: UIViewController {
+@@ -351,250 +293,15 @@ class ShareExtensionViewController: UIViewController {
            }
          }
  
@@ -794,7 +803,7 @@ index 7f9f6d8..f65bb41 100644
                }
                group.leave()
              }
-@@ -603,8 +303,18 @@ class ShareExtensionViewController: UIViewController {
+@@ -603,8 +310,18 @@ class ShareExtensionViewController: UIViewController {
        }
      }
  
