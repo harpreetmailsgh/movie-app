@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator, Alert,
 } from 'react-native';
-import { FontAwesome, Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../lib/store';
 import { bestMatch, bestMatchKeyless, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
@@ -21,14 +19,14 @@ export default function ImportScreen() {
   const { sharedUrl } = useLocalSearchParams<{ sharedUrl?: string }>();
   /** After a share-extension import, land on the Watchlist instead of going back. */
   const doneFromShare = () => (sharedUrl ? router.replace('/(tabs)') : router.back());
-  const [url, setUrl] = useState('');
+  /** One link field for every platform — TikTok, YouTube, Facebook, Instagram.
+   *  Submit auto-detects the platform and runs the matching import. */
+  const [link, setLink] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TmdbMatch[]>([]);
   const [searching, setSearching] = useState(false);
-  const [ytUrl, setYtUrl] = useState('');
   const [ytWorking, setYtWorking] = useState(false);
   const [ytMessage, setYtMessage] = useState<string | null>(null);
-  const [ttUrl, setTtUrl] = useState('');
   const [ttWorking, setTtWorking] = useState(false);
   const [ttMessage, setTtMessage] = useState<string | null>(null);
   const [fbFailed, setFbFailed] = useState(false);
@@ -97,7 +95,7 @@ export default function ImportScreen() {
     }
     addMovie({
       title: m.title, year: m.year, mediaType: m.mediaType, genres,
-      overview, posterPath: m.posterPath, reelURL: url.trim(),
+      overview, posterPath: m.posterPath, reelURL: link.trim(),
       caption: '', notes: '', status: 'watchlist', tmdbID: m.tmdbID, imdbRating,
       originalLanguage: m.originalLanguage, cast,
       needsReview: false,
@@ -118,22 +116,47 @@ export default function ImportScreen() {
     router.back();
   };
 
-  // ---- Card 2: Facebook / Instagram reel link --------------------------------
-  const onFbChange = (text: string) => {
-    setUrl(text);
-    fbRunRef.current += 1; // cancel any in-flight run's completion
+  // ---- Unified link import: one field, platform auto-detected ------------------
+  const onLinkChange = (text: string) => {
+    setLink(text);
+    // Editing mid-run cancels that run's completion UI on every platform.
+    fbRunRef.current += 1;
+    ytRunRef.current += 1;
+    ttRunRef.current += 1;
     setFbFailed(false);
+    setYtMessage(null);
+    setTtMessage(null);
   };
 
+  /** Route one link to the matching import — same routing as the share-extension deep link. */
+  const routeLink = (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    if (isTikTokUrl(trimmed)) {
+      doFetchTt(trimmed);
+    } else {
+      let host = '';
+      try { host = new URL(trimmed).hostname.toLowerCase(); } catch { /* fall through to the reel handler */ }
+      if (host.includes('youtube.com') || host.includes('youtu.be')) {
+        doFetchYt(trimmed);
+      } else {
+        doFetchFb(trimmed);
+      }
+    }
+  };
+
+  const submitLink = () => routeLink(link);
+
+  // ---- Card 2: Facebook / Instagram reel link --------------------------------
   const doFetchFb = async (linkOverride?: string) => {
-    const link = (linkOverride ?? url).trim();
-    if (!link) return;
+    const target = (linkOverride ?? link).trim();
+    if (!target) return;
     const runId = ++fbRunRef.current;
     setFbFailed(false);
-    const outcome = await importReel(link);
+    const outcome = await importReel(target);
     if (runId !== fbRunRef.current) return; // user edited mid-run — ignore stale completion
     if (outcome.ok) {
-      setUrl('');
+      setLink('');
       const { added, alreadyHave, savedForReview } = outcome;
       const message = added.length
         ? `“${added.join('”, “')}” added to watchlist.` +
@@ -150,26 +173,20 @@ export default function ImportScreen() {
     }
   };
 
-  // ---- Card 3: YouTube link --------------------------------------------------
-  const onYtChange = (text: string) => {
-    setYtUrl(text);
-    ytRunRef.current += 1; // cancel any in-flight run's completion
-    setYtMessage(null);
-  };
-
+  // ---- YouTube link ------------------------------------------------------------
   /** YouTube import: oEmbed title (caption-first step), then TMDB/keyless match. */
   const doFetchYt = async (linkOverride?: string) => {
-    const link = (linkOverride ?? ytUrl).trim();
-    if (!link) return;
+    const target = (linkOverride ?? link).trim();
+    if (!target) return;
     const runId = ++ytRunRef.current;
     setYtMessage(null);
-    if (!parseYouTubeId(link)) {
+    if (!parseYouTubeId(target)) {
       setYtMessage("That doesn't look like a YouTube link — use a watch, Shorts, or youtu.be link.");
       return;
     }
     setYtWorking(true);
     try {
-      const info = await fetchYouTubeTitle(link);
+      const info = await fetchYouTubeTitle(target);
       if (runId !== ytRunRef.current) return;
       if (!info) {
         setYtMessage("Couldn't read that video (it may be private or removed).");
@@ -199,13 +216,13 @@ export default function ImportScreen() {
         }
         addMovie({
           title: match.title, year: match.year, mediaType: match.mediaType, genres,
-          overview, posterPath: match.posterPath, reelURL: link,
+          overview, posterPath: match.posterPath, reelURL: target,
           caption, notes: '', status: 'watchlist', tmdbID: match.tmdbID, imdbRating,
           originalLanguage: match.originalLanguage, cast,
           needsReview: false,
         });
         if (runId !== ytRunRef.current) return;
-        setYtUrl('');
+        setLink('');
         Alert.alert('Fetch complete', `“${match.title}” added to watchlist.`, [
           { text: 'OK', onPress: doneFromShare },
         ]);
@@ -213,12 +230,12 @@ export default function ImportScreen() {
       }
       addMovie({
         title: info.title, year: 0, mediaType: 'movie', genres: [],
-        overview: '', posterPath: '', reelURL: link,
+        overview: '', posterPath: '', reelURL: target,
         caption, notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
         originalLanguage: '', cast: [], needsReview: true,
       });
       if (runId !== ytRunRef.current) return;
-      setYtUrl('');
+      setLink('');
       Alert.alert('Fetch complete', `Saved “${info.title}” — couldn't validate the title.`, [
         { text: 'OK', onPress: doneFromShare },
       ]);
@@ -227,26 +244,20 @@ export default function ImportScreen() {
     }
   };
 
-  // ---- Card 4: TikTok link ---------------------------------------------------
-  const onTtChange = (text: string) => {
-    setTtUrl(text);
-    ttRunRef.current += 1; // cancel any in-flight run's completion
-    setTtMessage(null);
-  };
-
+  // ---- TikTok link -------------------------------------------------------------
   /** TikTok import: oEmbed caption (caption-first step), then TMDB/keyless match. */
   const doFetchTt = async (linkOverride?: string) => {
-    const link = (linkOverride ?? ttUrl).trim();
-    if (!link) return;
+    const target = (linkOverride ?? link).trim();
+    if (!target) return;
     const runId = ++ttRunRef.current;
     setTtMessage(null);
-    if (!isTikTokUrl(link)) {
+    if (!isTikTokUrl(target)) {
       setTtMessage("That doesn't look like a TikTok link — use a tiktok.com or vm.tiktok.com link.");
       return;
     }
     setTtWorking(true);
     try {
-      const info = await fetchTikTokInfo(link);
+      const info = await fetchTikTokInfo(target);
       if (runId !== ttRunRef.current) return;
       if (!info) {
         setTtMessage("Couldn't read that video (it may be private or removed).");
@@ -276,13 +287,13 @@ export default function ImportScreen() {
         }
         addMovie({
           title: match.title, year: match.year, mediaType: match.mediaType, genres,
-          overview, posterPath: match.posterPath, reelURL: link,
+          overview, posterPath: match.posterPath, reelURL: target,
           caption, notes: '', status: 'watchlist', tmdbID: match.tmdbID, imdbRating,
           originalLanguage: match.originalLanguage, cast,
           needsReview: false,
         });
         if (runId !== ttRunRef.current) return;
-        setTtUrl('');
+        setLink('');
         Alert.alert('Fetch complete', `“${match.title}” added to watchlist.`, [
           { text: 'OK', onPress: doneFromShare },
         ]);
@@ -290,12 +301,12 @@ export default function ImportScreen() {
       }
       addMovie({
         title: info.caption, year: 0, mediaType: 'movie', genres: [],
-        overview: '', posterPath: '', reelURL: link,
+        overview: '', posterPath: '', reelURL: target,
         caption, notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
         originalLanguage: '', cast: [], needsReview: true,
       });
       if (runId !== ttRunRef.current) return;
-      setTtUrl('');
+      setLink('');
       Alert.alert('Fetch complete', `Saved “${info.caption}” — couldn't validate the title.`, [
         { text: 'OK', onPress: doneFromShare },
       ]);
@@ -306,33 +317,24 @@ export default function ImportScreen() {
 
   // ---- Share-extension deep link --------------------------------------------
   // The iOS share extension opens movierecommender://import?sharedUrl=... .
-  // Route the link to the right card and run its import automatically —
-  // the whole flow the user asked for: share in the reel app, movie saved.
+  // Seed the single link field with the incoming URL and run the matching
+  // import automatically — the whole flow the user asked for: share in the
+  // reel app, movie saved.
   const sharedHandled = useRef(false);
   useEffect(() => {
     if (sharedHandled.current || !sharedUrl) return;
     sharedHandled.current = true;
-    const link = String(sharedUrl);
-    if (isTikTokUrl(link)) {
-      // One-shot deep-link init: seeding the card inputs from the incoming URL.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTtUrl(link);
-      doFetchTt(link);
-    } else {
-      let host = '';
-      try { host = new URL(link).hostname.toLowerCase(); } catch { /* fall through to reel card */ }
-      if (host.includes('youtube.com') || host.includes('youtu.be')) {
-        setYtUrl(link);
-        doFetchYt(link);
-      } else {
-        setUrl(link);
-        doFetchFb(link);
-      }
-    }
+    const incoming = String(sharedUrl);
+    // One-shot deep-link init: seeding the link field from the incoming URL.
+    setLink(incoming);
+    routeLink(incoming);
     // The fetch functions are plain per-render closures; the guard ref above
     // keeps this a one-shot, so no dependency tracking is needed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sharedUrl]);
+
+  /** Any platform import currently running — drives the unified Fetch button. */
+  const anyWorking = importing || ytWorking || ttWorking;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -390,35 +392,24 @@ export default function ImportScreen() {
       <View style={styles.divider} />
 
       <View style={styles.section}>
-        <View style={styles.headingRow}>
-          <View style={styles.fbBadge}>
-            <LinearGradient
-              colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.06)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-            <FontAwesome name="facebook-f" size={22} color="#fff" />
-          </View>
-          <Text style={styles.heading}>Facebook</Text>
-        </View>
-        <Text style={styles.body}>Paste a Facebook or Instagram reel link.</Text>
+        <Text style={styles.heading}>🔗&nbsp; Add from a link</Text>
+        <Text style={styles.body}>Paste a TikTok, YouTube, Facebook, or Instagram link — the right import runs automatically.</Text>
         <View style={styles.fetchRow}>
           <TextInput
             style={[styles.input, styles.inputFlex]}
-            value={url}
-            onChangeText={onFbChange}
-            placeholder="Paste link here"
+            value={link}
+            onChangeText={onLinkChange}
+            placeholder="Paste a link here"
             placeholderTextColor="#8E8E93"
             autoCapitalize="none"
             autoCorrect={false}
           />
           <Pressable
-            style={[styles.fetchButton, importing && styles.buttonDisabled]}
-            onPress={() => doFetchFb()}
-            disabled={importing || !url.trim()}
+            style={[styles.fetchButton, anyWorking && styles.buttonDisabled]}
+            onPress={submitLink}
+            disabled={anyWorking || !link.trim()}
           >
-            {importing ? (
+            {anyWorking ? (
               <ActivityIndicator color="#000" />
             ) : (
               <Text style={styles.fetchButtonText}>Fetch</Text>
@@ -426,87 +417,7 @@ export default function ImportScreen() {
           </Pressable>
         </View>
         {fbFailed && !!importMessage && <Text style={styles.error}>{importMessage}</Text>}
-      </View>
-
-      <View style={styles.divider} />
-
-      <View style={styles.section}>
-        <View style={styles.headingRow}>
-          <View style={styles.ytBadge}>
-            <LinearGradient
-              colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.06)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-            <Ionicons name="play" size={18} color="#fff" />
-          </View>
-          <Text style={styles.heading}>YouTube</Text>
-        </View>
-        <Text style={styles.body}>Paste a watch, Shorts or youtu.be link.</Text>
-        <View style={styles.fetchRow}>
-          <TextInput
-            style={[styles.input, styles.inputFlex]}
-            value={ytUrl}
-            onChangeText={onYtChange}
-            placeholder="Paste YouTube link here"
-            placeholderTextColor="#8E8E93"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <Pressable
-            style={[styles.fetchButton, ytWorking && styles.buttonDisabled]}
-            onPress={() => doFetchYt()}
-            disabled={ytWorking || !ytUrl.trim()}
-          >
-            {ytWorking ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={styles.fetchButtonText}>Fetch</Text>
-            )}
-          </Pressable>
-        </View>
         {!!ytMessage && <Text style={styles.error}>{ytMessage}</Text>}
-      </View>
-
-      <View style={styles.divider} />
-
-      <View style={styles.section}>
-        <View style={styles.headingRow}>
-          <View style={styles.ttBadge}>
-            <LinearGradient
-              colors={['rgba(255,255,255,0.38)', 'rgba(255,255,255,0.06)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
-            <Ionicons name="logo-tiktok" size={20} color="#fff" />
-          </View>
-          <Text style={styles.heading}>TikTok</Text>
-        </View>
-        <Text style={styles.body}>Paste a TikTok link — the full one or the short share link.</Text>
-        <View style={styles.fetchRow}>
-          <TextInput
-            style={[styles.input, styles.inputFlex]}
-            value={ttUrl}
-            onChangeText={onTtChange}
-            placeholder="Paste TikTok link here"
-            placeholderTextColor="#8E8E93"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <Pressable
-            style={[styles.fetchButton, ttWorking && styles.buttonDisabled]}
-            onPress={() => doFetchTt()}
-            disabled={ttWorking || !ttUrl.trim()}
-          >
-            {ttWorking ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={styles.fetchButtonText}>Fetch</Text>
-            )}
-          </Pressable>
-        </View>
         {!!ttMessage && <Text style={styles.error}>{ttMessage}</Text>}
       </View>
     </ScrollView>
@@ -519,19 +430,6 @@ const styles = StyleSheet.create({
   section: { marginTop: 20 },
   divider: { height: 1, backgroundColor: '#2c2c2e', marginTop: 28 },
   heading: { color: '#fff', fontSize: 19, fontWeight: '800' },
-  headingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  fbBadge: {
-    backgroundColor: '#1877F2', borderRadius: 10, width: 40, height: 40,
-    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-  },
-  ytBadge: {
-    backgroundColor: '#FF0000', borderRadius: 8, width: 42, height: 30,
-    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-  },
-  ttBadge: {
-    backgroundColor: '#000', borderWidth: 1, borderColor: '#3a3a3c', borderRadius: 10, width: 40, height: 40,
-    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-  },
   body: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 21, marginBottom: 14 },
   input: {
     backgroundColor: FIELD_BG, color: '#111', borderRadius: 12,
