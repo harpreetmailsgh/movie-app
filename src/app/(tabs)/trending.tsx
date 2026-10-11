@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -11,6 +11,7 @@ import SwipeDeck, { SwipeDir } from '../../components/SwipeDeck';
 import ViewHeader from '../../components/ViewHeader';
 import { useSharedFilters, applyFilters } from '../../lib/sharedFilters';
 import FilterBar, { filtersActive } from '../../components/FilterBar';
+import MovieProgressBar from '../../components/MovieProgressBar';
 import TilesView from '../../components/TilesView';
 import ListView from '../../components/ListView';
 
@@ -24,6 +25,8 @@ export default function TrendingScreen() {
   const [headerTitle, setHeaderTitle] = useState('Trending 🔥');
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
   const [filters, setFilters] = useSharedFilters();
+  const [error, setError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   // Jump-to-cards machinery (focusId/originView): retained as-is so the
   // cards view jump keeps working; tile/row taps now open the detail page.
   // originView remembers where the jump came from so the back chevron
@@ -37,20 +40,24 @@ export default function TrendingScreen() {
     let live = true;
     // Pass the TMDB key so the trailer-key backfill can resolve keys
     // (optional param — no key still works, backfill then skips silently).
-    fetchTrending(settings.tmdbKey).then((t) => {
-      if (!live) return;
-      setItems(t);
-      getTrendingMeta().then((meta) => {
+    fetchTrending(settings.tmdbKey)
+      .then((t) => {
         if (!live) return;
-        setHeaderTitle(meta.label);
-        setRefreshedAt(meta.refreshedAt);
+        setItems(t);
+        getTrendingMeta().then((meta) => {
+          if (!live) return;
+          setHeaderTitle(meta.label);
+          setRefreshedAt(meta.refreshedAt);
+        });
+      })
+      .catch(() => {
+        if (live) setError(true);
       });
-    });
     return () => { live = false; };
     // Mount-once fetch: the TMDB key is baked into settings by the time this
     // screen mounts, so re-running on settings changes is not wanted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [retryCount]);
 
   // Titles already in the library (any status) — for the ✓ state.
   const libraryKeys = useMemo(
@@ -82,6 +89,12 @@ export default function TrendingScreen() {
     setTrendingView(v);
   };
 
+  // Retry: back to the loading state (film-strip bar) and re-run the fetch.
+  const retry = () => {
+    setError(false);
+    setItems(null);
+    setRetryCount((c) => c + 1);
+  };
   // Tapping a tile/row opens the detail page; the cards view stays
   // reachable via the view switcher. Feed items are not in the library,
   // so cache the tapped one for the detail page's fallback lookup.
@@ -116,9 +129,24 @@ export default function TrendingScreen() {
   };
 
   if (!ready || items === null) {
+    if (error) {
+      return (
+        <View style={styles.center}>
+          <Text style={styles.dim}>Couldn&apos;t load trending movies in your location. Please try again later</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry"
+            style={styles.retryButton}
+            onPress={retry}
+          >
+            <Text style={styles.retryText}>Retry</Text>
+          </Pressable>
+        </View>
+      );
+    }
     return (
       <View style={styles.center}>
-        <ActivityIndicator color="#fff" />
+        <MovieProgressBar indeterminate style={styles.loadingBar} />
         <Text style={styles.dim}>Finding what's trending…</Text>
       </View>
     );
@@ -245,7 +273,15 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12, backgroundColor: '#000' },
+  loadingBar: { maxWidth: 280 },
+  retryButton: {
+    backgroundColor: '#FF9F0A',
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  retryText: { color: '#000', fontSize: 16, fontWeight: '700' },
   dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
   emptyIcon: { fontSize: 56, marginBottom: 12 },
   emptyTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 8 },

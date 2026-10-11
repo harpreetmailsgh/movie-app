@@ -429,6 +429,19 @@ async function loadCountryTrending(apiKey?: string): Promise<Movie[]> {
  * fetch never blocks the UI.
  */
 export async function fetchTrending(apiKey?: string): Promise<Movie[]> {
+  // 20s hard timeout: the fetch never blocks the UI forever; on timeout the
+  // screen shows the error state with a Retry button.
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('fetchTrending timed out after 20s')), 20000)
+  );
+  return Promise.race([fetchTrendingInner(apiKey), timeout]);
+}
+
+/**
+ * Inner fetch — cache read → loadCountryTrending() → fetchCinemetaGlobal()
+ * fallback, unchanged; see fetchTrending for the timeout wrapper.
+ */
+async function fetchTrendingInner(apiKey?: string): Promise<Movie[]> {
   const fresh = await readCache();
   const entry = fresh ?? (await readRawCache());
   if (entry) {
