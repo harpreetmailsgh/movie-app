@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +16,7 @@ import MovieProgressBar from '../../components/MovieProgressBar';
 export default function WatchlistScreen() {
   const {
     movies, ready, settings, setWatchlistView,
-    moveMovie, deleteMovie, cycleToBack,
+    moveMovie, deleteMovie, cycleToBack, setOnboardingSeen,
   } = useStore();
   const insets = useSafeAreaInsets();
   const [filters, setFilters] = useSharedFilters();
@@ -77,7 +77,49 @@ export default function WatchlistScreen() {
     setWatchlistView(target);
   };
 
+  // First-time guide: animated coach-mark arrows floating over the deck
+  // (↑ Seen, ↓ Trash, ← → Next). Shows when the deck has cards and the
+  // guide hasn't been seen (fresh install or Settings → Replay guide);
+  // fades out permanently on the user's first swipe. The dismissing ref
+  // keeps the overlay mounted through the fade-out; onboardingSeen flips
+  // only after the fade completes, then the overlay unmounts for good.
+  const [guideOpacity] = useState(() => new Animated.Value(0));
+  const [bob] = useState(() => new Animated.Value(0));
+  const dismissing = useRef(false);
+  const showGuide = ready && !settings.onboardingSeen && view === 'cards' && deck.length > 0;
+
+  // Fade the arrows in and start the looping bob (transform + opacity only,
+  // native driver). No setState here — visibility is derived from showGuide.
+  useEffect(() => {
+    if (!showGuide) return;
+    dismissing.current = false; // re-arm (covers Settings → Replay guide)
+    guideOpacity.setValue(0);
+    Animated.timing(guideOpacity, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bob, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(bob, { toValue: 0, duration: 700, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [showGuide, guideOpacity, bob]);
+
+  const bobUp = bob.interpolate({ inputRange: [0, 1], outputRange: [0, -8] });
+  const bobDown = bob.interpolate({ inputRange: [0, 1], outputRange: [0, 8] });
+  const bobLeft = bob.interpolate({ inputRange: [0, 1], outputRange: [0, -8] });
+  const bobRight = bob.interpolate({ inputRange: [0, 1], outputRange: [0, 8] });
+
+  const dismissGuide = useCallback(() => {
+    if (dismissing.current) return;
+    dismissing.current = true;
+    // Fade out, then unmount (never unmount mid-animation — iOS blanks the deck).
+    Animated.timing(guideOpacity, { toValue: 0, duration: 300, useNativeDriver: true })
+      .start(() => setOnboardingSeen());
+  }, [guideOpacity, setOnboardingSeen]);
+
   const handleSwipe = (dir: SwipeDir, movie: Movie) => {
+    dismissGuide();
     clearJump();
     if (dir === 'left' || dir === 'right') {
       // Next: cycle the card to the back of the deck.
@@ -141,6 +183,36 @@ export default function WatchlistScreen() {
                   <Ionicons name="chevron-back" size={26} color="#1c1c1e" />
                 </Pressable>
               )}
+              {/* Coach-mark arrows for the first-time guide: pointer-transparent
+                  so swipes pass through; kept mounted through the fade-out. */}
+              {showGuide && (
+                <Animated.View style={[styles.guideOverlay, { opacity: guideOpacity }]} pointerEvents="none">
+                  <Animated.View style={[styles.guideMark, styles.guideTop, { transform: [{ translateY: bobUp }] }]}>
+                    <View style={styles.guideBubble}>
+                      <Ionicons name="arrow-up" size={22} color="#fff" />
+                    </View>
+                    <Text style={styles.guideLabel}>Seen</Text>
+                  </Animated.View>
+                  <Animated.View style={[styles.guideMark, styles.guideBottom, { transform: [{ translateY: bobDown }] }]}>
+                    <View style={styles.guideBubble}>
+                      <Ionicons name="arrow-down" size={22} color="#fff" />
+                    </View>
+                    <Text style={styles.guideLabel}>Trash</Text>
+                  </Animated.View>
+                  <Animated.View style={[styles.guideMark, styles.guideLeft, { transform: [{ translateX: bobLeft }] }]}>
+                    <View style={styles.guideBubble}>
+                      <Ionicons name="arrow-back" size={22} color="#fff" />
+                    </View>
+                    <Text style={styles.guideLabel}>Next</Text>
+                  </Animated.View>
+                  <Animated.View style={[styles.guideMark, styles.guideRight, { transform: [{ translateX: bobRight }] }]}>
+                    <View style={styles.guideBubble}>
+                      <Ionicons name="arrow-forward" size={22} color="#fff" />
+                    </View>
+                    <Text style={styles.guideLabel}>Next</Text>
+                  </Animated.View>
+                </Animated.View>
+              )}
             </View>
           )}
         </View>
@@ -192,4 +264,21 @@ const styles = StyleSheet.create({
   dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
   emptyIcon: { fontSize: 56, marginBottom: 12 },
   emptyTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 8 },
+  // First-time guide coach marks: floating arrow bubbles over the deck.
+  guideOverlay: { ...StyleSheet.absoluteFill, zIndex: 20 },
+  guideMark: { position: 'absolute', alignItems: 'center', gap: 6 },
+  guideTop: { top: 10, left: '50%', marginLeft: -28 },
+  guideBottom: { bottom: 10, left: '50%', marginLeft: -28 },
+  guideLeft: { left: 10, top: '50%', marginTop: -38 },
+  guideRight: { right: 10, top: '50%', marginTop: -38 },
+  guideBubble: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  guideLabel: {
+    color: '#fff', fontSize: 13, fontWeight: '700',
+    textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
+  },
 });

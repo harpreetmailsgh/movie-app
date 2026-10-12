@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Movie, EntryStatus, Settings, ViewMode } from './types';
-import { seedMovies, backfillSeedData, normalizeMovie } from './seed';
+import { backfillSeedData, normalizeMovie } from './seed';
 import { bestMatch, bestMatchKeyless, bestMatches, fetchImdbRating, fetchReelText, fetchReelTitle, searchTitlesKeyless, fetchKeylessMeta } from './tmdb';
 import { pickRandomTitles } from './testMovies';
 import { fetchFrameOcrText } from './frameOcr';
@@ -23,6 +23,42 @@ const BAKED_TMDB_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY ?? '';
 
 function newId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * First-time guide seed: the top-5 IMDb movies, hardcoded by TMDB id so the
+ * entries work offline. Posters/overview/genres fill in later via the
+ * existing enrich flow (backfillDetails / enrichLibrary).
+ */
+const GUIDE_SEEDS: { title: string; year: number; tmdbID: number }[] = [
+  { title: 'The Shawshank Redemption', year: 1994, tmdbID: 278 },
+  { title: 'The Godfather', year: 1972, tmdbID: 238 },
+  { title: 'The Dark Knight', year: 2008, tmdbID: 155 },
+  { title: 'The Godfather Part II', year: 1974, tmdbID: 240 },
+  { title: '12 Angry Men', year: 1957, tmdbID: 389 },
+];
+
+function seedGuideMovies(): Movie[] {
+  const now = Date.now();
+  return GUIDE_SEEDS.map((s, i) => ({
+    id: `guide-seed-${i}-${now}`,
+    title: s.title,
+    year: s.year,
+    mediaType: 'movie' as const,
+    genres: [],
+    overview: '',
+    posterPath: '',
+    reelURL: '',
+    caption: '',
+    notes: '',
+    status: 'watchlist' as const,
+    tmdbID: s.tmdbID,
+    imdbRating: 0,
+    originalLanguage: '',
+    cast: [],
+    needsReview: false,
+    dateAdded: now + i,
+  }));
 }
 
 /** Outcome of a reel import: every title found, split by what happened to it. */
@@ -83,6 +119,8 @@ interface Store {
   enrichLibrary: () => Promise<void>;
   setOnboardingSeen: () => void;
   setPrivacySeen: () => void;
+  /** Re-shows the coach-mark arrows once (does NOT re-seed movies). */
+  replayGuide: () => void;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -96,7 +134,7 @@ export function useStore(): Store {
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [ready, setReady] = useState(false);
-  const [settings, setSettings] = useState<Settings>({ tmdbKey: BAKED_TMDB_KEY, onboardingSeen: false, privacySeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles' });
+  const [settings, setSettings] = useState<Settings>({ tmdbKey: BAKED_TMDB_KEY, onboardingSeen: false, privacySeen: false, seeded: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles' });
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'error'>('idle');
@@ -107,7 +145,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncedUser = useRef<string | null>(null);
 
-  // Load persisted state (seed on first launch).
+  // Load persisted state (first launch seeds the top-5 guide movies).
   useEffect(() => {
     (async () => {
       try {
@@ -115,6 +153,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem(MOVIES_KEY),
           AsyncStorage.getItem(SETTINGS_KEY),
         ]);
+        // Settings first — the guide logic below needs seeded/onboardingSeen.
+        // Old saves lack the newer keys; the defaults fill them in.
+        const parsed = settingsRaw ? JSON.parse(settingsRaw) : {};
+        const nextSettings: Settings = {
+          onboardingSeen: false, privacySeen: false, seeded: false,
+          cardAnimation: 'flick', deckStyle: 'stack',
+          watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles',
+          ...parsed,
+          tmdbKey: parsed.tmdbKey || BAKED_TMDB_KEY,
+        };
+        let finalMovies: Movie[];
         if (moviesRaw) {
           const stored: Movie[] = JSON.parse(moviesRaw);
           // Normalize first (old saves lack newer fields), then backfill
@@ -123,22 +172,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           // Old 'trash' entries are dropped for good — there is no Trash anymore.
           const live = normalized.filter((m) => (m.status as string) !== 'trash');
           const { movies: backfilled, changed } = backfillSeedData(live);
-          setMovies(backfilled);
+          finalMovies = backfilled;
           if (changed || live.length !== stored.length) {
             await AsyncStorage.setItem(MOVIES_KEY, JSON.stringify(backfilled));
           }
+          // Library empty and the guide never seen: seed the top-5 once.
+          if (!nextSettings.seeded && !nextSettings.onboardingSeen && finalMovies.length === 0) {
+            finalMovies = seedGuideMovies();
+            await AsyncStorage.setItem(MOVIES_KEY, JSON.stringify(finalMovies));
+            nextSettings.seeded = true;
+          }
         } else {
-          const seeds = seedMovies();
-          setMovies(seeds);
-          await AsyncStorage.setItem(MOVIES_KEY, JSON.stringify(seeds));
+          // First launch: seed the top-5 IMDb movies so the deck isn't empty.
+          finalMovies = seedGuideMovies();
+          await AsyncStorage.setItem(MOVIES_KEY, JSON.stringify(finalMovies));
+          nextSettings.seeded = true;
         }
-        if (settingsRaw) {
-          const parsed = JSON.parse(settingsRaw);
-          setSettings({ onboardingSeen: false, privacySeen: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles', ...parsed, tmdbKey: parsed.tmdbKey || BAKED_TMDB_KEY });
+        setMovies(finalMovies);
+        setSettings(nextSettings);
+        if (nextSettings.seeded && !parsed.seeded) {
+          // Persist the seeded flag so the top-5 are added exactly once.
+          await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(nextSettings));
         }
       } catch {
-        // Corrupt storage: start fresh with seeds.
-        setMovies(seedMovies());
+        // Corrupt storage: start fresh with the guide seeds.
+        setMovies(seedGuideMovies());
       } finally {
         setReady(true);
       }
@@ -440,6 +498,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     persistSettings({ ...settings, privacySeen: true });
   }, [settings, persistSettings]);
 
+  /**
+   * Re-shows the coach-mark arrows once (flips onboardingSeen back to false).
+   * Never re-seeds: seeding runs only in the load effect, guarded by the
+   * persisted `seeded` flag.
+   */
+  const replayGuide = useCallback(() => {
+    persistSettings({ ...settings, onboardingSeen: false });
+  }, [settings, persistSettings]);
+
   /** Paste a reel link → read its caption → TMDB match → add to Inbox. */
   const importReel = useCallback(async (url: string): Promise<ReelImportOutcome> => {
     const clean = url.trim();
@@ -577,8 +644,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     movies, ready, settings, importing, importMessage, syncState, lastSyncAt,
     moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary,
     clearWatchlist, clearSeen,
-    importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen, setPrivacySeen,
-  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen, setPrivacySeen]);
+    importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen, setPrivacySeen, replayGuide,
+  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen, setPrivacySeen, replayGuide]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

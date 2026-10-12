@@ -174,7 +174,7 @@ function FeedbackModal({ visible, onClose }: { visible: boolean; onClose: () => 
 
 export default function SettingsScreen() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const { clearWatchlist, clearSeen } = useStore();
+  const { clearWatchlist, clearSeen, replayGuide } = useStore();
   const insets = useSafeAreaInsets();
 
   const confirmClear = (which: 'watchlist' | 'seen') => {
@@ -211,6 +211,13 @@ export default function SettingsScreen() {
             <Text style={styles.dangerText}>Clear Seen list</Text>
           </Pressable>
         </View>
+      </View>
+
+      <View style={[styles.accountBox, styles.section]}>
+        <Text style={styles.heading}>Guide</Text>
+        <Pressable style={styles.feedbackRow} onPress={replayGuide}>
+          <Text style={styles.feedbackText}>Replay guide</Text>
+        </Pressable>
       </View>
 
       <View style={[styles.accountBox, styles.section]}>

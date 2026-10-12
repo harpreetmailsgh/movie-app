@@ -29,6 +29,8 @@ export interface Settings {
   tmdbKey: string;
   onboardingSeen: boolean;
   privacySeen: boolean;
+  /** First-time guide seed (top-5 IMDb movies) has run — never seed twice. */
+  seeded: boolean;
   cardAnimation: CardAnimation;
   deckStyle: DeckStyle;
   watchlistView: ViewMode;
