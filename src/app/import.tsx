@@ -16,6 +16,26 @@ import MovieProgressBar from '../components/MovieProgressBar';
 const FIELD_BG = '#E9E9EE';
 const SEARCH_DEBOUNCE_MS = 500;
 
+/**
+ * Which platform icon to show for pasted link text — mirrors routeLink's
+ * routing (non-TikTok/non-YouTube goes to the FB/IG reel fetcher).
+ * Unparseable text (garbage) returns null → no icons shown.
+ */
+function detectPlatform(raw: string): 'tiktok' | 'youtube' | 'facebook' | 'instagram' | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (isTikTokUrl(trimmed)) return 'tiktok';
+  let host: string;
+  try {
+    host = new URL(trimmed).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+  if (host.includes('youtube.com') || host.includes('youtu.be')) return 'youtube';
+  if (host.includes('instagram.com')) return 'instagram';
+  return 'facebook';
+}
+
 export default function ImportScreen() {
   const { importReel, importing, importMessage, settings, addMovie, movies } = useStore();
   // Deep link from the iOS share extension: movierecommender://import?sharedUrl=...
@@ -333,6 +353,9 @@ export default function ImportScreen() {
   /** Any platform import currently running — drives the unified Fetch button. */
   const anyWorking = importing || ytWorking || ttWorking;
 
+  /** Platform detected for the icon row: empty → all icons, garbage (null) → none. */
+  const platform = detectPlatform(link);
+
   /** Five most recent watchlist movies by dateAdded desc — the "Recently added" section. */
   const recentAdded = movies
     .filter((m) => m.status === 'watchlist')
@@ -344,126 +367,148 @@ export default function ImportScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.section}>
         <Text style={styles.heading}>🎬&nbsp; Add movie</Text>
-        <TextInput
-          style={styles.input}
-          value={query}
-          onChangeText={onQueryChange}
-          placeholder="e.g. Predestination"
-          placeholderTextColor="#8E8E93"
-          onSubmitEditing={submitSearch}
-          returnKeyType="search"
-        />
-        {searching && <ActivityIndicator color="#fff" style={styles.loader} />}
-        {!searching && query.trim().length > 0 && results.length === 0 && (
-          <Text style={styles.body}>No matches — check the spelling, or try the original title.</Text>
-        )}
-        {results.map((m) => {
-          const uri = posterUrl(m.posterPath);
-          return (
-            <Pressable key={`${m.mediaType}-${m.tmdbID}-${m.title}`} style={styles.result} onPress={() => addManual(m)}>
-              {uri ? (
-                <Image source={{ uri }} style={styles.thumb} />
-              ) : (
-                <View style={[styles.thumb, styles.thumbFallback]}>
-                  <Text>🎬</Text>
+        <View style={styles.sectionCard}>
+          <TextInput
+            style={styles.input}
+            value={query}
+            onChangeText={onQueryChange}
+            placeholder="e.g. Predestination"
+            placeholderTextColor="#8E8E93"
+            onSubmitEditing={submitSearch}
+            returnKeyType="search"
+          />
+          {searching && <ActivityIndicator color="#fff" style={styles.loader} />}
+          {!searching && query.trim().length > 0 && results.length === 0 && (
+            <Text style={styles.body}>No matches — check the spelling, or try the original title.</Text>
+          )}
+          {results.map((m) => {
+            const uri = posterUrl(m.posterPath);
+            return (
+              <Pressable key={`${m.mediaType}-${m.tmdbID}-${m.title}`} style={styles.result} onPress={() => addManual(m)}>
+                {uri ? (
+                  <Image source={{ uri }} style={styles.thumb} />
+                ) : (
+                  <View style={[styles.thumb, styles.thumbFallback]}>
+                    <Text>🎬</Text>
+                  </View>
+                )}
+                <View style={styles.resultText}>
+                  <Text style={styles.resultTitle} numberOfLines={1}>{m.title}</Text>
+                  <Text style={styles.resultSub}>
+                    {[m.year > 0 ? String(m.year) : null, m.mediaType === 'tv' ? 'Series' : 'Movie']
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
                 </View>
-              )}
+                <Text style={styles.addPlus}>＋</Text>
+              </Pressable>
+            );
+          })}
+          {query.trim().length > 0 && (
+            <Pressable style={styles.result} onPress={saveAsTyped}>
+              <ClapboardPoster style={styles.thumb} />
               <View style={styles.resultText}>
-                <Text style={styles.resultTitle} numberOfLines={1}>{m.title}</Text>
-                <Text style={styles.resultSub}>
-                  {[m.year > 0 ? String(m.year) : null, m.mediaType === 'tv' ? 'Series' : 'Movie']
-                    .filter(Boolean)
-                    .join(' · ')}
+                <Text style={styles.resultTitle} numberOfLines={2}>
+                  Don&apos;t see it? Save &quot;{query.trim()}&quot; exactly as typed
                 </Text>
               </View>
               <Text style={styles.addPlus}>＋</Text>
             </Pressable>
-          );
-        })}
-        {query.trim().length > 0 && (
-          <Pressable style={styles.result} onPress={saveAsTyped}>
-            <ClapboardPoster style={styles.thumb} />
-            <View style={styles.resultText}>
-              <Text style={styles.resultTitle} numberOfLines={2}>
-                Don&apos;t see it? Save &quot;{query.trim()}&quot; exactly as typed
-              </Text>
-            </View>
-            <Text style={styles.addPlus}>＋</Text>
-          </Pressable>
-        )}
+          )}
+        </View>
       </View>
-
-      <View style={styles.divider} />
 
       <View style={styles.section}>
         <Text style={styles.heading}>🔗&nbsp; Add from a link</Text>
-        <View style={styles.brandIcons}>
-          <FontAwesome6 name="tiktok" size={24} color="#FFFFFF" />
-          <FontAwesome6 name="youtube" size={24} color="#FF0000" />
-          <FontAwesome6 name="facebook-f" size={24} color="#1877F2" />
-          <LinearGradient
-            colors={['#FEDA75', '#FA7E1E', '#D62976', '#962FBF', '#4F5BD5']}
-            style={styles.igBadge}
-          >
-            <FontAwesome6 name="instagram" size={22} color="#fff" />
-          </LinearGradient>
-        </View>
-        <Text style={styles.body}>Paste a link — import runs automatically.</Text>
-        <View style={styles.fetchRow}>
-          <TextInput
-            style={[styles.input, styles.inputFlex]}
-            value={link}
-            onChangeText={onLinkChange}
-            placeholder="Paste a link here"
-            placeholderTextColor="#8E8E93"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <Pressable
-            style={[styles.fetchButton, anyWorking && styles.buttonDisabled]}
-            onPress={submitLink}
-            disabled={anyWorking || !link.trim()}
-          >
-            <Text style={styles.fetchButtonText}>Fetch</Text>
-          </Pressable>
-        </View>
-        {anyWorking && (
-          <View style={styles.progressWrap}>
-            <MovieProgressBar indeterminate size="large" />
-          </View>
-        )}
-        {fbFailed && !!importMessage && <Text style={styles.error}>{importMessage}</Text>}
-        {!!ytMessage && <Text style={styles.error}>{ytMessage}</Text>}
-        {!!ttMessage && <Text style={styles.error}>{ttMessage}</Text>}
-        {fetchResults && fetchResults.length > 0 && (
-          <View style={styles.resultsCard}>
-            <Text style={styles.resultsHeader}>
-              {fetchResults.length === 1 ? '1 title fetched' : `${fetchResults.length} titles fetched`}
-            </Text>
-            {fetchResults.map((r, i) => (
-              r.unverified ? (
-                <View key={`${i}-${r.title}`} style={styles.unverifiedRow}>
-                  <Text style={styles.unverifiedTitle}>Couldn&apos;t verify this title</Text>
-                  {!!r.caption && <Text style={styles.unverifiedCaption}>{r.caption}</Text>}
-                </View>
+        <View style={styles.sectionCard}>
+          <View style={styles.fetchRow}>
+            <TextInput
+              style={[styles.input, styles.inputFlex]}
+              value={link}
+              onChangeText={onLinkChange}
+              placeholder="Paste a link here"
+              placeholderTextColor="#8E8E93"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Pressable
+              style={[styles.fetchButton, anyWorking && styles.buttonDisabled]}
+              onPress={submitLink}
+              disabled={anyWorking || !link.trim()}
+            >
+              {anyWorking ? (
+                <ActivityIndicator color="#000" size="small" />
               ) : (
-                <Text key={`${i}-${r.title}`} style={styles.resultsRow}>
-                  {i + 1}. {r.title}
-                </Text>
-              )
-            ))}
-            <Pressable style={styles.resultsDone} onPress={doneFromShare}>
-              <Text style={styles.resultsDoneText}>Done</Text>
+                <Text style={styles.fetchButtonText}>Fetch</Text>
+              )}
             </Pressable>
           </View>
-        )}
+          <Text style={styles.body}>Paste a link — import runs automatically.</Text>
+          {link.trim() === '' ? (
+            <View style={styles.brandIcons}>
+              <FontAwesome6 name="tiktok" size={24} color="#FFFFFF" />
+              <FontAwesome6 name="youtube" size={24} color="#FF0000" />
+              <FontAwesome6 name="facebook-f" size={24} color="#1877F2" />
+              <LinearGradient
+                colors={['#FEDA75', '#FA7E1E', '#D62976', '#962FBF', '#4F5BD5']}
+                style={styles.igBadge}
+              >
+                <FontAwesome6 name="instagram" size={22} color="#fff" />
+              </LinearGradient>
+            </View>
+          ) : platform !== null && (
+            <View style={styles.brandIcons}>
+              {platform === 'tiktok' && <FontAwesome6 name="tiktok" size={24} color="#FFFFFF" />}
+              {platform === 'youtube' && <FontAwesome6 name="youtube" size={24} color="#FF0000" />}
+              {platform === 'facebook' && <FontAwesome6 name="facebook-f" size={24} color="#1877F2" />}
+              {platform === 'instagram' && (
+                <LinearGradient
+                  colors={['#FEDA75', '#FA7E1E', '#D62976', '#962FBF', '#4F5BD5']}
+                  style={styles.igBadge}
+                >
+                  <FontAwesome6 name="instagram" size={22} color="#fff" />
+                </LinearGradient>
+              )}
+            </View>
+          )}
+          {anyWorking && (
+            <View style={styles.progressWrap}>
+              <MovieProgressBar indeterminate size="large" />
+              {!!importMessage && <Text style={styles.progressMessage}>{importMessage}</Text>}
+            </View>
+          )}
+          {fbFailed && !!importMessage && <Text style={styles.error}>{importMessage}</Text>}
+          {!!ytMessage && <Text style={styles.error}>{ytMessage}</Text>}
+          {!!ttMessage && <Text style={styles.error}>{ttMessage}</Text>}
+          {fetchResults && fetchResults.length > 0 && (
+            <View style={styles.resultsCard}>
+              <Text style={styles.resultsHeader}>
+                {fetchResults.length === 1 ? '1 title fetched' : `${fetchResults.length} titles fetched`}
+              </Text>
+              {fetchResults.map((r, i) => (
+                r.unverified ? (
+                  <View key={`${i}-${r.title}`} style={styles.unverifiedRow}>
+                    <Text style={styles.unverifiedTitle}>Couldn&apos;t verify this title</Text>
+                    {!!r.caption && <Text style={styles.unverifiedCaption}>{r.caption}</Text>}
+                  </View>
+                ) : (
+                  <Text key={`${i}-${r.title}`} style={styles.resultsRow}>
+                    {i + 1}. {r.title}
+                  </Text>
+                )
+              ))}
+              <Pressable style={styles.resultsDone} onPress={doneFromShare}>
+                <Text style={styles.resultsDoneText}>Done</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
       </View>
 
       {recentAdded.length > 0 && (
-        <>
-          <View style={styles.divider} />
-          <View style={styles.section}>
-            <Text style={styles.heading}>🕘&nbsp; Recently added</Text>
+        <View style={styles.section}>
+          <Text style={styles.heading}>🕘&nbsp; Recently added</Text>
+          <View style={styles.sectionCard}>
             {recentAdded.map((m) => {
               const uri = posterUrl(m.posterPath);
               return (
@@ -483,7 +528,7 @@ export default function ImportScreen() {
               );
             })}
           </View>
-        </>
+        </View>
       )}
     </ScrollView>
   );
@@ -493,9 +538,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   content: { padding: 20, paddingBottom: 48 },
   section: { marginTop: 20 },
+  sectionCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 14 },
   divider: { height: 1, backgroundColor: '#2c2c2e', marginTop: 28 },
   heading: { color: '#fff', fontSize: 19, fontWeight: '800' },
-  body: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 21, marginBottom: 14 },
+  body: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 21, marginTop: 12, marginBottom: 14 },
   input: {
     backgroundColor: FIELD_BG, color: '#111', borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 13, fontSize: 15,
@@ -516,7 +562,8 @@ const styles = StyleSheet.create({
   unverifiedRow: { marginTop: 10 },
   unverifiedTitle: { color: '#fff', fontSize: 14, fontWeight: '700', lineHeight: 22 },
   unverifiedCaption: { color: 'rgba(255,255,255,0.55)', fontSize: 12, lineHeight: 18, marginTop: 2 },
-  progressWrap: { marginTop: 12 },
+  progressWrap: { marginTop: 12, width: '70%', alignSelf: 'center' },
+  progressMessage: { color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 6, textAlign: 'center' },
   resultsCard: {
     backgroundColor: '#1c1c1e', borderRadius: 14, padding: 16, marginTop: 14,
   },
