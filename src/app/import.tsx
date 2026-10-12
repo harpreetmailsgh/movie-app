@@ -168,7 +168,7 @@ export default function ImportScreen() {
       setFetchResults([
         ...added.map((t) => ({ title: t, unverified: false })),
         ...alreadyHave.map((t) => ({ title: t, unverified: false })),
-        ...savedForReview.map((t) => ({ title: t, unverified: true })),
+        ...savedForReview.map((t) => ({ title: t.title, unverified: true, caption: t.caption })),
       ].slice(0, 10));
     } else {
       // Error case: show the store's specific message inline, keep the link for editing.

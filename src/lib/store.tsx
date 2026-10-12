@@ -72,7 +72,7 @@ export interface ReelImportOutcome {
   /** Titles matched but already in the library — not duplicated. */
   alreadyHave: string[];
   /** Titles saved for manual review when nothing matched confidently. */
-  savedForReview: string[];
+  savedForReview: { title: string; caption: string }[];
 }
 
 /** Library identity key for dedupe: TMDB id when known, else title/year/type. */
@@ -611,7 +611,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         overview: '', posterPath: '', reelURL: clean, caption: text, notes: '',
         status: 'watchlist', tmdbID: 0, imdbRating: 0, originalLanguage: '', cast: [], needsReview: true,
       });
-      return { ok: true, added: [], alreadyHave: [], savedForReview: [savedTitle] };
+      return { ok: true, added: [], alreadyHave: [], savedForReview: [{ title: savedTitle, caption: text }] };
     } finally {
       setImporting(false);
     }
@@ -687,24 +687,47 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
    * tab shows the large film-strip loader. The ~30s timeout guarantees the
    * deck shows regardless — offline/failure falls back to poster fallbacks
    * (current behavior), and nothing re-runs on later launches.
+   *
+   * Any-launch silent path: if the library already has movies missing
+   * posters (e.g. the v1.6.33 native build lacked the baked TMDB key when the
+   * one-time seed enrichment ran), enrich them silently in the background —
+   * no loader, no UI block. Offline / no key → silent no-op.
+   * seedEnrichStarted guards both paths: exactly one enrichment per launch.
    */
   useEffect(() => {
-    if (!ready || !seededThisLaunch.current || seedEnrichStarted.current) return;
-    if (movies.length === 0) return; // wait for the seeds to land in state
+    if (!ready || seedEnrichStarted.current) return;
+    if (movies.length === 0) return; // wait for the library to land in state
+    if (seededThisLaunch.current) {
+      // First-launch seed path (unchanged).
+      seedEnrichStarted.current = true;
+      void (async () => {
+        // Inside the async callback (not the effect body itself) so the
+        // loader flag flips without a synchronous setState-in-effect.
+        setSeedingPosters(true);
+        try {
+          await Promise.race([
+            enrichLibrary(),
+            new Promise<void>((resolve) => setTimeout(resolve, SEED_ENRICH_TIMEOUT_MS)),
+          ]);
+        } catch {
+          // Offline / network failure → poster fallbacks (current behavior).
+        } finally {
+          setSeedingPosters(false);
+        }
+      })();
+      return;
+    }
+    // Silent background path: only when some movie still lacks a poster.
+    if (!movies.some((m) => !m.posterPath)) return;
     seedEnrichStarted.current = true;
     void (async () => {
-      // Inside the async callback (not the effect body itself) so the
-      // loader flag flips without a synchronous setState-in-effect.
-      setSeedingPosters(true);
       try {
         await Promise.race([
           enrichLibrary(),
           new Promise<void>((resolve) => setTimeout(resolve, SEED_ENRICH_TIMEOUT_MS)),
         ]);
       } catch {
-        // Offline / network failure → poster fallbacks (current behavior).
-      } finally {
-        setSeedingPosters(false);
+        // Offline / no key / network failure → silent no-op.
       }
     })();
   }, [ready, movies, enrichLibrary]);
