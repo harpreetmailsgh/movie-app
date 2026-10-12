@@ -127,20 +127,37 @@ export function candidates(text: string): string[] {
     let t = value.trim();
     // Strip list numbering/bullets: "1. ", "2) ", "- ", "• ".
     t = t.replace(/^(\d{1,3}[.)]\s*|[-*•]\s*)+/, '');
-    // Strip a trailing year: "Devs (2020)" -> "Devs".
-    t = t.replace(/\s*\(\d{4}\)\s*$/, '');
-    // Strip a trailing separator + year ("The Witches | 2020") and bare
-    // trailing year ("Devs 2020") — the special-chars regex below would
-    // otherwise eat the separator and leave the year glued on.
-    t = t.replace(/\s*[|\-–—:]\s*\d{4}\s*$/, '');
-    t = t.replace(/\s+\d{4}\s*$/, '');
-    // Ignore special characters: drop emoji/symbols, keep letters, numbers,
-    // spaces and the few punctuation marks titles use.
-    t = t.replace(/[^\p{L}\p{N}\s'&:,-]/gu, '').replace(/\s+/g, ' ').trim();
-    t = t.replace(/[@#]\w+/g, '').trim();
-    if (t.length < 2 || t.length > 60) return;
-    if (t.split(/\s+/).length > 8) return;
-    if (!ordered.includes(t)) ordered.push(t);
+    // Raw year-stripped variants: strip a trailing year ONLY if it's in
+    // [1900, current year] — never numbers that are part of the title
+    // ("Blade Runner 2049"). Keep both stripped and unstripped variants so
+    // titles that legitimately end in a year-number still match. The strips
+    // must run BEFORE the special-chars cleaning below, which would eat
+    // the separators first.
+    const variants = new Set<string>([t]);
+    const inYearRange = (y: number) => y >= 1900 && y <= new Date().getFullYear();
+    let ym: RegExpExecArray | null;
+    if ((ym = /\s*\((\d{4})\)\s*$/.exec(t)) !== null && inYearRange(Number(ym[1]))) {
+      variants.add(t.slice(0, ym.index)); // "Devs (2020)" -> "Devs"
+    }
+    if ((ym = /\s*[|\-–—:]\s*(\d{4})\s*$/.exec(t)) !== null && inYearRange(Number(ym[1]))) {
+      variants.add(t.slice(0, ym.index)); // "The Witches | 2020" -> "The Witches"
+    }
+    // Bare trailing year ("Devs 2020") — the lookbehind excludes years
+    // preceded by a separator ("Avatar - 2009"), which the strip above
+    // already covers; without it we'd emit a junk "Avatar -" variant.
+    if ((ym = /(?<![|\-–—:])\s+(\d{4})\s*$/.exec(t)) !== null && inYearRange(Number(ym[1]))) {
+      variants.add(t.slice(0, ym.index)); // "Devs 2020" -> "Devs"
+    }
+    for (const variant of variants) {
+      let c = variant;
+      // Ignore special characters: drop emoji/symbols, keep letters, numbers,
+      // spaces and the few punctuation marks titles use.
+      c = c.replace(/[^\p{L}\p{N}\s'&:,-]/gu, '').replace(/\s+/g, ' ').trim();
+      c = c.replace(/[@#]\w+/g, '').trim();
+      if (c.length < 2 || c.length > 60) continue;
+      if (c.split(/\s+/).length > 8) continue;
+      if (!ordered.includes(c)) ordered.push(c);
+    }
   };
   const quoteRe = /"([^"]+)"|'([^']+)'|“([^”]+)”/g;
   let m: RegExpExecArray | null;
