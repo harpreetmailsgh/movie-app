@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, StyleSheet, Pressable, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,11 +12,21 @@ import ListView from '../../components/ListView';
 import { useSharedFilters, applyFilters } from '../../lib/sharedFilters';
 import FilterBar, { filtersActive } from '../../components/FilterBar';
 import MovieProgressBar from '../../components/MovieProgressBar';
+import GuideOverlay, { GuideOverlayHandle, GuideMark } from '../../components/GuideOverlay';
+
+// Coach-mark arrows for Seen's first-time guide: ← → Next, ↓ Trash
+// (no up mark — swipe-up is a no-op there). Rendered by GuideOverlay;
+// hidden once this tab's guide flag flips.
+const SEEN_GUIDE_MARKS: GuideMark[] = [
+  { dir: 'left', label: 'Next', color: '#ff9f0a' },
+  { dir: 'right', label: 'Next', color: '#ff9f0a' },
+  { dir: 'down', label: 'Trash', color: '#ff453a' },
+];
 
 export default function SeenScreen() {
   const {
     movies, ready, settings, setSeenView,
-    moveMovie, deleteMovie, cycleToBack,
+    moveMovie, deleteMovie, cycleToBack, setGuideSeen,
   } = useStore();
   const insets = useSafeAreaInsets();
   const [filters, setFilters] = useSharedFilters();
@@ -63,6 +73,14 @@ export default function SeenScreen() {
     setOriginView(null);
   };
 
+  // First-time guide: animated coach-mark arrows floating over the deck.
+  // Shows when the deck has cards and this tab's guide hasn't been seen
+  // (fresh install or Settings → Replay guide); fades out permanently on
+  // the user's first swipe, then this tab's guide flag flips and the
+  // overlay unmounts for good.
+  const guideRef = useRef<GuideOverlayHandle>(null);
+  const showGuide = ready && !settings.guideSeenSeen && view === 'cards' && deckOrder.length > 0;
+
   const changeView = (v: 'cards' | 'tiles' | 'list') => {
     Keyboard.dismiss();
     clearJump();
@@ -84,6 +102,7 @@ export default function SeenScreen() {
   };
 
   const handleSwipe = (dir: SwipeDir, movie: Movie) => {
+    guideRef.current?.dismiss();
     Keyboard.dismiss();
     clearJump();
     if (dir === 'left' || dir === 'right') {
@@ -172,6 +191,16 @@ export default function SeenScreen() {
                 >
                   <Ionicons name="chevron-back" size={24} color="#1c1c1e" />
                 </Pressable>
+              )}
+              {/* Coach-mark arrows for the first-time guide — pointer-transparent
+                  so swipes pass through; the overlay fades out on first swipe. */}
+              {showGuide && (
+                <GuideOverlay
+                  ref={guideRef}
+                  marks={SEEN_GUIDE_MARKS}
+                  showViewHint={true}
+                  onDismiss={() => setGuideSeen('seen')}
+                />
               )}
             </View>
           )}

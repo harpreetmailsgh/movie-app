@@ -215,7 +215,13 @@ export default function SettingsScreen() {
 
       <View style={[styles.accountBox, styles.section]}>
         <Text style={styles.heading}>Guide</Text>
-        <Pressable style={styles.feedbackRow} onPress={replayGuide}>
+        <Pressable
+          style={styles.feedbackRow}
+          onPress={() => {
+            replayGuide();
+            Alert.alert('Guide enabled. Go to watchlist and trending to see guide.');
+          }}
+        >
           <Text style={styles.feedbackText}>Replay guide</Text>
         </Pressable>
       </View>
@@ -230,22 +236,12 @@ export default function SettingsScreen() {
       </View>
 
       <View style={[styles.accountBox, styles.section]}>
-        <Text style={styles.heading}>Privacy</Text>
-        <Text style={styles.body}>
-          No login required, no ads, no tracking. Your list is saved on this phone and backed up so you don&rsquo;t lose it.
-        </Text>
-        <Pressable style={styles.feedbackRow} onPress={() => router.push('/privacy')}>
-          <Text style={styles.feedbackText}>Read Privacy Policy</Text>
-        </Pressable>
-      </View>
-
-      <View style={[styles.accountBox, styles.section]}>
-        <Text style={styles.heading}>Feedback</Text>
+        <Text style={styles.heading}>Support</Text>
         <Pressable style={styles.feedbackRow} onPress={() => setFeedbackOpen(true)}>
           <Text style={styles.feedbackText}>Send feedback</Text>
         </Pressable>
-        <Pressable style={styles.feedbackRow} onPress={() => router.push('/share-diagnostics')}>
-          <Text style={styles.feedbackText}>Share Diagnostics</Text>
+        <Pressable style={styles.feedbackRow} onPress={() => router.push('/privacy')}>
+          <Text style={styles.feedbackText}>Read Privacy Policy</Text>
         </Pressable>
       </View>
 
@@ -259,17 +255,17 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 40 },
   pageHeader: { color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 12 },
   heading: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 10 },
-  section: { marginTop: 32 },
+  section: { marginTop: 16 },
   body: { color: 'rgba(255,255,255,0.75)', fontSize: 14, lineHeight: 21, marginBottom: 10 },
   buildStamp: {
-    color: 'rgba(255,255,255,0.3)', fontSize: 12, marginTop: 8,
+    color: 'rgba(255,255,255,0.3)', fontSize: 12, marginTop: 4,
   },
   feedbackRow: {
-    backgroundColor: '#2c2c2e', borderRadius: 12, paddingVertical: 12,
-    alignItems: 'center', marginTop: 12,
+    backgroundColor: '#2c2c2e', borderRadius: 12, paddingVertical: 10,
+    alignItems: 'center', marginTop: 8,
   },
   clearRow: { flexDirection: 'row', gap: 12 },
-  clearBtn: { flex: 1, marginTop: 12 },
+  clearBtn: { flex: 1, marginTop: 8 },
   feedbackText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   dangerText: { color: '#ff453a', fontSize: 15, fontWeight: '700' },
   accountBox: {

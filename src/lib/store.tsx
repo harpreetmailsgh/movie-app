@@ -122,7 +122,7 @@ interface Store {
   setSeenView: (view: ViewMode) => void;
   cycleToBack: (id: string) => void;
   enrichLibrary: () => Promise<void>;
-  setOnboardingSeen: () => void;
+  setGuideSeen: (tab: 'watchlist' | 'trending' | 'seen') => void;
   setPrivacySeen: () => void;
   /** Re-shows the coach-mark arrows once (does NOT re-seed movies). */
   replayGuide: () => void;
@@ -139,7 +139,7 @@ export function useStore(): Store {
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [ready, setReady] = useState(false);
-  const [settings, setSettings] = useState<Settings>({ tmdbKey: BAKED_TMDB_KEY, onboardingSeen: false, privacySeen: false, seeded: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'cards', seenView: 'cards' });
+  const [settings, setSettings] = useState<Settings>({ tmdbKey: BAKED_TMDB_KEY, guideSeenWatchlist: false, guideSeenTrending: false, guideSeenSeen: false, privacySeen: false, seeded: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'list' });
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [seedingPosters, setSeedingPosters] = useState(false);
@@ -163,25 +163,38 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem(MOVIES_KEY),
           AsyncStorage.getItem(SETTINGS_KEY),
         ]);
-        // Settings first — the guide logic below needs seeded/onboardingSeen.
+        // Settings first — the guide logic below needs the seeded and
+        // guide-seen flags.
         // Old saves lack the newer keys; the defaults fill them in.
         const parsed = settingsRaw ? JSON.parse(settingsRaw) : {};
         const nextSettings: Settings = {
-          onboardingSeen: false, privacySeen: false, seeded: false,
+          guideSeenWatchlist: false, guideSeenTrending: false, guideSeenSeen: false,
+          privacySeen: false, seeded: false,
           cardAnimation: 'flick', deckStyle: 'stack',
-          watchlistView: 'cards', trendingView: 'cards', seenView: 'cards',
+          watchlistView: 'cards', trendingView: 'tiles', seenView: 'list',
           ...parsed,
           tmdbKey: parsed.tmdbKey || BAKED_TMDB_KEY,
         };
-        // One-time migration: trending/seen defaults changed tiles → cards.
-        // Runs once; the toggles still work afterwards.
-        if (!parsed.trendingViewMigrated && nextSettings.trendingView === 'tiles') {
-          nextSettings.trendingView = 'cards';
+        // Defensive normalize: old saves lack the per-tab flags entirely
+        // (a baked default could also have persisted as an empty string).
+        nextSettings.guideSeenWatchlist = parsed.guideSeenWatchlist || false;
+        nextSettings.guideSeenTrending = parsed.guideSeenTrending || false;
+        nextSettings.guideSeenSeen = parsed.guideSeenSeen || false;
+        // One-time migration: the single onboardingSeen flag becomes three
+        // per-tab flags. An old save that had seen the guide must not get
+        // re-guided on any tab. The legacy key is dropped so it can't fire
+        // again (replayGuide flips only the new flags).
+        if (parsed.onboardingSeen === true) {
+          nextSettings.guideSeenWatchlist = true;
+          nextSettings.guideSeenTrending = true;
+          nextSettings.guideSeenSeen = true;
         }
+        delete (nextSettings as unknown as Record<string, unknown>).onboardingSeen;
+        // One-time migration: seen default changed tiles → list.
+        // Runs once; the toggle still works afterwards.
         if (!parsed.seenViewMigrated && nextSettings.seenView === 'tiles') {
-          nextSettings.seenView = 'cards';
+          nextSettings.seenView = 'list';
         }
-        nextSettings.trendingViewMigrated = true;
         nextSettings.seenViewMigrated = true;
         let finalMovies: Movie[];
         if (moviesRaw) {
@@ -197,7 +210,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             await AsyncStorage.setItem(MOVIES_KEY, JSON.stringify(backfilled));
           }
           // Library empty and the guide never seen: seed the top-5 once.
-          if (!nextSettings.seeded && !nextSettings.onboardingSeen && finalMovies.length === 0) {
+          if (!nextSettings.seeded && !nextSettings.guideSeenWatchlist && finalMovies.length === 0) {
             finalMovies = seedGuideMovies();
             await AsyncStorage.setItem(MOVIES_KEY, JSON.stringify(finalMovies));
             nextSettings.seeded = true;
@@ -512,8 +525,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     persist([...movies.filter((x) => x.id !== id), m]);
   }, [movies, persist]);
 
-  const setOnboardingSeen = useCallback(() => {
-    persistSettings({ ...settings, onboardingSeen: true });
+  /** Marks a tab's first-time guide as seen (fired on that tab's first swipe). */
+  const setGuideSeen = useCallback((tab: 'watchlist' | 'trending' | 'seen') => {
+    const key = tab === 'watchlist' ? 'guideSeenWatchlist'
+      : tab === 'trending' ? 'guideSeenTrending' : 'guideSeenSeen';
+    persistSettings({ ...settings, [key]: true });
   }, [settings, persistSettings]);
 
   const setPrivacySeen = useCallback(() => {
@@ -521,12 +537,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [settings, persistSettings]);
 
   /**
-   * Re-shows the coach-mark arrows once (flips onboardingSeen back to false).
-   * Never re-seeds: seeding runs only in the load effect, guarded by the
-   * persisted `seeded` flag.
+   * Re-shows the coach-mark arrows once on every tab (flips all three
+   * per-tab guide flags back to false). Never re-seeds: seeding runs only
+   * in the load effect, guarded by the persisted `seeded` flag.
    */
   const replayGuide = useCallback(() => {
-    persistSettings({ ...settings, onboardingSeen: false });
+    persistSettings({
+      ...settings,
+      guideSeenWatchlist: false, guideSeenTrending: false, guideSeenSeen: false,
+    });
   }, [settings, persistSettings]);
 
   /** Paste a reel link → read its caption → TMDB match → add to Inbox. */
@@ -694,8 +713,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     movies, ready, settings, importing, importMessage, seedingPosters, syncState, lastSyncAt,
     moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary,
     clearWatchlist, clearSeen,
-    importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen, setPrivacySeen, replayGuide,
-  }), [movies, ready, settings, importing, importMessage, seedingPosters, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen, setPrivacySeen, replayGuide]);
+    importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setGuideSeen, setPrivacySeen, replayGuide,
+  }), [movies, ready, settings, importing, importMessage, seedingPosters, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setGuideSeen, setPrivacySeen, replayGuide]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

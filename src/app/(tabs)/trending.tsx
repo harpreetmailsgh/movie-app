@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,10 +14,18 @@ import FilterBar, { filtersActive } from '../../components/FilterBar';
 import MovieProgressBar from '../../components/MovieProgressBar';
 import TilesView from '../../components/TilesView';
 import ListView from '../../components/ListView';
+import GuideOverlay, { GuideOverlayHandle, GuideMark } from '../../components/GuideOverlay';
+
+// Coach-mark arrows for Trending's first-time guide: → + Watchlist,
+// ← Next. Rendered by GuideOverlay; hidden once this tab's guide flag flips.
+const TRENDING_GUIDE_MARKS: GuideMark[] = [
+  { dir: 'right', label: '+ Watchlist', color: '#30d158' },
+  { dir: 'left', label: 'Next', color: '#ff9f0a' },
+];
 
 export default function TrendingScreen() {
   const {
-    movies, ready, settings, addMovie, setTrendingView,
+    movies, ready, settings, addMovie, setTrendingView, setGuideSeen,
   } = useStore();
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Movie[] | null>(null);
@@ -114,7 +122,16 @@ export default function TrendingScreen() {
     addMovie(trendingToInput(t));
   };
 
+  // First-time guide: animated coach-mark arrows floating over the deck.
+  // Shows when the feed has items and this tab's guide hasn't been seen
+  // (fresh install or Settings → Replay guide); fades out permanently on
+  // the user's first swipe, then this tab's guide flag flips and the
+  // overlay unmounts for good.
+  const guideRef = useRef<GuideOverlayHandle>(null);
+  const showGuide = ready && items !== null && !settings.guideSeenTrending && view === 'cards' && items.length > 0;
+
   const handleSwipe = (dir: SwipeDir, movie: Movie) => {
+    guideRef.current?.dismiss();
     clearJump();
     if (dir === 'right') {
       // ＋ Watchlist: save it, then take it out of the feed.
@@ -204,6 +221,16 @@ export default function TrendingScreen() {
                 >
                   <Ionicons name="chevron-back" size={26} color="#1c1c1e" />
                 </Pressable>
+              )}
+              {/* Coach-mark arrows for the first-time guide — pointer-transparent
+                  so swipes pass through; the overlay fades out on first swipe. */}
+              {showGuide && (
+                <GuideOverlay
+                  ref={guideRef}
+                  marks={TRENDING_GUIDE_MARKS}
+                  showViewHint={true}
+                  onDismiss={() => setGuideSeen('trending')}
+                />
               )}
             </View>
           )}

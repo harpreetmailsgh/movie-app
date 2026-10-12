@@ -27,7 +27,10 @@ export type ViewMode = 'cards' | 'tiles' | 'list';
 
 export interface Settings {
   tmdbKey: string;
-  onboardingSeen: boolean;
+  /** Per-tab first-time guide flags (replaced the single onboardingSeen). */
+  guideSeenWatchlist: boolean;
+  guideSeenTrending: boolean;
+  guideSeenSeen: boolean;
   privacySeen: boolean;
   /** First-time guide seed (top-5 IMDb movies) has run — never seed twice. */
   seeded: boolean;
@@ -36,9 +39,7 @@ export interface Settings {
   watchlistView: ViewMode;
   trendingView: ViewMode;
   seenView: ViewMode;
-  /** One-time migration: trending default changed tiles → cards (v1.6.32). */
-  trendingViewMigrated?: boolean;
-  /** One-time migration: seen default changed tiles → cards (v1.6.32). */
+  /** One-time migration: seen default changed tiles → list (v1.6.32). */
   seenViewMigrated?: boolean;
 }
 
