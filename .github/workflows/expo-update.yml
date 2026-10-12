@@ -53,3 +53,18 @@ jobs:
           EAS_PROJECT_DIR: ${{ github.workspace }}
           EAS_RUNTIME_VERSION: 57.0.0
         run: python3 tools/eas-update/publish_update.py
+
+      # The native EAS builds have no explicit runtimeVersion in app.json, so
+      # eas-cli baked in the app version (e.g. "1.6.31") as their runtime.
+      # Without this step their update checks 404 and they stay on the
+      # embedded bundle forever (root-caused 2026-10-12: "Build dev" on device).
+      - name: Read app version (native runtime)
+        id: appver
+        run: echo "version=$(python3 -c "import json; print(json.load(open('app.json'))['expo']['version'])")" >> $GITHUB_OUTPUT
+
+      - name: Publish update (native app-version runtime)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROJECT_DIR: ${{ github.workspace }}
+          EAS_RUNTIME_VERSION: ${{ steps.appver.outputs.version }}
+        run: python3 tools/eas-update/publish_update.py
