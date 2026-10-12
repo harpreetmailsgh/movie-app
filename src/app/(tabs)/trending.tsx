@@ -146,7 +146,7 @@ export default function TrendingScreen() {
     }
     return (
       <View style={styles.center}>
-        <MovieProgressBar indeterminate style={styles.loadingBar} />
+        <MovieProgressBar indeterminate size="large" style={styles.loadingBar} />
         <Text style={styles.dim}>Finding what's trending…</Text>
       </View>
     );

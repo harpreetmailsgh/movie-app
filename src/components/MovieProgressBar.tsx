@@ -17,9 +17,9 @@ const DIVIDER = '#FFFFFF';
 const TITLE = '#FF3B30';
 
 const HEIGHTS: Record<NonNullable<MovieProgressBarProps['size']>, number> = {
-  small: 10,
-  medium: 14,
-  large: 20,
+  small: 24,
+  medium: 44,
+  large: 64,
 };
 
 const PERFORATION_COUNT = 20;

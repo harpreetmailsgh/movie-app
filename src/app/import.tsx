@@ -429,7 +429,7 @@ export default function ImportScreen() {
         </View>
         {anyWorking && (
           <View style={styles.progressWrap}>
-            <MovieProgressBar indeterminate />
+            <MovieProgressBar indeterminate size="large" />
           </View>
         )}
         {fbFailed && !!importMessage && <Text style={styles.error}>{importMessage}</Text>}
