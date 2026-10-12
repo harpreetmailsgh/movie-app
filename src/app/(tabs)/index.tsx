@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   // Same wrapper as the import screen's fetching bar.
-  progressWrap: { marginTop: 12 },
+  progressWrap: { marginTop: 12, width: '80%' },
   dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
   emptyIcon: { fontSize: 56, marginBottom: 12 },
   emptyTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 8 },

@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12, backgroundColor: '#000' },
   // Same wrapper as the import screen's fetching bar.
-  progressWrap: { marginTop: 12 },
+  progressWrap: { marginTop: 12, width: '80%' },
   retryButton: {
     backgroundColor: '#FF9F0A',
     paddingHorizontal: 28,

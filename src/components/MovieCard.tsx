@@ -124,7 +124,7 @@ export default function MovieCard({ movie, onInfoTap }: { movie: Movie; onInfoTa
               {!!sourceUrl && <Text style={styles.linkDot}>·</Text>}
               <Pressable onPress={openTrailer} hitSlop={8} style={styles.trailerBtn} disabled={resolvingTrailer}>
                 {resolvingTrailer ? (
-                  <MovieProgressBar indeterminate size="small" />
+                  <MovieProgressBar indeterminate size="small" style={{ width: 140 }} />
                 ) : (
                   <Text style={styles.trailerBtnText}>Trailer ▶</Text>
                 )}

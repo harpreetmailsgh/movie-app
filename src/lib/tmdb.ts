@@ -129,6 +129,11 @@ export function candidates(text: string): string[] {
     t = t.replace(/^(\d{1,3}[.)]\s*|[-*•]\s*)+/, '');
     // Strip a trailing year: "Devs (2020)" -> "Devs".
     t = t.replace(/\s*\(\d{4}\)\s*$/, '');
+    // Strip a trailing separator + year ("The Witches | 2020") and bare
+    // trailing year ("Devs 2020") — the special-chars regex below would
+    // otherwise eat the separator and leave the year glued on.
+    t = t.replace(/\s*[|\-–—:]\s*\d{4}\s*$/, '');
+    t = t.replace(/\s+\d{4}\s*$/, '');
     // Ignore special characters: drop emoji/symbols, keep letters, numbers,
     // spaces and the few punctuation marks titles use.
     t = t.replace(/[^\p{L}\p{N}\s'&:,-]/gu, '').replace(/\s+/g, ' ').trim();
