@@ -54,7 +54,7 @@
       "resizeMode": "contain"
     },
     "userInterfaceStyle": "dark",
-    "version": "1.6.31",
+    "version": "1.6.33",
     "web": {
       "favicon": "./assets/favicon.png"
     },
@@ -62,6 +62,7 @@
       "eas": {
         "projectId": "646085b5-a3c9-4755-8dec-963c6f72223c"
       }
-    }
+    },
+    "runtimeVersion": "1.6.33"
   }
 }
