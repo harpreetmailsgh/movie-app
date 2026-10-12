@@ -16,6 +16,9 @@ import {
 const MOVIES_KEY = 'movies.v1';
 const SETTINGS_KEY = 'settings.v1';
 const DETAIL_BACKFILL_KEY = 'detail-backfill.v1';
+// First-launch seed enrichment never traps the user on the loader: the
+// Watchlist falls back to the deck (poster fallbacks) after this long.
+const SEED_ENRICH_TIMEOUT_MS = 30000;
 
 // TMDB API key baked in at export time (EXPO_PUBLIC_TMDB_API_KEY).
 // A key saved later via setTmdbKey overrides it.
@@ -96,6 +99,8 @@ interface Store {
   settings: Settings;
   importing: boolean;
   importMessage: string | null;
+  /** True on the first-launch seed path while the seed posters load. */
+  seedingPosters: boolean;
   syncState: 'idle' | 'syncing' | 'error';
   lastSyncAt: number | null;
   moveMovie: (id: string, status: EntryStatus) => void;
@@ -134,9 +139,10 @@ export function useStore(): Store {
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [ready, setReady] = useState(false);
-  const [settings, setSettings] = useState<Settings>({ tmdbKey: BAKED_TMDB_KEY, onboardingSeen: false, privacySeen: false, seeded: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles' });
+  const [settings, setSettings] = useState<Settings>({ tmdbKey: BAKED_TMDB_KEY, onboardingSeen: false, privacySeen: false, seeded: false, cardAnimation: 'flick', deckStyle: 'stack', watchlistView: 'cards', trendingView: 'cards', seenView: 'cards' });
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [seedingPosters, setSeedingPosters] = useState(false);
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
   const { session, ready: authReady } = useAuth();
@@ -144,6 +150,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const sessionRef = useRef<string | null>(null);
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncedUser = useRef<string | null>(null);
+  /** True when this launch wrote the top-5 guide seeds (first-launch path). */
+  const seededThisLaunch = useRef(false);
+  /** The seed-poster enrichment runs at most once per launch. */
+  const seedEnrichStarted = useRef(false);
 
   // Load persisted state (first launch seeds the top-5 guide movies).
   useEffect(() => {
@@ -159,10 +169,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const nextSettings: Settings = {
           onboardingSeen: false, privacySeen: false, seeded: false,
           cardAnimation: 'flick', deckStyle: 'stack',
-          watchlistView: 'cards', trendingView: 'tiles', seenView: 'tiles',
+          watchlistView: 'cards', trendingView: 'cards', seenView: 'cards',
           ...parsed,
           tmdbKey: parsed.tmdbKey || BAKED_TMDB_KEY,
         };
+        // One-time migration: trending/seen defaults changed tiles → cards.
+        // Runs once; the toggles still work afterwards.
+        if (!parsed.trendingViewMigrated && nextSettings.trendingView === 'tiles') {
+          nextSettings.trendingView = 'cards';
+        }
+        if (!parsed.seenViewMigrated && nextSettings.seenView === 'tiles') {
+          nextSettings.seenView = 'cards';
+        }
+        nextSettings.trendingViewMigrated = true;
+        nextSettings.seenViewMigrated = true;
         let finalMovies: Movie[];
         if (moviesRaw) {
           const stored: Movie[] = JSON.parse(moviesRaw);
@@ -181,12 +201,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             finalMovies = seedGuideMovies();
             await AsyncStorage.setItem(MOVIES_KEY, JSON.stringify(finalMovies));
             nextSettings.seeded = true;
+            seededThisLaunch.current = true;
           }
         } else {
           // First launch: seed the top-5 IMDb movies so the deck isn't empty.
           finalMovies = seedGuideMovies();
           await AsyncStorage.setItem(MOVIES_KEY, JSON.stringify(finalMovies));
           nextSettings.seeded = true;
+          seededThisLaunch.current = true;
         }
         setMovies(finalMovies);
         setSettings(nextSettings);
@@ -640,12 +662,40 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [movies, settings.tmdbKey, persist]);
 
+  /**
+   * First-launch seed path only: after the top-5 seeds are written, enrich
+   * them (posters etc.) via the existing enrichLibrary while the Watchlist
+   * tab shows the large film-strip loader. The ~30s timeout guarantees the
+   * deck shows regardless — offline/failure falls back to poster fallbacks
+   * (current behavior), and nothing re-runs on later launches.
+   */
+  useEffect(() => {
+    if (!ready || !seededThisLaunch.current || seedEnrichStarted.current) return;
+    if (movies.length === 0) return; // wait for the seeds to land in state
+    seedEnrichStarted.current = true;
+    void (async () => {
+      // Inside the async callback (not the effect body itself) so the
+      // loader flag flips without a synchronous setState-in-effect.
+      setSeedingPosters(true);
+      try {
+        await Promise.race([
+          enrichLibrary(),
+          new Promise<void>((resolve) => setTimeout(resolve, SEED_ENRICH_TIMEOUT_MS)),
+        ]);
+      } catch {
+        // Offline / network failure → poster fallbacks (current behavior).
+      } finally {
+        setSeedingPosters(false);
+      }
+    })();
+  }, [ready, movies, enrichLibrary]);
+
   const value = useMemo<Store>(() => ({
-    movies, ready, settings, importing, importMessage, syncState, lastSyncAt,
+    movies, ready, settings, importing, importMessage, seedingPosters, syncState, lastSyncAt,
     moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary,
     clearWatchlist, clearSeen,
     importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen, setPrivacySeen, replayGuide,
-  }), [movies, ready, settings, importing, importMessage, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen, setPrivacySeen, replayGuide]);
+  }), [movies, ready, settings, importing, importMessage, seedingPosters, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setOnboardingSeen, setPrivacySeen, replayGuide]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

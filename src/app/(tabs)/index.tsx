@@ -16,7 +16,7 @@ import MovieProgressBar from '../../components/MovieProgressBar';
 export default function WatchlistScreen() {
   const {
     movies, ready, settings, setWatchlistView,
-    moveMovie, deleteMovie, cycleToBack, setOnboardingSeen,
+    moveMovie, deleteMovie, cycleToBack, setOnboardingSeen, seedingPosters,
   } = useStore();
   const insets = useSafeAreaInsets();
   const [filters, setFilters] = useSharedFilters();
@@ -136,6 +136,19 @@ export default function WatchlistScreen() {
       <View style={styles.center}>
         <MovieProgressBar indeterminate size="small" />
         <Text style={styles.dim}>Loading your watchlist…</Text>
+      </View>
+    );
+  }
+
+  // First-launch seed path: while the top-5 seeds are enriched with posters,
+  // show the large film-strip loader — same component and look as the
+  // Trending tab's loading state. Enrichment done (or timed out) → the
+  // existing flow resumes below: deck + coach-mark arrows.
+  if (seedingPosters) {
+    return (
+      <View style={styles.center}>
+        <MovieProgressBar indeterminate size="large" style={styles.loadingBar} />
+        <Text style={styles.dim}>Loading posters…</Text>
       </View>
     );
   }
@@ -261,6 +274,8 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
+  // Caps the loader width — same as the Trending tab's loading state.
+  loadingBar: { maxWidth: 280 },
   dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
   emptyIcon: { fontSize: 56, marginBottom: 12 },
   emptyTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 8 },

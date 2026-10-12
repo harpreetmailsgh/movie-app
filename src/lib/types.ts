@@ -36,6 +36,10 @@ export interface Settings {
   watchlistView: ViewMode;
   trendingView: ViewMode;
   seenView: ViewMode;
+  /** One-time migration: trending default changed tiles → cards (v1.6.32). */
+  trendingViewMigrated?: boolean;
+  /** One-time migration: seen default changed tiles → cards (v1.6.32). */
+  seenViewMigrated?: boolean;
 }
 
 export const STATUS_META: Record<EntryStatus, { title: string; icon: string }> = {
