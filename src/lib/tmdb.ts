@@ -1,4 +1,5 @@
 import { genreNames } from './genres';
+import { reportKeyFailure } from './keyFailures';
 import { trailerSearchUrl } from './types';
 
 export interface TmdbMatch {
@@ -283,7 +284,12 @@ async function searchMulti(query: string, apiKey: string): Promise<TmdbMatch[] |
       `${BASE}/search/multi?api_key=${encodeURIComponent(apiKey)}` +
       `&query=${encodeURIComponent(query)}&include_adult=false`;
     const res = await timedFetch(url);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // 401/403 = bad/revoked key, reported silently to Supabase for diagnosis.
+      // Everything else (network errors, 429s, …) is not a key failure.
+      if (res.status === 401 || res.status === 403) reportKeyFailure('tmdb', res.status);
+      return null;
+    }
     const json = (await res.json()) as { results?: RawItem[] };
     return (json.results ?? []).flatMap((item) => {
       const mediaType = item.media_type;
