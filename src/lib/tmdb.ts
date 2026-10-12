@@ -35,14 +35,26 @@ async function timedFetch(url: string, init?: RequestInit): Promise<Response> {
 /** Best TMDB match for free text, or null when nothing matches confidently. */
 export async function bestMatch(text: string, apiKey: string): Promise<TmdbMatch | null> {
   if (!apiKey || !text) return null;
+  const cands = candidates(text).slice(0, 6);
+  const scored = await Promise.all(
+    cands.map(async (candidate) => {
+      const results = await searchMulti(candidate, apiKey);
+      if (!results) return null;
+      let top: { match: TmdbMatch; score: number } | null = null;
+      for (const r of results) {
+        const s = score(r.title, candidate, r.popularity);
+        if (s >= 60 && (!top || s > top.score)) top = { match: r, score: s };
+      }
+      return top;
+    }),
+  );
+  // Exact title match (score 100): return it immediately, first candidate wins.
+  for (const top of scored) {
+    if (top && top.score === 100) return top.match;
+  }
   let best: { match: TmdbMatch; score: number } | null = null;
-  for (const candidate of candidates(text).slice(0, 6)) {
-    const results = await searchMulti(candidate, apiKey);
-    if (!results) continue;
-    for (const r of results) {
-      const s = score(r.title, candidate, r.popularity);
-      if (s >= 60 && (!best || s > best.score)) best = { match: r, score: s };
-    }
+  for (const top of scored) {
+    if (top && (!best || top.score > best.score)) best = top;
   }
   return best?.match ?? null;
 }
@@ -54,13 +66,25 @@ export async function bestMatch(text: string, apiKey: string): Promise<TmdbMatch
  */
 export async function bestMatchKeyless(text: string): Promise<TmdbMatch | null> {
   if (!text) return null;
+  const cands = candidates(text).slice(0, 6);
+  const scored = await Promise.all(
+    cands.map(async (candidate) => {
+      const results = await searchTitlesKeyless(candidate);
+      let top: { match: TmdbMatch; score: number } | null = null;
+      for (const r of results) {
+        const s = score(r.title, candidate, 0);
+        if (s >= 60 && (!top || s > top.score)) top = { match: r, score: s };
+      }
+      return top;
+    }),
+  );
+  // Exact title match (score 100): return it immediately, first candidate wins.
+  for (const top of scored) {
+    if (top && top.score === 100) return top.match;
+  }
   let best: { match: TmdbMatch; score: number } | null = null;
-  for (const candidate of candidates(text).slice(0, 6)) {
-    const results = await searchTitlesKeyless(candidate);
-    for (const r of results) {
-      const s = score(r.title, candidate, 0);
-      if (s >= 60 && (!best || s > best.score)) best = { match: r, score: s };
-    }
+  for (const top of scored) {
+    if (top && (!best || top.score > best.score)) best = top;
   }
   return best?.match ?? null;
 }
