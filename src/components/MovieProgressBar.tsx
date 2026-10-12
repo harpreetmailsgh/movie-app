@@ -105,7 +105,7 @@ export default function MovieProgressBar({
       style={[styles.outer, style]}
       onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
     >
-      <View style={[styles.track, { height, borderRadius: height / 2 }]}>
+      <View style={[styles.track, { height, borderRadius: 16 }]}>
         {/* White film strip: black perforation rows top/bottom, large black
             frames separated by thin white dividers in the middle. */}
         <View style={[StyleSheet.absoluteFill, styles.strip]}>
