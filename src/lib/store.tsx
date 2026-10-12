@@ -662,9 +662,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const r = await fetchImdbRating(out.tmdbID, out.mediaType, out.title, settings.tmdbKey);
           if (r > 0) out = { ...out, imdbRating: r };
         }
-        if (!settings.tmdbKey) return out;
         if (out.posterPath || out.needsReview) return out;
-        const match = await bestMatch(`${out.title} ${out.year || ''}`, settings.tmdbKey);
+        const match = settings.tmdbKey
+          ? await bestMatch(`${out.title} ${out.year || ''}`, settings.tmdbKey)
+          : await bestMatchKeyless(`${out.title} ${out.year || ''}`);
         if (!match) return out;
         return {
           ...out,
