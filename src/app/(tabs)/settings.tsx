@@ -252,9 +252,9 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  content: { padding: 20, paddingBottom: 40 },
-  pageHeader: { color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 12 },
-  heading: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 10 },
+  content: { padding: 16, paddingBottom: 40 },
+  pageHeader: { color: '#fff', fontSize: 22, fontWeight: '800', marginBottom: 8 },
+  heading: { color: '#fff', fontSize: 17, fontWeight: '800', marginBottom: 6 },
   section: { marginTop: 16 },
   body: { color: 'rgba(255,255,255,0.75)', fontSize: 14, lineHeight: 21, marginBottom: 10 },
   buildStamp: {
@@ -270,8 +270,8 @@ const styles = StyleSheet.create({
   dangerText: { color: '#ff453a', fontSize: 15, fontWeight: '700' },
   accountBox: {
     backgroundColor: '#1c1c1e',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
+    padding: 12,
     marginBottom: 8,
   },
   appleBtn: { width: '100%', height: 48, marginTop: 12 },
