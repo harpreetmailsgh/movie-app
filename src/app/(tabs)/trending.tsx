@@ -163,7 +163,9 @@ export default function TrendingScreen() {
     }
     return (
       <View style={styles.center}>
-        <MovieProgressBar indeterminate size="large" style={styles.loadingBar} />
+        <View style={styles.progressWrap}>
+          <MovieProgressBar indeterminate size="large" />
+        </View>
         <Text style={styles.dim}>Finding what's trending…</Text>
       </View>
     );
@@ -301,7 +303,8 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12, backgroundColor: '#000' },
-  loadingBar: { maxWidth: 280 },
+  // Same wrapper as the import screen's fetching bar.
+  progressWrap: { marginTop: 12 },
   retryButton: {
     backgroundColor: '#FF9F0A',
     paddingHorizontal: 28,

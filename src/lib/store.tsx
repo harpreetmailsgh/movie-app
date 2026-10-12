@@ -663,9 +663,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           if (r > 0) out = { ...out, imdbRating: r };
         }
         if (out.posterPath || out.needsReview) return out;
+        // Keyless path searches by title only: bestMatchKeyless scores with
+        // popularity 0, so a "Title Year" candidate caps at 50 — below the 60
+        // confidence threshold — and can never match (root-caused 2026-10-12:
+        // seed posters stayed empty on keyless builds). Title-only scores an
+        // exact Cinemeta name at 100.
         const match = settings.tmdbKey
           ? await bestMatch(`${out.title} ${out.year || ''}`, settings.tmdbKey)
-          : await bestMatchKeyless(`${out.title} ${out.year || ''}`);
+          : await bestMatchKeyless(out.title);
         if (!match) return out;
         return {
           ...out,
@@ -673,7 +678,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           posterPath: match.posterPath || out.posterPath,
           genres: match.genres.length ? match.genres : out.genres,
           originalLanguage: out.originalLanguage || match.originalLanguage,
-          tmdbID: match.tmdbID,
+          // Keyless matches carry tmdbID 0 — never clobber the real id.
+          tmdbID: match.tmdbID || out.tmdbID,
         };
       }));
       await persist(next);

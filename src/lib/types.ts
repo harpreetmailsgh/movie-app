@@ -48,10 +48,28 @@ export const STATUS_META: Record<EntryStatus, { title: string; icon: string }> =
   seen: { title: 'Seen', icon: 'eye' },
 };
 
-export function posterUrl(path: string, size: 'w342' | 'w780' = 'w342'): string | null {
+export function posterUrl(path: string, size: 'w342' | 'w500' | 'w780' = 'w500'): string | null {
   if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path; // keyless (Cinemeta) results store full URLs
+  if (/^https?:\/\//i.test(path)) return upscaleKeylessPoster(path); // keyless (Cinemeta) results store full URLs
   return `https://image.tmdb.org/t/p/${size}${path}`;
+}
+
+/**
+ * Keyless (Cinemeta) posters are absolute URLs. Where the URL carries a
+ * resizable size segment, swap it for the largest available rendition;
+ * anything else passes through untouched (limitation: hosts without a
+ * resizable size segment can't be upscaled — e.g. metahub/fanart URLs).
+ */
+function upscaleKeylessPoster(url: string): string {
+  // TMDB image CDN: /t/p/<size>/… → /t/p/original/… (largest available).
+  if (/image\.tmdb\.org\/t\/p\/w\d+\//.test(url)) {
+    return url.replace(/(image\.tmdb\.org\/t\/p\/)w\d+(\/)/, '$1original$2');
+  }
+  // IMDb media CDN: …_V1_SX250.jpg → …_V1_.jpg (strip the size cap → original).
+  if (/_V1_(SX|SY|UX|UY)\d+/.test(url)) {
+    return url.replace(/_V1_(SX|SY|UX|UY)\d+/, '_V1_');
+  }
+  return url;
 }
 
 /** Public TMDB page for a movie/show — the source of its description text. */

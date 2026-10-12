@@ -119,7 +119,9 @@ export default function SeenScreen() {
   if (!ready) {
     return (
       <View style={styles.center}>
-        <MovieProgressBar indeterminate size="small" />
+        <View style={styles.progressWrap}>
+          <MovieProgressBar indeterminate size="large" />
+        </View>
         <Text style={styles.dim}>Loading your seen movies…</Text>
       </View>
     );
@@ -265,6 +267,8 @@ const styles = StyleSheet.create({
   deckArea: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', marginTop: 8 },
   deckWrap: { position: 'relative' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
+  // Same wrapper as the import screen's fetching bar.
+  progressWrap: { marginTop: 12 },
   dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
   emptyIcon: { fontSize: 56, marginBottom: 12 },
   emptyTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 8 },

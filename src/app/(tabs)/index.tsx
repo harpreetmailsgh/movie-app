@@ -111,7 +111,9 @@ export default function WatchlistScreen() {
   if (!ready) {
     return (
       <View style={styles.center}>
-        <MovieProgressBar indeterminate size="small" />
+        <View style={styles.progressWrap}>
+          <MovieProgressBar indeterminate size="large" />
+        </View>
         <Text style={styles.dim}>Loading your watchlist…</Text>
       </View>
     );
@@ -124,7 +126,9 @@ export default function WatchlistScreen() {
   if (seedingPosters) {
     return (
       <View style={styles.center}>
-        <MovieProgressBar indeterminate size="large" style={styles.loadingBar} />
+        <View style={styles.progressWrap}>
+          <MovieProgressBar indeterminate size="large" />
+        </View>
         <Text style={styles.dim}>Loading posters…</Text>
       </View>
     );
@@ -231,8 +235,8 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
-  // Caps the loader width — same as the Trending tab's loading state.
-  loadingBar: { maxWidth: 280 },
+  // Same wrapper as the import screen's fetching bar.
+  progressWrap: { marginTop: 12 },
   dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center' },
   emptyIcon: { fontSize: 56, marginBottom: 12 },
   emptyTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 8 },
