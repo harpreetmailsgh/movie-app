@@ -100,9 +100,7 @@ export default function MovieDetailScreen() {
       <View style={styles.actionRow}>
         <Pressable style={styles.trailerBtn} onPress={openTrailer} disabled={resolvingTrailer}>
           {resolvingTrailer ? (
-            <View style={styles.progressWrap}>
-              <MovieProgressBar indeterminate size="large" />
-            </View>
+            <MovieProgressBar indeterminate size="small" />
           ) : (
             <Text style={styles.trailerBtnText}>Trailer ▶</Text>
           )}
@@ -244,8 +242,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10, alignItems: 'center', justifyContent: 'center',
   },
   trailerBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  // Same wrapper as the import screen's fetching bar.
-  progressWrap: { marginTop: 12 },
   seenBtn: {
     backgroundColor: '#30d158', borderRadius: 12,
     paddingHorizontal: 16, paddingVertical: 10, justifyContent: 'center',
