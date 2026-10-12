@@ -117,7 +117,7 @@ const GuideOverlay = forwardRef<GuideOverlayHandle, GuideOverlayProps>(function 
       {showViewHint && (
         <Animated.View style={[styles.mark, styles.viewHint, bobTransform('up')]}>
           <View style={[styles.bubble, { backgroundColor: VIEW_HINT_COLOR }]}>
-            <Ionicons name="arrow-up" size={22} color="#fff" />
+            <Ionicons name="hand-left" size={22} color="#fff" />
           </View>
           <Text style={[styles.label, styles.hintLabel]}>{VIEW_HINT_LABEL}</Text>
         </Animated.View>
