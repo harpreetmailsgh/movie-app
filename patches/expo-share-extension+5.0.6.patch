@@ -111,8 +111,8 @@ index 7f9f6d8..bb035b3 100644
 +  /// Set the first time `finish` runs so collection completion and the 5s
 +  /// timeout can never double-dismiss.
 +  private var didFinish = false
-+  /// Set when the deep-link open resolves — via the open completion handler
-+  /// or the 3s fallback timer — so `completeRequest` fires at most once.
++  /// Set when the deep-link open resolves — so `completeRequest` fires at
++  /// most once. Shared by the open path and the no-URL silent-dismiss path.
 +  private var openResolved = false
 +  /// Share payload written by `getShareData`; mutated only on the main queue.
 +  private var collected: [String: Any] = [:]
@@ -139,7 +139,7 @@ index 7f9f6d8..bb035b3 100644
  
  #if canImport(FirebaseCore)
      if Bundle.main.object(forInfoDictionaryKey: "WithFirebase") as? Bool ?? false {
-@@ -73,224 +39,198 @@ class ShareExtensionViewController: UIViewController {
+@@ -73,224 +39,202 @@ class ShareExtensionViewController: UIViewController {
      }
  #endif
  
@@ -310,8 +310,8 @@ index 7f9f6d8..bb035b3 100644
 +  // MARK: - Finish path (collection completion and timeout share this)
 +
 +  /// Single finish path. Extracts the URL from `collected` and opens the
-+  /// deep link; `completeRequest` fires only in the open's completion handler
-+  /// (or the 3s fallback timer). Timeout/no-URL dismisses silently — there is
++  /// deep link; `completeRequest` fires immediately on the same main-queue
++  /// turn after the open returns. Timeout/no-URL dismisses silently — there is
 +  /// no blocking failure dialog (v1.6.28's invisible OK dialog froze YouTube).
 +  private func finish(timedOut: Bool) {
 +    guard !didFinish else { return }
@@ -345,28 +345,30 @@ index 7f9f6d8..bb035b3 100644
 -    self.close()
 +  /// Opens the deep link, preferring the responder-chain `UIApplication.open`
 +  /// (the pre-Swift-rewrite approach that worked) with `extensionContext.open`
-+  /// as the fallback. `completeRequest` fires only in the open's completion
-+  /// handler; a 3s fallback timer covers the case where it never fires.
++  /// as the fallback. `completeRequest` fires immediately on the same
++  /// main-queue turn after `open` returns — v1.6.33's wait for the completion
++  /// handler froze YouTube because iOS suspends the extension during the app
++  /// switch and the completion never fires. Responder-chain `UIApplication.open`
++  /// dispatches to SpringBoard synchronously, so the immediate `completeRequest`
++  /// cannot cancel the open (unlike the v1.6.29 `extensionContext.open` race).
++  /// The completion handler only logs the success Bool — the wait bought nothing.
 +  private func openDeepLink(_ deepLink: URL) {
 +    slog("open deepLink start")
-+    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-+      guard let self = self, !self.openResolved else { return }
-+      self.openResolved = true
-+      self.slog("open fallback timer fired: completion never ran")
-+      self.dismissExtension()
++    let logCompletion: (Bool) -> Void = { [weak self] success in
++      // Log-only: never gate `completeRequest` on this — the extension may be
++      // suspended during the app switch and this may never fire.
++      self?.slog("open completion fired success=\(success)")
 +    }
-+    let completion: (Bool) -> Void = { [weak self] _ in
-+      guard let self = self, !self.openResolved else { return }
-+      self.openResolved = true
-+      self.slog("open completion fired")
-+      self.dismissExtension()
-+    }
-+    if openViaResponderChain(deepLink, completion: completion) {
-+      slog("open via responder chain")
++    if openViaResponderChain(deepLink, completion: logCompletion) {
++      slog("open via responder chain; dismissing immediately after open returned")
 +    } else {
-+      slog("open via extensionContext fallback")
-+      extensionContext?.open(deepLink, completionHandler: completion)
++      // Best-effort fallback: the extensionContext.open + immediate
++      // completeRequest pairing may still race (v1.6.29-style), but this is
++      // not the active path.
++      slog("LOUD: responder chain unavailable — extensionContext.open fallback, best-effort, may race")
++      extensionContext?.open(deepLink, completionHandler: logCompletion)
 +    }
++    dismissExtension()
    }
  
 -  @objc @discardableResult private func openURL(_ url: URL) -> Bool {
@@ -415,10 +417,12 @@ index 7f9f6d8..bb035b3 100644
 -        }
 -      }
 -    }
-+  /// Removes the progress UI and dismisses the extension. Called only from the
-+  /// deep-link open completion handler, the 3s fallback timer, or the no-URL
-+  /// silent-dismiss path.
++  /// Removes the progress UI and dismisses the extension. Idempotent via
++  /// `openResolved` — safe to call from the open path and the no-URL
++  /// silent-dismiss path; `completeRequest` fires at most once.
 +  private func dismissExtension() {
++    guard !openResolved else { return }
++    openResolved = true
 +    removeProgressUI()
 +    slog("completeRequest called")
 +    extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
@@ -509,7 +513,7 @@ index 7f9f6d8..bb035b3 100644
                  if sharedURL.isFileURL {
                    // Screenshot overlay sends public.url (file URLs) instead of public.image
                    let fileExtension = sharedURL.pathExtension.lowercased()
-@@ -303,12 +243,14 @@ class ShareExtensionViewController: UIViewController {
+@@ -303,12 +247,14 @@ class ShareExtensionViewController: UIViewController {
                    }
  
                    guard let appGroup = Bundle.main.object(forInfoDictionaryKey: "AppGroup") as? String else {
@@ -524,7 +528,7 @@ index 7f9f6d8..bb035b3 100644
                      print("Could not set up file manager container URL for app group")
                      group.leave()
                      return
-@@ -332,18 +274,18 @@ class ShareExtensionViewController: UIViewController {
+@@ -332,18 +278,18 @@ class ShareExtensionViewController: UIViewController {
                    do {
                      try fileManager.copyItem(atPath: tempFilePath, toPath: persistentURL.path)
                      let key = isImage ? "images" : "files"
@@ -548,7 +552,7 @@ index 7f9f6d8..bb035b3 100644
                  }
                }
                group.leave()
-@@ -351,250 +293,15 @@ class ShareExtensionViewController: UIViewController {
+@@ -351,250 +297,15 @@ class ShareExtensionViewController: UIViewController {
            }
          }
  
@@ -803,7 +807,7 @@ index 7f9f6d8..bb035b3 100644
                }
                group.leave()
              }
-@@ -603,8 +310,18 @@ class ShareExtensionViewController: UIViewController {
+@@ -603,8 +314,18 @@ class ShareExtensionViewController: UIViewController {
        }
      }
  
