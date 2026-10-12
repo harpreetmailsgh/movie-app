@@ -13,7 +13,7 @@
     "experiments": {
       "typedRoutes": true
     },
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon-filmm.png",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.harpreetmails.moviedeck",
@@ -54,7 +54,7 @@
       "resizeMode": "contain"
     },
     "userInterfaceStyle": "dark",
-    "version": "1.6.30",
+    "version": "1.6.31",
     "web": {
       "favicon": "./assets/favicon.png"
     },

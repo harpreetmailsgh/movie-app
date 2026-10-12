@@ -3,6 +3,7 @@ import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator,
 } from 'react-native';
 import { FontAwesome6 } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../lib/store';
 import { bestMatch, bestMatchKeyless, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
@@ -16,7 +17,7 @@ const FIELD_BG = '#E9E9EE';
 const SEARCH_DEBOUNCE_MS = 500;
 
 export default function ImportScreen() {
-  const { importReel, importing, importMessage, settings, addMovie } = useStore();
+  const { importReel, importing, importMessage, settings, addMovie, movies } = useStore();
   // Deep link from the iOS share extension: movierecommender://import?sharedUrl=...
   const { sharedUrl } = useLocalSearchParams<{ sharedUrl?: string }>();
   /** After a share-extension import, land on the Watchlist instead of going back. */
@@ -33,7 +34,7 @@ export default function ImportScreen() {
   const [ttMessage, setTtMessage] = useState<string | null>(null);
   const [fbFailed, setFbFailed] = useState(false);
   /** Inline results card data — replaces the old Alert.alert popup. */
-  const [fetchResults, setFetchResults] = useState<{ title: string; unverified: boolean }[] | null>(null);
+  const [fetchResults, setFetchResults] = useState<{ title: string; unverified: boolean; caption?: string }[] | null>(null);
 
   // Run ids: editing a field mid-run cancels that run's completion UI.
   const fbRunRef = useRef(0);
@@ -237,7 +238,7 @@ export default function ImportScreen() {
       });
       if (runId !== ytRunRef.current) return;
       setLink('');
-      setFetchResults([{ title: info.title, unverified: true }]);
+      setFetchResults([{ title: info.title, unverified: true, caption }]);
     } finally {
       setYtWorking(false);
     }
@@ -305,7 +306,7 @@ export default function ImportScreen() {
       });
       if (runId !== ttRunRef.current) return;
       setLink('');
-      setFetchResults([{ title: info.caption, unverified: true }]);
+      setFetchResults([{ title: info.caption, unverified: true, caption }]);
     } finally {
       setTtWorking(false);
     }
@@ -331,6 +332,13 @@ export default function ImportScreen() {
 
   /** Any platform import currently running — drives the unified Fetch button. */
   const anyWorking = importing || ytWorking || ttWorking;
+
+  /** Five most recent watchlist movies by dateAdded desc — the "Recently added" section. */
+  const recentAdded = movies
+    .filter((m) => m.status === 'watchlist')
+    .slice()
+    .sort((a, b) => b.dateAdded - a.dateAdded)
+    .slice(0, 5);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -390,10 +398,15 @@ export default function ImportScreen() {
       <View style={styles.section}>
         <Text style={styles.heading}>🔗&nbsp; Add from a link</Text>
         <View style={styles.brandIcons}>
-          <FontAwesome6 name="tiktok" size={24} color="#fff" />
-          <FontAwesome6 name="youtube" size={24} color="#fff" />
-          <FontAwesome6 name="facebook-f" size={24} color="#fff" />
-          <FontAwesome6 name="instagram" size={24} color="#fff" />
+          <FontAwesome6 name="tiktok" size={24} color="#FFFFFF" />
+          <FontAwesome6 name="youtube" size={24} color="#FF0000" />
+          <FontAwesome6 name="facebook-f" size={24} color="#1877F2" />
+          <LinearGradient
+            colors={['#FEDA75', '#FA7E1E', '#D62976', '#962FBF', '#4F5BD5']}
+            style={styles.igBadge}
+          >
+            <FontAwesome6 name="instagram" size={22} color="#fff" />
+          </LinearGradient>
         </View>
         <Text style={styles.body}>Paste a link — import runs automatically.</Text>
         <View style={styles.fetchRow}>
@@ -424,11 +437,20 @@ export default function ImportScreen() {
         {!!ttMessage && <Text style={styles.error}>{ttMessage}</Text>}
         {fetchResults && fetchResults.length > 0 && (
           <View style={styles.resultsCard}>
-            <Text style={styles.resultsHeader}>{fetchResults.length} titles fetched</Text>
+            <Text style={styles.resultsHeader}>
+              {fetchResults.length === 1 ? '1 title fetched' : `${fetchResults.length} titles fetched`}
+            </Text>
             {fetchResults.map((r, i) => (
-              <Text key={`${i}-${r.title}`} style={styles.resultsRow}>
-                {i + 1}. {r.title}{r.unverified ? ' (unverified)' : ''}
-              </Text>
+              r.unverified ? (
+                <View key={`${i}-${r.title}`} style={styles.unverifiedRow}>
+                  <Text style={styles.unverifiedTitle}>Couldn&apos;t verify this title</Text>
+                  {!!r.caption && <Text style={styles.unverifiedCaption}>{r.caption}</Text>}
+                </View>
+              ) : (
+                <Text key={`${i}-${r.title}`} style={styles.resultsRow}>
+                  {i + 1}. {r.title}
+                </Text>
+              )
             ))}
             <Pressable style={styles.resultsDone} onPress={doneFromShare}>
               <Text style={styles.resultsDoneText}>Done</Text>
@@ -436,6 +458,33 @@ export default function ImportScreen() {
           </View>
         )}
       </View>
+
+      {recentAdded.length > 0 && (
+        <>
+          <View style={styles.divider} />
+          <View style={styles.section}>
+            <Text style={styles.heading}>🕘&nbsp; Recently added</Text>
+            {recentAdded.map((m) => {
+              const uri = posterUrl(m.posterPath);
+              return (
+                <Pressable key={m.id} style={styles.result} onPress={() => router.push(`/movie/${m.id}`)}>
+                  {uri ? (
+                    <Image source={{ uri }} style={styles.thumb} />
+                  ) : (
+                    <View style={[styles.thumb, styles.thumbFallback]}>
+                      <Text>🎬</Text>
+                    </View>
+                  )}
+                  <View style={styles.resultText}>
+                    <Text style={styles.resultTitle} numberOfLines={1}>{m.title}</Text>
+                    {m.year > 0 && <Text style={styles.resultSub}>{String(m.year)}</Text>}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -459,7 +508,14 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.5 },
   fetchButtonText: { color: '#000', fontSize: 15, fontWeight: '700' },
-  brandIcons: { flexDirection: 'row', gap: 20, marginTop: 12, marginBottom: 12 },
+  brandIcons: { flexDirection: 'row', gap: 20, marginTop: 12, marginBottom: 12, alignItems: 'center' },
+  igBadge: {
+    width: 34, height: 34, borderRadius: 9,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  unverifiedRow: { marginTop: 10 },
+  unverifiedTitle: { color: '#fff', fontSize: 14, fontWeight: '700', lineHeight: 22 },
+  unverifiedCaption: { color: 'rgba(255,255,255,0.55)', fontSize: 12, lineHeight: 18, marginTop: 2 },
   progressWrap: { marginTop: 12 },
   resultsCard: {
     backgroundColor: '#1c1c1e', borderRadius: 14, padding: 16, marginTop: 14,
