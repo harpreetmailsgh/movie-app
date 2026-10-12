@@ -321,6 +321,23 @@ export async function fetchReelText(reelUrl: string): Promise<string | null> {
 }
 
 /**
+ * Cleans a scraped og:title before it is used as the title. The og:title is
+ * the caption fallback path — it is intentionally NOT run through
+ * bestMatches. Strips hashtags, @mentions and emoji, then truncates to 60
+ * chars.
+ */
+function cleanOgTitle(s: string): string {
+  return s
+    .replace(/#\S+/g, ' ')
+    .replace(/@\w+/g, ' ')
+    .replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60)
+    .trim();
+}
+
+/**
  * Fetches a Facebook reel's public page and returns its Open Graph title —
  * the same og:title parse as fetchReelText. Falls back to the first line of
  * the fetched text when no og:title is present.
@@ -344,7 +361,8 @@ export async function fetchReelTitle(reelUrl: string): Promise<string | null> {
       return match ? decodeEntities(match[1]).trim() : '';
     };
     const ogTitle = meta('title');
-    if (ogTitle) return ogTitle;
+    const cleanedTitle = ogTitle ? cleanOgTitle(ogTitle) : '';
+    if (cleanedTitle) return cleanedTitle;
     const firstLine = meta('description').split('\n')[0].trim();
     return firstLine || null;
   } catch {
