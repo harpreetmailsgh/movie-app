@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Movie } from './types';
-import { TmdbMatch, CinemetaFullMeta, bestMatchKeyless, fetchKeylessMeta, fetchTrailerKey, resolveTrailerForTitle } from './tmdb';
+import { TmdbMatch, CinemetaFullMeta, bestMatch, bestMatchKeyless, fetchKeylessMeta, fetchTrailerKey, resolveTrailerForTitle } from './tmdb';
 
 const CINEMETA = 'https://v3-cinemeta.strem.io';
 
@@ -263,14 +263,14 @@ function matchToMovie(match: TmdbMatch, mediaType: 'movie' | 'tv', notes: string
   };
 }
 
-/** Enrich titles via keyless matching; titles with no match are skipped. */
-async function enrichTitles(titles: RankedTitle[]): Promise<Movie[]> {
+/** Enrich titles via keyed (or keyless when no key) matching; titles with no match are skipped. */
+async function enrichTitles(titles: RankedTitle[], apiKey?: string): Promise<Movie[]> {
   const out: Movie[] = [];
   // Small batches to bound concurrent network use.
   const BATCH = 5;
   for (let i = 0; i < titles.length; i += BATCH) {
     const batch = titles.slice(i, i + BATCH);
-    const matches = await Promise.all(batch.map((t) => bestMatchKeyless(t.title)));
+    const matches = await Promise.all(batch.map((t) => apiKey ? bestMatch(t.title, apiKey) : bestMatchKeyless(t.title)));
     // Full meta per match (description, genres, rating, cast) — the same
     // lookup the "Add 20 random movies" flow uses. Failures keep the slim
     // fields: no blanks, no crashes.
@@ -402,7 +402,7 @@ async function loadCountryTrending(apiKey?: string): Promise<Movie[]> {
   ]);
   const titles = mergeAndDedupe(netflix?.items ?? [], apple);
   if (!titles.length) throw new Error('no titles to enrich');
-  const items = await enrichTitles(titles);
+  const items = await enrichTitles(titles, apiKey);
   if (!items.length) throw new Error('no enriched items');
   const label = netflix ? `Trending in ${netflix.countryName} 🔥` : `Trending in ${cc.toUpperCase()} 🔥`;
   lastLabel = label;
