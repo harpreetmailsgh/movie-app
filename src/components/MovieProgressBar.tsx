@@ -113,10 +113,7 @@ export default function MovieProgressBar({
             {Array.from({ length: PERFORATION_COUNT }, (_, i) => (
               <View
                 key={`t${i}`}
-                style={[
-                  styles.perf,
-                  { width: dot, height: dot, borderRadius: dot / 2 },
-                ]}
+                style={[styles.perf, { width: dot, height: dot }]}
               />
             ))}
           </View>
@@ -132,10 +129,7 @@ export default function MovieProgressBar({
             {Array.from({ length: PERFORATION_COUNT }, (_, i) => (
               <View
                 key={`b${i}`}
-                style={[
-                  styles.perf,
-                  { width: dot, height: dot, borderRadius: dot / 2 },
-                ]}
+                style={[styles.perf, { width: dot, height: dot }]}
               />
             ))}
           </View>

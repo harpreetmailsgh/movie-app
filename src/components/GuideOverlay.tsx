@@ -131,9 +131,9 @@ export default GuideOverlay;
 const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFill, zIndex: 20 },
   mark: { position: 'absolute', alignItems: 'center', gap: 6 },
-  // Near the top, right of center — pointing up toward the header's
-  // view-switch icons.
-  viewHint: { top: 8, right: 24 },
+  // Up top, near the header's view-switch icons. Negative top lifts it
+  // out of the card deck area to sit just below the ViewHeader buttons.
+  viewHint: { top: -90, right: 24 },
   bubble: {
     width: 56, height: 56, borderRadius: 28,
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)',
