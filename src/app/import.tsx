@@ -36,6 +36,26 @@ function detectPlatform(raw: string): 'tiktok' | 'youtube' | 'facebook' | 'insta
   return 'facebook';
 }
 
+/**
+ * One platform icon at heading-row size: ~20px brand glyphs, 18px IG glyph
+ * on the existing gradient badge. Colors unchanged.
+ */
+function platformIcon(p: 'tiktok' | 'youtube' | 'facebook' | 'instagram') {
+  switch (p) {
+    case 'tiktok': return <FontAwesome6 name="tiktok" size={20} color="#FFFFFF" />;
+    case 'youtube': return <FontAwesome6 name="youtube" size={20} color="#FF0000" />;
+    case 'facebook': return <FontAwesome6 name="facebook-f" size={20} color="#1877F2" />;
+    case 'instagram': return (
+      <LinearGradient
+        colors={['#FEDA75', '#FA7E1E', '#D62976', '#962FBF', '#4F5BD5']}
+        style={styles.igBadgeSm}
+      >
+        <FontAwesome6 name="instagram" size={18} color="#fff" />
+      </LinearGradient>
+    );
+  }
+}
+
 export default function ImportScreen() {
   const { importReel, importing, importMessage, settings, addMovie, movies } = useStore();
   // Deep link from the iOS share extension: movierecommender://import?sharedUrl=...
@@ -419,7 +439,18 @@ export default function ImportScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>🔗&nbsp; Add from a link</Text>
+        <View style={styles.headingRow}>
+          <Text style={styles.heading}>🔗&nbsp; Add from a link</Text>
+          {(link.trim() === '' || platform !== null) && (
+            <View style={styles.headingIcons}>
+              {platform === null
+                ? (['tiktok', 'youtube', 'facebook', 'instagram'] as const).map((p) => (
+                    <React.Fragment key={p}>{platformIcon(p)}</React.Fragment>
+                  ))
+                : platformIcon(platform)}
+            </View>
+          )}
+        </View>
         <View style={styles.sectionCard}>
           <View style={styles.fetchRow}>
             <TextInput
@@ -444,33 +475,6 @@ export default function ImportScreen() {
             </Pressable>
           </View>
           <Text style={styles.body}>Paste a link — import runs automatically.</Text>
-          {link.trim() === '' ? (
-            <View style={styles.brandIcons}>
-              <FontAwesome6 name="tiktok" size={24} color="#FFFFFF" />
-              <FontAwesome6 name="youtube" size={24} color="#FF0000" />
-              <FontAwesome6 name="facebook-f" size={24} color="#1877F2" />
-              <LinearGradient
-                colors={['#FEDA75', '#FA7E1E', '#D62976', '#962FBF', '#4F5BD5']}
-                style={styles.igBadge}
-              >
-                <FontAwesome6 name="instagram" size={22} color="#fff" />
-              </LinearGradient>
-            </View>
-          ) : platform !== null && (
-            <View style={styles.brandIcons}>
-              {platform === 'tiktok' && <FontAwesome6 name="tiktok" size={24} color="#FFFFFF" />}
-              {platform === 'youtube' && <FontAwesome6 name="youtube" size={24} color="#FF0000" />}
-              {platform === 'facebook' && <FontAwesome6 name="facebook-f" size={24} color="#1877F2" />}
-              {platform === 'instagram' && (
-                <LinearGradient
-                  colors={['#FEDA75', '#FA7E1E', '#D62976', '#962FBF', '#4F5BD5']}
-                  style={styles.igBadge}
-                >
-                  <FontAwesome6 name="instagram" size={22} color="#fff" />
-                </LinearGradient>
-              )}
-            </View>
-          )}
           {anyWorking && (
             <View style={styles.progressWrap}>
               <MovieProgressBar indeterminate size="large" />
@@ -541,6 +545,8 @@ const styles = StyleSheet.create({
   sectionCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 14 },
   divider: { height: 1, backgroundColor: '#2c2c2e', marginTop: 28 },
   heading: { color: '#fff', fontSize: 19, fontWeight: '800' },
+  headingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headingIcons: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   body: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 21, marginTop: 12, marginBottom: 14 },
   input: {
     backgroundColor: FIELD_BG, color: '#111', borderRadius: 12,
@@ -555,8 +561,8 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.5 },
   fetchButtonText: { color: '#000', fontSize: 15, fontWeight: '700' },
   brandIcons: { flexDirection: 'row', gap: 20, marginTop: 12, marginBottom: 12, alignItems: 'center' },
-  igBadge: {
-    width: 34, height: 34, borderRadius: 9,
+  igBadgeSm: {
+    width: 30, height: 30, borderRadius: 8,
     alignItems: 'center', justifyContent: 'center',
   },
   unverifiedRow: { marginTop: 10 },
