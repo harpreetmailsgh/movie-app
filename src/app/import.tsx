@@ -13,7 +13,7 @@ import { posterUrl } from '../lib/types';
 import ClapboardPoster from '../components/ClapboardPoster';
 import MovieProgressBar from '../components/MovieProgressBar';
 
-const FIELD_BG = '#E9E9EE';
+const FIELD_BG = '#C7C7CC';
 const SEARCH_DEBOUNCE_MS = 500;
 
 /**
@@ -440,7 +440,7 @@ export default function ImportScreen() {
 
       <View style={styles.section}>
         <View style={styles.headingRow}>
-          <Text style={styles.heading}>🔗&nbsp; Add from a link</Text>
+          <Text style={styles.heading}>🔗&nbsp; Add a link from</Text>
           {(link.trim() === '' || platform !== null) && (
             <View style={styles.headingIcons}>
               {platform === null
@@ -542,7 +542,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   content: { padding: 20, paddingBottom: 48 },
   section: { marginTop: 20 },
-  sectionCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 14 },
+  sectionCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
   divider: { height: 1, backgroundColor: '#2c2c2e', marginTop: 28 },
   heading: { color: '#fff', fontSize: 19, fontWeight: '800' },
   headingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
