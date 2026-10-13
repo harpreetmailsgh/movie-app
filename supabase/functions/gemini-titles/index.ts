@@ -10,7 +10,7 @@ const CORS_HEADERS = {
 };
 
 const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
 
 const PROMPT =
   "List every movie title mentioned, shown, or discussed in this video. " +
