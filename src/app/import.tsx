@@ -1,9 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator,
 } from 'react-native';
 import { FontAwesome6 } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../lib/store';
 import { bestMatch, bestMatchKeyless, bestMatches, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
@@ -35,46 +34,6 @@ async function fetchYouTubeDurationSeconds(url: string): Promise<number | null> 
     return m ? Number(m[1]) : null;
   } catch {
     return null;
-  }
-}
-
-/**
- * Which platform icon to show for pasted link text — mirrors routeLink's
- * routing (non-TikTok/non-YouTube goes to the FB/IG reel fetcher).
- * Unparseable text (garbage) returns null → no icons shown.
- */
-function detectPlatform(raw: string): 'tiktok' | 'youtube' | 'facebook' | 'instagram' | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  if (isTikTokUrl(trimmed)) return 'tiktok';
-  let host: string;
-  try {
-    host = new URL(trimmed).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-  if (host.includes('youtube.com') || host.includes('youtu.be')) return 'youtube';
-  if (host.includes('instagram.com')) return 'instagram';
-  return 'facebook';
-}
-
-/**
- * One platform icon at heading-row size: ~20px brand glyphs, 18px IG glyph
- * on the existing gradient badge. Colors unchanged.
- */
-function platformIcon(p: 'tiktok' | 'youtube' | 'facebook' | 'instagram') {
-  switch (p) {
-    case 'tiktok': return <FontAwesome6 name="tiktok" size={20} color="#FFFFFF" />;
-    case 'youtube': return <FontAwesome6 name="youtube" size={20} color="#FF0000" />;
-    case 'facebook': return <FontAwesome6 name="facebook-f" size={20} color="#1877F2" />;
-    case 'instagram': return (
-      <LinearGradient
-        colors={['#FEDA75', '#FA7E1E', '#D62976', '#962FBF', '#4F5BD5']}
-        style={styles.igBadgeSm}
-      >
-        <FontAwesome6 name="instagram" size={18} color="#fff" />
-      </LinearGradient>
-    );
   }
 }
 
@@ -438,9 +397,6 @@ export default function ImportScreen() {
   /** Any platform import currently running — drives the unified Fetch button. */
   const anyWorking = importing || ytWorking || ttWorking;
 
-  /** Platform detected for the icon row: empty → all icons, garbage (null) → none. */
-  const platform = detectPlatform(link);
-
   /** Five most recent watchlist movies by dateAdded desc — the "Recently added" section. */
   const recentAdded = movies
     .filter((m) => m.status === 'watchlist')
@@ -506,15 +462,9 @@ export default function ImportScreen() {
       <View style={styles.section}>
         <View style={styles.headingRow}>
           <Text style={styles.heading}>🔗&nbsp; Add a link from</Text>
-          {(link.trim() === '' || platform !== null) && (
-            <View style={styles.headingIcons}>
-              {platform === null
-                ? (['tiktok', 'youtube', 'facebook', 'instagram'] as const).map((p) => (
-                    <React.Fragment key={p}>{platformIcon(p)}</React.Fragment>
-                  ))
-                : platformIcon(platform)}
-            </View>
-          )}
+          <View style={styles.headingIcons}>
+            <FontAwesome6 name="youtube" size={20} color="#FF0000" />
+          </View>
         </View>
         <View style={styles.sectionCard}>
           <View style={styles.fetchRow}>
@@ -626,10 +576,6 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.5 },
   fetchButtonText: { color: '#000', fontSize: 15, fontWeight: '700' },
   brandIcons: { flexDirection: 'row', gap: 20, marginTop: 12, marginBottom: 12, alignItems: 'center' },
-  igBadgeSm: {
-    width: 30, height: 30, borderRadius: 8,
-    alignItems: 'center', justifyContent: 'center',
-  },
   unverifiedRow: { marginTop: 10 },
   unverifiedTitle: { color: '#fff', fontSize: 14, fontWeight: '700', lineHeight: 22 },
   unverifiedCaption: { color: 'rgba(255,255,255,0.55)', fontSize: 12, lineHeight: 18, marginTop: 2 },
