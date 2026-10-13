@@ -1,25 +1,22 @@
 // Gemini YouTube title extraction for the movie app.
-// Given a YouTube URL, asks Gemini to list movie titles mentioned or shown
-// in the video. Returns the raw model text, or null when there is no API
-// key, the request fails, or the video contains no movies.
+// Given a YouTube URL, proxies to the Supabase Edge Function
+// `gemini-titles` (which calls Gemini server-side, so the Gemini API key
+// never ships in the client bundle). The function accepts
+// POST { youtubeUrl } and returns { titles: string | null }.
+// Returns the trimmed titles text, or null when the Supabase URL is not
+// configured, the request fails, or the video contains no movies.
 // Never throws.
 
-const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '';
+const SUPABASE_URL = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '');
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
-const GEMINI_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-
-const PROMPT =
-  'List every movie title mentioned, shown, or discussed in this video. Return only the titles, one per line, with year in parentheses when stated. If no movies appear, reply with exactly: NONE';
+const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/gemini-titles`;
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
-type GeminiPart = { text?: string };
-type GeminiCandidate = { content?: { parts?: GeminiPart[] } };
-
 export async function fetchGeminiTitles(youtubeUrl: string): Promise<string | null> {
   try {
-    if (!GEMINI_KEY) {
+    if (!SUPABASE_URL) {
       return null;
     }
 
@@ -27,23 +24,15 @@ export async function fetchGeminiTitles(youtubeUrl: string): Promise<string | nu
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const response = await fetch(GEMINI_ENDPOINT, {
+      const response = await fetch(FUNCTION_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-goog-api-key': GEMINI_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          apikey: SUPABASE_ANON_KEY,
         },
         signal: controller.signal,
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: PROMPT },
-                { fileData: { fileUri: youtubeUrl } },
-              ],
-            },
-          ],
-        }),
+        body: JSON.stringify({ youtubeUrl }),
       });
 
       if (!response.ok) {
@@ -52,26 +41,17 @@ export async function fetchGeminiTitles(youtubeUrl: string): Promise<string | nu
 
       const data: unknown = await response.json();
 
-      if (
-        !data ||
-        typeof data !== 'object' ||
-        !Array.isArray((data as { candidates?: unknown }).candidates)
-      ) {
+      if (!data || typeof data !== 'object') {
         return null;
       }
 
-      const candidates = (data as { candidates: GeminiCandidate[] }).candidates;
-      const text =
-        candidates[0]?.content?.parts
-          ?.map((part) => part?.text ?? '')
-          .join('')
-          .trim() ?? '';
+      const titles = (data as { titles?: unknown }).titles;
 
-      if (!text || text.toUpperCase() === 'NONE') {
+      if (typeof titles !== 'string' || !titles.trim()) {
         return null;
       }
 
-      return text;
+      return titles.trim();
     } finally {
       clearTimeout(timeoutId);
     }
