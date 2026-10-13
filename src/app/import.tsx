@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
   sectionCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
   divider: { height: 1, backgroundColor: '#2c2c2e', marginTop: 28 },
   heading: { color: '#fff', fontSize: 19, fontWeight: '800' },
-  headingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headingRow: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', gap: 10 },
   headingIcons: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   body: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 21, marginTop: 12, marginBottom: 14 },
   input: {
