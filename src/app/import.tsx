@@ -461,7 +461,7 @@ export default function ImportScreen() {
 
       <View style={styles.section}>
         <View style={styles.headingRow}>
-          <Text style={styles.heading}>🔗&nbsp; Add a link from</Text>
+          <Text style={styles.heading}>🔗&nbsp; Paste a link from</Text>
           <View style={styles.headingIcons}>
             <FontAwesome6 name="youtube" size={20} color="#FF0000" />
           </View>
