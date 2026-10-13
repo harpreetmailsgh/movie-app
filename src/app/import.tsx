@@ -6,7 +6,8 @@ import { FontAwesome6 } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../lib/store';
-import { bestMatch, bestMatchKeyless, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
+import { bestMatch, bestMatchKeyless, bestMatches, searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
+import { fetchGeminiTitles } from '../lib/gemini';
 import { parseYouTubeId, fetchYouTubeTitle } from '../lib/youtube';
 import { isTikTokUrl, fetchTikTokInfo } from '../lib/tiktok';
 import { posterUrl } from '../lib/types';
@@ -15,6 +16,27 @@ import MovieProgressBar from '../components/MovieProgressBar';
 
 const FIELD_BG = '#C7C7CC';
 const SEARCH_DEBOUNCE_MS = 500;
+
+// Same iPhone Safari User-Agent pattern as fetchMp4Url in lib/frameOcr.ts.
+const YT_IPHONE_SAFARI_UA =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+
+/**
+ * Best-effort YouTube video duration in seconds, scraped from the watch
+ * page's embedded player JSON. Null when it can't be determined — the
+ * caller proceeds anyway in that case.
+ */
+async function fetchYouTubeDurationSeconds(url: string): Promise<number | null> {
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': YT_IPHONE_SAFARI_UA } });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const m = /"lengthSeconds":"(\d+)"/.exec(html);
+    return m ? Number(m[1]) : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Which platform icon to show for pasted link text — mirrors routeLink's
@@ -270,15 +292,58 @@ export default function ImportScreen() {
         setFetchResults([{ title: match.title, unverified: false }]);
         return;
       }
-      addMovie({
-        title: info.title, year: 0, mediaType: 'movie', genres: [],
-        overview: '', posterPath: '', reelURL: target,
-        caption, notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
-        originalLanguage: '', cast: [], needsReview: true,
-      });
+      // oEmbed title matched nothing — fall back to Gemini: ask which movie
+      // titles the video mentions or shows, then match each through TMDB.
       if (runId !== ytRunRef.current) return;
-      setLink('');
-      setFetchResults([{ title: info.title, unverified: true, caption }]);
+      const durationSeconds = await fetchYouTubeDurationSeconds(target);
+      if (runId !== ytRunRef.current) return;
+      if (durationSeconds !== null && durationSeconds > 300) {
+        setYtMessage("Share a video up to 5 mins long.");
+        return;
+      }
+      setYtMessage("Asking Gemini…");
+      const geminiText = await fetchGeminiTitles(target);
+      if (runId !== ytRunRef.current) return;
+      if (geminiText) {
+        const matches = settings.tmdbKey
+          ? await bestMatches(geminiText, settings.tmdbKey)
+          : await bestMatches(geminiText);
+        if (runId !== ytRunRef.current) return;
+        if (matches.length > 0) {
+          const titles: string[] = [];
+          for (const m of matches) {
+            let imdbRating = 0, overview = m.overview, genres = m.genres;
+            let cast: string[] = [];
+            if (m.cinemetaId) {
+              try {
+                const meta = await fetchKeylessMeta(m.cinemetaId, m.mediaType);
+                if (meta) {
+                  const r = parseFloat(meta.imdbRating ?? '');
+                  if (Number.isFinite(r)) imdbRating = r;
+                  if (meta.description) overview = meta.description;
+                  if (meta.genres?.length) genres = meta.genres.slice(0, 3);
+                  if (meta.cast?.length) cast = meta.cast.slice(0, 3);
+                }
+              } catch { /* keep the slim fields */ }
+            } else {
+              imdbRating = await fetchImdbRating(m.tmdbID, m.mediaType, m.title, settings.tmdbKey);
+            }
+            addMovie({
+              title: m.title, year: m.year, mediaType: m.mediaType, genres,
+              overview, posterPath: m.posterPath, reelURL: target,
+              caption, notes: '', status: 'watchlist', tmdbID: m.tmdbID, imdbRating,
+              originalLanguage: m.originalLanguage, cast,
+              needsReview: false,
+            });
+            titles.push(m.title);
+          }
+          if (runId !== ytRunRef.current) return;
+          setLink('');
+          setFetchResults(titles.map((t) => ({ title: t, unverified: false })));
+          return;
+        }
+      }
+      setYtMessage("Could not fetch any movie in this video.");
     } finally {
       setYtWorking(false);
     }
