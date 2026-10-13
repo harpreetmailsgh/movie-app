@@ -489,7 +489,7 @@ export default function ImportScreen() {
               )}
             </Pressable>
           </View>
-          <Text style={styles.body}>Paste a link — import runs automatically.</Text>
+          <Text style={styles.body}>Paste a link to YouTube Short to add movies to watchlist</Text>
           {anyWorking && (
             <View style={styles.progressWrap}>
               <MovieProgressBar indeterminate size="large" />
