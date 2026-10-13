@@ -607,7 +607,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   content: { padding: 20, paddingBottom: 48 },
   section: { marginTop: 20 },
-  sectionCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  sectionCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
   divider: { height: 1, backgroundColor: '#2c2c2e', marginTop: 28 },
   heading: { color: '#fff', fontSize: 19, fontWeight: '800' },
   headingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
