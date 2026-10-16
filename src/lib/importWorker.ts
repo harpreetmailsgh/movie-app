@@ -1,5 +1,5 @@
 import {
-  bestMatch, bestMatchKeyless, bestMatches,
+  bestMatch, bestMatchKeyless, bestMatches, candidates,
   fetchImdbRating, fetchKeylessMeta,
   TmdbMatch,
 } from '../lib/tmdb';
@@ -120,21 +120,36 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
     const matches = deps.tmdbKey
       ? await bestMatches(geminiText, deps.tmdbKey)
       : await bestMatches(geminiText);
-    if (matches.length > 0) {
-      const titles: string[] = [];
-      for (const m of matches) {
-        const e = await enrichMatch(m, deps.tmdbKey);
+    // Same candidate list bestMatches ran internally: a Gemini title TMDB
+    // couldn't match is saved unverified (the TikTok no-match pattern).
+    const rawCandidates = candidates(geminiText).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)).slice(0, 10);
+    const norm = (s: string) => s.toLowerCase().replace(/\s*\(\d{4}\)\s*$/, '').trim();
+    const usedMatches = new Set<TmdbMatch>();
+    const results: WorkerResultItem[] = [];
+    for (const candidate of rawCandidates) {
+      const match = matches.find((m) => !usedMatches.has(m) && norm(m.title) === norm(candidate));
+      if (match) {
+        usedMatches.add(match);
+        const e = await enrichMatch(match, deps.tmdbKey);
         deps.addMovie({
-          title: m.title, year: m.year, mediaType: m.mediaType, genres: e.genres,
-          overview: e.overview, posterPath: m.posterPath, reelURL: target,
-          caption, notes: '', status: 'watchlist', tmdbID: m.tmdbID, imdbRating: e.imdbRating,
-          originalLanguage: m.originalLanguage, cast: e.cast,
+          title: match.title, year: match.year, mediaType: match.mediaType, genres: e.genres,
+          overview: e.overview, posterPath: match.posterPath, reelURL: target,
+          caption, notes: '', status: 'watchlist', tmdbID: match.tmdbID, imdbRating: e.imdbRating,
+          originalLanguage: match.originalLanguage, cast: e.cast,
           needsReview: false,
         });
-        titles.push(m.title);
+        results.push({ title: match.title, unverified: false });
+      } else {
+        deps.addMovie({
+          title: candidate, year: 0, mediaType: 'movie', genres: [],
+          overview: '', posterPath: '', reelURL: target,
+          caption, notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
+          originalLanguage: '', cast: [], needsReview: true,
+        });
+        results.push({ title: candidate, unverified: true, caption });
       }
-      return { ok: true, results: titles.map((t) => ({ title: t, unverified: false })), videoTitle };
     }
+    return { ok: true, results, videoTitle };
   }
   return { ok: false, results: [], error: 'Could not fetch any movie in this video.', videoTitle };
 }
