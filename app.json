@@ -24,6 +24,13 @@
     "plugins": [
       "expo-router",
       [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon-filmm.png",
+          "color": "#000000"
+        }
+      ],
+      [
         "expo-share-extension",
         {
           "activationRules": [
