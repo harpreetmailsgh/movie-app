@@ -154,7 +154,13 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
         results.push({ title: candidate, unverified: true, caption });
       }
     }
-    return { ok: true, results, videoTitle };
+    // Backlog #70 issue 3: verified titles first, original relative order
+    // preserved within each group (two-filter concat is stable).
+    const sortedResults = [
+      ...results.filter((r) => !r.unverified),
+      ...results.filter((r) => r.unverified),
+    ];
+    return { ok: true, results: sortedResults, videoTitle };
   }
   return { ok: false, results: [], error: 'Could not fetch any movie in this video.', videoTitle };
 }
@@ -197,13 +203,19 @@ async function fetchTikTok(target: string, deps: WorkerDeps): Promise<WorkerResu
 async function fetchReel(target: string, deps: WorkerDeps): Promise<WorkerResult> {
   const outcome = await deps.importReel(target);
   if (outcome.ok) {
+    const unsorted = [
+      ...outcome.added.map((t) => ({ title: t, unverified: false })),
+      ...outcome.alreadyHave.map((t) => ({ title: t, unverified: false })),
+      ...outcome.savedForReview.map((t) => ({ title: t.title, unverified: true, caption: t.caption })),
+    ].slice(0, 10);
+    // Backlog #70 issue 3: verified titles first, original relative order
+    // preserved within each group (two-filter concat is stable).
     return {
       ok: true,
       results: [
-        ...outcome.added.map((t) => ({ title: t, unverified: false })),
-        ...outcome.alreadyHave.map((t) => ({ title: t, unverified: false })),
-        ...outcome.savedForReview.map((t) => ({ title: t.title, unverified: true, caption: t.caption })),
-      ].slice(0, 10),
+        ...unsorted.filter((r) => !r.unverified),
+        ...unsorted.filter((r) => r.unverified),
+      ],
     };
   }
   // Mirrors the store importReel messages shown inline on the Add screen.

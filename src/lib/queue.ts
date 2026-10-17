@@ -48,7 +48,9 @@ async function loadQueue(): Promise<QueueItem[]> {
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.map(normalizeItem);
+    // Backlog #70 rider: drop persisted 'failed' items on load. A stuck
+    // failed item in storage would never be cleared by the new auto-dismiss.
+    return parsed.map(normalizeItem).filter((item) => item.status !== 'failed');
   } catch {
     // Corrupt storage: start with an empty queue rather than crash.
     return [];
