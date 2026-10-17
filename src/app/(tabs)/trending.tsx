@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -11,7 +11,6 @@ import SwipeDeck, { SwipeDir } from '../../components/SwipeDeck';
 import ViewHeader from '../../components/ViewHeader';
 import { useSharedFilters, applyFilters } from '../../lib/sharedFilters';
 import FilterBar, { filtersActive } from '../../components/FilterBar';
-import MovieProgressBar from '../../components/MovieProgressBar';
 import TilesView from '../../components/TilesView';
 import ListView from '../../components/ListView';
 import GuideOverlay, { GuideOverlayHandle, GuideMark } from '../../components/GuideOverlay';
@@ -97,7 +96,7 @@ export default function TrendingScreen() {
     setTrendingView(v);
   };
 
-  // Retry: back to the loading state (film-strip bar) and re-run the fetch.
+  // Retry: back to the loading state (spinner) and re-run the fetch.
   const retry = () => {
     setError(false);
     setItems(null);
@@ -163,9 +162,7 @@ export default function TrendingScreen() {
     }
     return (
       <View style={styles.center}>
-        <View style={styles.progressWrap}>
-          <MovieProgressBar indeterminate size="large" />
-        </View>
+        <ActivityIndicator size="large" color="#FFFFFF" />
         <Text style={styles.dim}>Finding what's trending…</Text>
       </View>
     );
@@ -303,8 +300,6 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12, backgroundColor: '#000' },
-  // Same wrapper as the import screen's fetching bar.
-  progressWrap: { marginTop: 12, width: '80%' },
   retryButton: {
     backgroundColor: '#FF9F0A',
     paddingHorizontal: 28,
