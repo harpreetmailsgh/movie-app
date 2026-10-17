@@ -11,12 +11,82 @@ import ClapboardPoster from '../components/ClapboardPoster';
 import QueueList from '../components/QueueList';
 import { useQueue } from '../lib/queue';
 import { processQueueItem } from '../lib/importWorker';
+import { parseYouTubeId } from '../lib/youtube';
+import { useRecentVideos } from '../lib/recentVideos';
+import type { RecentVideoEntry } from '../lib/recentVideos';
 
 const FIELD_BG = '#C7C7CC';
 const SEARCH_DEBOUNCE_MS = 500;
 
+/** One "Recent videos" row (backlog #72): thumbnail, title, subtitle,
+ *  status glyph; tap expands an accordion with the video's titles. */
+function RecentVideoRow({ entry, expanded, onToggle, onRetry }: {
+  entry: RecentVideoEntry;
+  expanded: boolean;
+  onToggle: () => void;
+  onRetry: (url: string) => void;
+}) {
+  const videoId = parseYouTubeId(entry.url);
+  const [imgFailed, setImgFailed] = useState(false);
+  const glyph = entry.status === 'success' ? '✓' : entry.status === 'partial' ? '⚠' : '✕';
+  const glyphColor = entry.status === 'success' ? '#30d158' : entry.status === 'partial' ? '#ff9f0a' : '#ff453a';
+  return (
+    <View style={styles.recentRow}>
+      <Pressable style={styles.recentHeader} onPress={onToggle}>
+        {videoId && !imgFailed ? (
+          <Image
+            source={{ uri: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` }}
+            style={styles.thumb}
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <ClapboardPoster style={styles.thumb} />
+        )}
+        <View style={styles.resultText}>
+          <Text style={styles.resultTitle} numberOfLines={1} ellipsizeMode="tail">
+            {entry.videoTitle ?? entry.url}
+          </Text>
+          {entry.status === 'failed' && !!entry.error ? (
+            <Text style={styles.recentErrorSub} numberOfLines={2}>{entry.error}</Text>
+          ) : (
+            <Text style={styles.resultSub}>
+              {entry.titles.length === 1 ? '1 title' : `${entry.titles.length} titles`}
+            </Text>
+          )}
+        </View>
+        <Text style={[styles.recentGlyph, { color: glyphColor }]}>{glyph}</Text>
+      </Pressable>
+      {expanded && (
+        <View style={styles.recentExpanded}>
+          {entry.status === 'failed' ? (
+            <>
+              {!!entry.error && <Text style={styles.errorText}>{entry.error}</Text>}
+              <Pressable style={styles.retryButton} onPress={() => onRetry(entry.url)}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </Pressable>
+            </>
+          ) : (
+            entry.titles.map((t, i) => (
+              t.unverified ? (
+                <View key={`${i}-${t.title}`} style={styles.unverifiedRow}>
+                  <Text style={styles.unverifiedTitle}>Couldn&apos;t verify this title</Text>
+                  <Text style={styles.unverifiedRawTitle}>{t.title}</Text>
+                </View>
+              ) : (
+                <Text key={`${i}-${t.title}`} style={styles.resultsRow}>
+                  {i + 1}. {t.title}
+                </Text>
+              )
+            ))
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function ImportScreen() {
-  const { importReel, settings, addMovie, movies } = useStore();
+  const { importReel, settings, addMovie } = useStore();
   // Deep link from the iOS share extension: movierecommender://import?sharedUrl=...
   const { sharedUrl } = useLocalSearchParams<{ sharedUrl?: string }>();
   /** One link field for every platform — TikTok, YouTube, Facebook, Instagram.
@@ -27,9 +97,15 @@ export default function ImportScreen() {
   const [searching, setSearching] = useState(false);
   /** Inline results card data — replaces the old Alert.alert popup. */
   const [fetchResults, setFetchResults] = useState<{ title: string; unverified: boolean; caption?: string }[] | null>(null);
+  /** Inline error card — shows the worker's error verbatim, in the results card's spot. */
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   /** Fetch queue: paste/share links enqueue here; the worker loop below processes them one at a time. */
   const { items: queueItems, enqueue, updateItem, removeItem } = useQueue();
+
+  /** Recent videos (backlog #72): replaces the "Recently added" section. */
+  const { videos: recentVideos, recordVideo } = useRecentVideos();
+  const [expandedVideoId, setExpandedVideoId] = useState<string | null>(null);
 
   // ---- Card 1: live search-as-you-type -------------------------------------
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -116,6 +192,7 @@ export default function ImportScreen() {
   const onLinkChange = (text: string) => {
     setLink(text);
     setFetchResults(null);
+    setFetchError(null);
   };
 
   /** Queue replaces the immediate-fetch path: Fetch tap enqueues the link. */
@@ -163,24 +240,42 @@ export default function ImportScreen() {
           importReel,
           addMovie,
         });
+        // Rider (backlog #70): write the worker-fetched video title back so
+        // QueueRow shows the title instead of the raw URL.
+        if (result.videoTitle) {
+          await updateItem(next.id, { videoTitle: result.videoTitle });
+        }
         if (result.ok) {
+          // Record first, then auto-dismiss — failure path mirrors this order.
+          await recordVideo({
+            url: next.url,
+            videoTitle: result.videoTitle ?? null,
+            titles: result.results.slice(0, 10).map((r) => ({ title: r.title, unverified: !!r.unverified })),
+            status: result.results.some((r) => r.unverified) ? 'partial' : 'success',
+            error: null,
+          });
           await removeItem(next.id);
           setFetchResults(result.results.slice(0, 10));
+          setFetchError(null);
         } else {
-          await updateItem(next.id, { status: 'failed', error: result.error ?? 'Something went wrong.' });
+          const error = result.error ?? 'Something went wrong.';
+          // Record first, then auto-dismiss — mirrors the success path.
+          await recordVideo({
+            url: next.url,
+            videoTitle: result.videoTitle ?? null,
+            titles: [],
+            status: 'failed',
+            error,
+          });
+          await removeItem(next.id);
+          setFetchError(error);
+          setFetchResults(null);
         }
       } finally {
         queueProcessingRef.current = false;
       }
     })();
-  }, [queueItems, updateItem, removeItem, settings.tmdbKey, importReel, addMovie]);
-
-  /** Five most recent watchlist movies by dateAdded desc — the "Recently added" section. */
-  const recentAdded = movies
-    .filter((m) => m.status === 'watchlist')
-    .slice()
-    .sort((a, b) => b.dateAdded - a.dateAdded)
-    .slice(0, 5);
+  }, [queueItems, updateItem, removeItem, settings.tmdbKey, importReel, addMovie, recordVideo]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -274,7 +369,7 @@ export default function ImportScreen() {
                 r.unverified ? (
                   <View key={`${i}-${r.title}`} style={styles.unverifiedRow}>
                     <Text style={styles.unverifiedTitle}>Couldn&apos;t verify this title</Text>
-                    {!!r.caption && <Text style={styles.unverifiedCaption}>{r.caption}</Text>}
+                    <Text style={styles.unverifiedRawTitle}>{r.title}</Text>
                   </View>
                 ) : (
                   <Text key={`${i}-${r.title}`} style={styles.resultsRow}>
@@ -284,31 +379,27 @@ export default function ImportScreen() {
               ))}
             </View>
           )}
+          {fetchError && (
+            <View style={styles.errorCard}>
+              <Text style={styles.errorText}>{fetchError}</Text>
+            </View>
+          )}
         </View>
       </View>
 
-      {recentAdded.length > 0 && (
+      {recentVideos.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.heading}>🕘&nbsp; Recently added</Text>
+          <Text style={styles.heading}>🕘&nbsp; Recent videos</Text>
           <View style={styles.sectionCard}>
-            {recentAdded.map((m) => {
-              const uri = posterUrl(m.posterPath);
-              return (
-                <Pressable key={m.id} style={styles.result} onPress={() => router.push(`/movie/${m.id}`)}>
-                  {uri ? (
-                    <Image source={{ uri }} style={styles.thumb} />
-                  ) : (
-                    <View style={[styles.thumb, styles.thumbFallback]}>
-                      <Text>🎬</Text>
-                    </View>
-                  )}
-                  <View style={styles.resultText}>
-                    <Text style={styles.resultTitle} numberOfLines={1}>{m.title}</Text>
-                    {m.year > 0 && <Text style={styles.resultSub}>{String(m.year)}</Text>}
-                  </View>
-                </Pressable>
-              );
-            })}
+            {recentVideos.map((entry) => (
+              <RecentVideoRow
+                key={entry.id}
+                entry={entry}
+                expanded={expandedVideoId === entry.id}
+                onToggle={() => setExpandedVideoId((cur) => (cur === entry.id ? null : entry.id))}
+                onRetry={(url) => { void enqueue(url); }}
+              />
+            ))}
           </View>
         </View>
       )}
@@ -340,12 +431,28 @@ const styles = StyleSheet.create({
   brandIcons: { flexDirection: 'row', gap: 20, marginTop: 12, marginBottom: 12, alignItems: 'center' },
   unverifiedRow: { marginTop: 10 },
   unverifiedTitle: { color: '#fff', fontSize: 14, fontWeight: '700', lineHeight: 22 },
-  unverifiedCaption: { color: 'rgba(255,255,255,0.55)', fontSize: 12, lineHeight: 18, marginTop: 2 },
+  unverifiedRawTitle: { color: 'rgba(255,255,255,0.75)', fontSize: 14, lineHeight: 20, marginTop: 2 },
   resultsCard: {
     backgroundColor: '#1c1c1e', borderRadius: 14, padding: 16, marginTop: 14,
   },
   resultsHeader: { color: '#fff', fontSize: 16, fontWeight: '800', marginBottom: 10 },
   resultsRow: { color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 24 },
+  errorCard: {
+    backgroundColor: '#1c1c1e', borderRadius: 14, padding: 16, marginTop: 14,
+  },
+  errorText: { color: '#ff453a', fontSize: 14, lineHeight: 21 },
+  recentRow: {
+    backgroundColor: '#1c1c1e', borderRadius: 14, padding: 10, marginTop: 10,
+  },
+  recentHeader: { flexDirection: 'row', alignItems: 'center' },
+  recentGlyph: { fontSize: 18, fontWeight: '800', marginRight: 4 },
+  recentErrorSub: { color: '#ff453a', fontSize: 13, marginTop: 4, lineHeight: 18 },
+  recentExpanded: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)' },
+  retryButton: {
+    backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 18,
+    paddingVertical: 9, alignSelf: 'flex-start', marginTop: 10, alignItems: 'center',
+  },
+  retryButtonText: { color: '#000', fontSize: 14, fontWeight: '700' },
   loader: { marginTop: 16 },
   result: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c1e',
