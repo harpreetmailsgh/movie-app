@@ -12,12 +12,6 @@ import PrivacySheet from '../components/PrivacySheet';
  * persisted settings (privacySeen), so it never reappears after that.
  * Rendered inside StoreProvider so it can read those settings.
  */
-/**
- * First-launch privacy notice: shown once, the first time the app opens,
- * until the user continues or opens the full policy. The seen flag lives in
- * persisted settings (privacySeen), so it never reappears after that.
- * Rendered inside StoreProvider so it can read those settings.
- */
 function PrivacyGate() {
   const { ready, settings, setPrivacySeen } = useStore();
   return (
@@ -53,7 +47,9 @@ function PushSetup() {
     void (async () => {
       // getPushToken never throws and returns null when denied.
       const pushToken = await getPushToken();
-      setQueueIdentity({ userId: null, pushToken });
+      // Preserve a userId the session effect may already have stamped —
+      // the permission prompt can delay this fetch past session resolution.
+      setQueueIdentity({ userId: getQueueIdentity().userId, pushToken });
       setupPushListeners();
     })();
   }, []);
