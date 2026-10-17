@@ -123,10 +123,15 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
     // Same candidate list bestMatches ran internally: a Gemini title TMDB
     // couldn't match is saved unverified (the TikTok no-match pattern).
     const rawCandidates = candidates(geminiText).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)).slice(0, 10);
+    const effectiveCandidates = rawCandidates.length > 0 ? rawCandidates
+      // Gemini returned an unparseable blob (e.g. all titles on one long
+      // line): save the raw non-empty lines as unverified rather than
+      // clearing the queue item with zero results.
+      : geminiText.split('\n').map((l) => l.trim()).filter((l) => l.length > 0).slice(0, 10);
     const norm = (s: string) => s.toLowerCase().replace(/\s*\(\d{4}\)\s*$/, '').trim();
     const usedMatches = new Set<TmdbMatch>();
     const results: WorkerResultItem[] = [];
-    for (const candidate of rawCandidates) {
+    for (const candidate of effectiveCandidates) {
       const match = matches.find((m) => !usedMatches.has(m) && norm(m.title) === norm(candidate));
       if (match) {
         usedMatches.add(match);

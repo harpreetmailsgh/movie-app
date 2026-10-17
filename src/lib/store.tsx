@@ -260,6 +260,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const persist = useCallback(async (next: Movie[]) => {
+    // Chain the ref synchronously so rapid back-to-back calls (e.g. the
+    // import worker's addMovie loop) each build on the previous call's
+    // result instead of the same stale render closure. The [movies] effect
+    // below keeps the ref fresh for any setMovies done outside persist.
+    moviesRef.current = next;
     setMovies(next);
     try {
       await AsyncStorage.setItem(MOVIES_KEY, JSON.stringify(next));
@@ -427,8 +432,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [movies, persist]);
 
   const addMovie = useCallback((m: Omit<Movie, 'id' | 'dateAdded'>) => {
-    persist([{ ...m, id: newId(), dateAdded: Date.now() }, ...movies]);
-  }, [movies, persist]);
+    // Build on moviesRef (chained synchronously by persist), not the render
+    // closure: the import worker calls this in a tight loop, and the old
+    // closure made every call persist over the same stale array — only the
+    // last add survived.
+    persist([{ ...m, id: newId(), dateAdded: Date.now() }, ...moviesRef.current]);
+  }, [persist]);
 
   /** Adds `count` random well-known movies to the Inbox (for testing the deck).
    *  Resolves titles through the keyless search in small parallel batches and
@@ -682,7 +691,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           tmdbID: match.tmdbID || out.tmdbID,
         };
       }));
-      await persist(next);
+      // Merge the enrichment onto the CURRENT library, not the snapshot
+      // taken when the network phase started: movies added while the fetches
+      // were in flight must not be clobbered by this terminal persist.
+      // Entries deleted mid-flight stay deleted (they're not in the ref), and
+      // entries added mid-flight pass through untouched.
+      const enrichedById = new Map(next.map((m) => [m.id, m]));
+      await persist(moviesRef.current.map((m) =>
+        enrichedById.has(m.id) ? enrichedById.get(m.id)! : m
+      ));
     } finally {
       setImporting(false);
     }
