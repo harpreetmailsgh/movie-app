@@ -54,7 +54,8 @@
           "height": 300
         }
       ],
-      "./plugins/withAndroidShareTarget"
+      "./plugins/withAndroidShareTarget",
+      "expo-web-browser"
     ],
     "scheme": "movierecommender",
     "slug": "movie-app",

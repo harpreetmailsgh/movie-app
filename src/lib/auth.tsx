@@ -1,8 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 import type { Session } from '@supabase/supabase-js';
 import { getSupabase, isSupabaseConfigured } from './supabase';
+
+WebBrowser.maybeCompleteAuthSession();
 
 interface AuthState {
   ready: boolean;
@@ -12,6 +16,7 @@ interface AuthState {
   appleAvailable: boolean;
   authMessage: string | null;
   signInWithApple: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -91,6 +96,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [session]);
 
+  const signInWithGoogle = useCallback(async () => {
+    setAuthMessage(null);
+    try {
+      const sb = getSupabase();
+      if (!sb) return;
+      const redirectTo = Linking.createURL('auth/callback');
+      // Upgrade the anonymous account when there is one, so the user's
+      // data carries over; otherwise sign in fresh.
+      const { data, error } = session?.user?.is_anonymous
+        ? await sb.auth.linkIdentity({ provider: 'google', options: { redirectTo } })
+        : await sb.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo, skipBrowserRedirect: true },
+          });
+      if (error) throw error;
+      if (!data.url) throw new Error('no_oauth_url');
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (result.type !== 'success') return; // user cancelled
+      const code = Linking.parse(result.url).queryParams?.code;
+      if (typeof code !== 'string') throw new Error('no_code');
+      const { error: exchangeError } = await sb.auth.exchangeCodeForSession(code);
+      if (exchangeError) throw exchangeError;
+    } catch {
+      setAuthMessage('Google sign-in failed. Please try again.');
+    }
+  }, [session]);
+
   const signOut = useCallback(async () => {
     const sb = getSupabase();
     if (!sb) return;
@@ -106,6 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     appleAvailable,
     authMessage,
     signInWithApple,
+    signInWithGoogle,
     signOut,
   };
 

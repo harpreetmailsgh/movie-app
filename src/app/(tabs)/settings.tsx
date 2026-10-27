@@ -15,9 +15,8 @@ import { getSupabase } from '../../lib/supabase';
 const APP_VERSION = Constants.expoConfig?.version ?? 'dev';
 
 function AccountSection() {
-  const { ready, configured, session, isAnonymous, authMessage, signInWithApple, signOut } = useAuth();
+  const { ready, configured, session, isAnonymous, authMessage, signInWithApple, signInWithGoogle, signOut } = useAuth();
   const { syncState, lastSyncAt } = useStore();
-  const [googleMsg, setGoogleMsg] = useState(false);
   const [appleMsg, setAppleMsg] = useState(false);
   const isExpoGo = Constants.appOwnership === 'expo';
 
@@ -77,13 +76,10 @@ function AccountSection() {
             )
           )}
           {(!session || isAnonymous) && (
-            <Pressable style={styles.googleBtn} onPress={() => setGoogleMsg(true)}>
+            <Pressable style={styles.googleBtn} onPress={signInWithGoogle}>
               <FontAwesome name="google" size={18} color="#fff" style={styles.googleIcon} />
               <Text style={styles.googleBtnText}>Sign in with Google</Text>
             </Pressable>
-          )}
-          {googleMsg && (
-            <Text style={styles.dim}>Google sign-in is not set up yet.</Text>
           )}
           {session && !isAnonymous && (
             <Pressable style={styles.secondaryBtn} onPress={signOut}>
