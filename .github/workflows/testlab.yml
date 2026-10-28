@@ -1,0 +1,139 @@
+# Firebase Test Lab (Robo)
+#
+# PURPOSE: Run the Android app on Firebase Test Lab from CI with no key
+# files, no browser uploads, and no sign-in links — because the Firebase
+# console Browse button opens no file dialog in the automated browser, the
+# ~130 MB APK exceeds browser file-grant limits, and browser-downloaded
+# service-account keys do not persist to the VM.
+#
+# - Manual-only trigger: workflow_dispatch ONLY (no push, pull_request, or
+#   schedule triggers). Each run is started by hand from the Actions tab.
+# - WIF, no keys: authenticates to Google via Workload Identity Federation
+#   (OIDC). The auth step carries no service-account field, no JSON key,
+#   and no key file anywhere in this workflow.
+# - Robo-only scope: the Robo crawl proves launch / no-crash ONLY. It does
+#   NOT cover the 71 directed test cases — those still need a directed run.
+# - Virtual-only / Spark: only virtual devices are used, so the run stays
+#   on the Firebase Spark free tier. Physical devices need Blaze billing,
+#   which this project does not have.
+# - One EAS build consumed per run: every run builds a fresh Android
+#   preview APK via EAS before uploading it to Test Lab.
+# - Device default is best-effort: the "List virtual devices" step prints
+#   the live catalog to the log. If the default device is unavailable,
+#   override it via the `device` input when dispatching — no file edit
+#   needed.
+#
+# Auth setup (done once, outside this file): Workload Identity Federation
+# pool `github-actions` in project `movie-deck-b7eec`, with the repo
+# principal granted access. This workflow only references that provider.
+name: Firebase Test Lab (Robo)
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: "Test Lab device spec (see the live catalog printed by the 'List virtual devices' step)"
+        required: false
+        type: string
+        default: "MediumPhone.arm,version=35,locale=en,orientation=portrait"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  robo-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Verbatim mirror of .github/workflows/eas-build-android.yml: the EAS
+      # cloud builder does NOT inherit the runner's env vars, so bake the
+      # keys via .env.production (uploaded with the project, read by Expo
+      # at build time). .env.production is written transiently here in CI
+      # only and never committed.
+      - name: Write .env.production
+        run: |
+          printf 'EXPO_PUBLIC_SUPABASE_URL=%s\nEXPO_PUBLIC_SUPABASE_ANON_KEY=%s\nEXPO_PUBLIC_TMDB_API_KEY=%s\nEXPO_PUBLIC_GEMINI_API_KEY=%s\n' \
+            "${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}" \
+            "${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}" \
+            "${{ secrets.EXPO_PUBLIC_TMDB_API_KEY }}" \
+            "${{ secrets.EXPO_PUBLIC_GEMINI_API_KEY }}" > .env.production
+          grep -c EXPO_PUBLIC .env.production
+
+      - name: EAS build (Android preview)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas-cli build --platform android --profile preview --non-interactive --wait --json > eas-build.json
+          node -e "const d=require('./eas-build.json'); const b=Array.isArray(d)?d[0]:d; if(!b||!b.id){console.error('No build id in eas-build.json');process.exit(1);} console.log(b.id); require('fs').appendFileSync(process.env.GITHUB_ENV,'BUILD_ID='+b.id+'\n');"
+
+      - name: Download APK
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas-cli build:download --build-id "$BUILD_ID" --non-interactive
+          APK_LIST=$(find . -maxdepth 3 -path ./node_modules -prune -o -name '*.apk' -type f -print)
+          APK_COUNT=$(printf '%s\n' "$APK_LIST" | grep -c . || true)
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: no .apk found after build:download" >&2
+            exit 1
+          fi
+          if [ "$APK_COUNT" -gt 1 ]; then
+            echo "ERROR: ambiguous .apk downloads:" >&2
+            printf '%s\n' "$APK_LIST" >&2
+            exit 1
+          fi
+          APK=$(printf '%s\n' "$APK_LIST" | head -n 1)
+          if [ "$APK" != "./app.apk" ]; then
+            mv "$APK" ./app.apk
+          fi
+          ls -lh ./app.apk
+          test -s ./app.apk
+
+      - name: Authenticate to Google (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: "projects/89675227489/locations/global/workloadIdentityPools/github-actions/providers/github"
+          project_id: "movie-deck-b7eec"
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Enable Test Lab APIs
+        run: gcloud services enable testing.googleapis.com toolresults.googleapis.com --project=movie-deck-b7eec
+
+      - name: List virtual devices
+        run: gcloud firebase test android models list --filter=virtual --project=movie-deck-b7eec
+
+      - name: Robo test
+        run: |
+          set -o pipefail
+          set +e
+          gcloud firebase test android run --type robo --app ./app.apk --device "${{ inputs.device }}" --timeout 300s --project=movie-deck-b7eec 2>&1 | tee testlab-output.txt
+          GCLOUD_EXIT=${PIPESTATUS[0]}
+          echo "Full Robo output: testlab-output.txt"
+          RESULTS_URL=$(grep -oE 'https://console\.firebase\.google\.com[^ ]*' testlab-output.txt | head -n 1 || true)
+          if [ -n "$RESULTS_URL" ]; then
+            echo "Test Lab results: $RESULTS_URL" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No Test Lab results URL found in output (see testlab-output.txt artifact)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$GCLOUD_EXIT"
+
+      - name: Upload Robo output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testlab-output
+          path: |
+            testlab-output.txt
+            eas-build.json
