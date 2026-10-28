@@ -33,7 +33,7 @@ class FrameOcrModule : Module() {
     }
     return suspendCoroutine { continuation ->
       TextRecognition
-        .getClient(TextRecognizerOptions.DEFAULT)
+        .getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         .process(image)
         .addOnSuccessListener { visionText ->
           val lines = visionText.textBlocks
