@@ -34,10 +34,10 @@ on:
   workflow_dispatch:
     inputs:
       device:
-        description: "Test Lab device spec (see the live catalog printed by the 'List virtual devices' step)"
+        description: "Test Lab device spec as model=...,version=...,locale=...,orientation=... pairs (gcloud --device dict form; a bare model name is invalid). See the live catalog printed by the 'List virtual devices' step"
         required: false
         type: string
-        default: "MediumPhone.arm,version=35,locale=en,orientation=portrait"
+        default: "model=MediumPhone.arm,version=35,locale=en,orientation=portrait"
 
 permissions:
   contents: read
