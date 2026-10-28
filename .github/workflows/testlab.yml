@@ -23,6 +23,8 @@
 #   override it via the `device` input when dispatching — no file edit
 #   needed.
 #
+# - APK download uses --json: build:download writes to a temp cache outside the repo, so the workflow reads the path from download.json instead of searching the tree.
+#
 # Auth setup (done once, outside this file): Workload Identity Federation
 # pool `github-actions` in project `movie-deck-b7eec`, with the repo
 # principal granted access. This workflow only references that provider.
@@ -80,22 +82,24 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
-          npx eas-cli build:download --build-id "$BUILD_ID" --non-interactive
-          APK_LIST=$(find . -maxdepth 3 -path ./node_modules -prune -o -name '*.apk' -type f -print)
-          APK_COUNT=$(printf '%s\n' "$APK_LIST" | grep -c . || true)
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "ERROR: no .apk found after build:download" >&2
+          npx eas-cli build:download --build-id "$BUILD_ID" --json > download.json
+          APK_PATH=$(node -e "const d=require('./download.json'); console.log(d.path || '')")
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: no .path in download.json after build:download" >&2
             exit 1
           fi
-          if [ "$APK_COUNT" -gt 1 ]; then
-            echo "ERROR: ambiguous .apk downloads:" >&2
-            printf '%s\n' "$APK_LIST" >&2
+          case "$APK_PATH" in
+            *.apk) ;;
+            *)
+              echo "ERROR: downloaded artifact is not an .apk: $APK_PATH" >&2
+              exit 1
+              ;;
+          esac
+          if [ ! -s "$APK_PATH" ]; then
+            echo "ERROR: downloaded APK missing or empty: $APK_PATH" >&2
             exit 1
           fi
-          APK=$(printf '%s\n' "$APK_LIST" | head -n 1)
-          if [ "$APK" != "./app.apk" ]; then
-            mv "$APK" ./app.apk
-          fi
+          cp "$APK_PATH" ./app.apk
           ls -lh ./app.apk
           test -s ./app.apk
 
@@ -137,3 +141,4 @@ jobs:
           path: |
             testlab-output.txt
             eas-build.json
+            download.json
