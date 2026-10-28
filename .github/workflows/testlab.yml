@@ -108,6 +108,7 @@ jobs:
         with:
           workload_identity_provider: "projects/89675227489/locations/global/workloadIdentityPools/github-actions/providers/github"
           project_id: "movie-deck-b7eec"
+          service_account: "test-lab-runner@movie-deck-b7eec.iam.gserviceaccount.com"
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
