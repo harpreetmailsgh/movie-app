@@ -1,0 +1,175 @@
+# Stage G — single mixed import + Recent expand/collapse + duplicate check
+# (Robo actions 61-70).
+# Cases: G02 (card half; Watchlist half in stage H), I10/G05, U01, U02,
+# U03, R06.
+#
+# Sequence (mirrors testlab/robo-script.json stage G):
+#   launch (state kept) -> Import -> Shorts URL again (4th import of the
+#   same video) -> results-card wait + screenshot -> unverified-label
+#   assert -> Recent -> newest-row expand (subtitle regex, index 0) ->
+#   expansion screenshot + unverified-label assert -> collapse ->
+#   collapse screenshot -> G05 duplicate check (optional index-1 tap +
+#   screenshot).
+#
+# Design decisions (read before changing this file):
+# 1. Navigation uses the shared open-import sub-flow, NOT a literal
+#    scroll-back-up on stage F's Import instance. Reason: F's instance
+#    still shows F's LAST results card ("N titles fetched"), so a
+#    scroll-back-up would make this flow's titles-fetched wait return
+#    instantly on the STALE card and make the card asserts vacuous (F's
+#    import was mixed too, so even the U03 label assert would pass on
+#    F's card). Tapping "Add Movie" pushes a FRESH /import instance
+#    (src/app/(tabs)/_layout.tsx tabPress → router.push('/import')),
+#    whose results card starts empty — so this flow's wait and asserts
+#    are genuine — while store state (Recent videos, Watchlist) persists
+#    across instances, so the R06/G05 preconditions still hold. The flow
+#    is also independently runnable from Watchlist this way. (Deliberate
+#    deviation from the plan's literal "scroll back up" step — Tester
+#    to confirm.)
+# 2. The results-card wait uses the WRAPPED regex '.*titles? fetched.*'
+#    (120000 ms), not the shared wait-import-outcome.yaml: G expects a
+#    SUCCESS (mixed import), so an error outcome must fail the wait
+#    rather than satisfy it. The wrappers are load-bearing: Maestro text
+#    regexes match against the FULL element text, so the bare
+#    "titles? fetched" does not match "1 title fetched"/"N titles
+#    fetched" under full-match semantics (and still matches under
+#    find semantics — wrapped is safe under both).
+# 3. R06 expand taps the newest row via the subtitle regex
+#    '.*\d+ titles?$' with index: 0 — NEVER the literal '5 titles'
+#    (§2 rule 3, yield-proof: the count is whatever this run's Gemini
+#    yield is). The $ anchor keeps the results header "N titles
+#    fetched" out of the match set. Newest-first order is guaranteed by
+#    recordVideo prepending (src/lib/recentVideos.ts).
+# 4. R06 expand/collapse STATE is screenshot-judged, not text-asserted:
+#    the expanded list's numbered lines ("1. <title>") duplicate the
+#    results card's lines verbatim, and the only KNOWN expanded-only
+#    string (the unverified label) also renders in the results card —
+#    so no unconfounded expanded-only text exists to assert on. The
+#    U02 label assert below proves the label is on screen; the
+#    screenshots prove it sits inside the expansion (expand) and is
+#    gone from the row (collapse).
+# 5. U03's raw-title half is screenshot-judged: the raw titles are
+#    Gemini-yield-dependent (no JeHim title is recorded anywhere — see
+#    note 6), so the flow asserts the label and the results-card
+#    screenshot carries the label + raw-title pairing verbatim.
+# 6. G05 DUPLICATE CHECK — status: INDEX SELECTOR VALIDATED, title
+#    operand ADAPTED (Tester sign-off required, see below). Maestro
+#    index selectors ARE supported: index is 0-based among matches and
+#    performs final selection (Maestro selectors docs, verified this
+#    build). But the plan's literal form — tapOn { text: <a JeHim
+#    title>, index: 1 } — CANNOT be written: no JeHim video title and
+#    none of its Gemini titles is recorded in the repo, the verdict
+#    guide, or memory (only "5 Gemini titles, mixed" is recorded), and
+#    inventing one would violate the trace rule. The check therefore
+#    uses the same validated index mechanism on the yield-proof
+#    subtitle regex: after this 4th import there are 4 success Recent
+#    rows for the same video, so index: 1 taps the SECOND instance.
+#    The tap is optional: true BY DESIGN — per the plan, neither G05
+#    outcome is a FAIL (index-1 matches → duplicate confirmed, recorded
+#    finding, candidate minor defect; index-1 fails → no duplicate,
+#    recorded observation), so G05 must never fail this flow. The
+#    verdict is read from the Maestro log (tap taken vs skipped) plus
+#    the duplicate screenshot (row count + expanded second row).
+#    The Watchlist-duplicate half (entry counts before/after) is NOT
+#    assertable from the Import screen and stays with stage H / Tester
+#    judgment. If Tester requires the literal-title form, the title
+#    must be read from stage F's results-card screenshot and patched
+#    in before a rerun — it cannot be written from any record today.
+#
+# Maestro syntax verified against the Maestro docs (current version) and
+# the D2 files' verified notes: launchApp map form with appId +
+# clearState; runFlow string form relative to THIS file; extendedWaitUntil
+# takes visible + timeout in MILLISECONDS; text selectors are
+# regex-based (full element text — wrap partial matches in .*...*);
+# index is 0-based among matches; takeScreenshot takes a string name;
+# tapOn supports optional: true.
+
+appId: com.harpreetmails.moviedeck
+---
+# Launch, state kept (foregrounds the running app; stage F's Recent rows
+# and Watchlist entries persist).
+- launchApp:
+    appId: com.harpreetmails.moviedeck
+    clearState: false
+# Fresh Import instance (see header note 1) + scroll to link section.
+- runFlow: ../shared/open-import.yaml
+
+# G: single mixed import, same Shorts URL a 4th time (G02, I10/G05).
+- tapOn: "Paste link"
+- inputText: "https://youtube.com/shorts/JeHimZxgX48"
+- hideKeyboard
+- tapOn: "Fetch"
+- assertVisible: "Queue"
+
+# G02 card half: wait for the results card, then assert it is visible.
+# Success-only wait (see header note 2) — an error outcome fails here.
+- extendedWaitUntil:
+    visible:
+      text: '.*titles? fetched.*'
+    timeout: 120000
+- assertVisible:
+    text: '.*titles? fetched.*'
+# U01 verified-first ordering + G02 card contents + U03 raw titles are
+# judged from this screenshot (§4 exception).
+- takeScreenshot: g-results-card
+
+# U03 label half: every unverified entry shows this label (straight
+# apostrophe — rendered from Couldn&apos;t in import.tsx).
+- assertVisible: "Couldn't verify this title"
+
+# R06 expand: scroll to Recent, tap the NEWEST row via its subtitle
+# regex (index 0) — never the literal '5 titles' (header note 3).
+- scrollUntilVisible:
+    element:
+      text: ".*Recent videos.*"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: ".*Recent videos.*"
+- tapOn:
+    text: '.*\d+ titles?$'
+    index: 0
+# R06 expand + U02 ordering judged from this screenshot (header note 4).
+- takeScreenshot: g-expanded-row
+# U02 label half: the unverified label inside the expansion (screenshot
+# proves the location; the label alone would also match the results
+# card, so the assert is the label half, not the expand proof).
+- assertVisible: "Couldn't verify this title"
+
+# R06 collapse: tap the same (newest) row again, then screenshot the
+# collapsed state (header note 4 — no unconfounded expanded-only text
+# exists to assert on).
+- tapOn:
+    text: '.*\d+ titles?$'
+    index: 0
+- takeScreenshot: g-collapsed-row
+
+# G05 duplicate check (header note 6): tap the SECOND success Recent row
+# (second instance of the same video's import). Optional by design — this
+# step must never fail the flow; the verdict is log + screenshot.
+- tapOn:
+    text: '.*\d+ titles?$'
+    index: 1
+    optional: true
+- takeScreenshot: g-duplicate-row
+
+# ---- Selector -> source trace -------------------------------------------
+# "Paste link" field: accessibilityLabel in src/app/import.tsx (link
+# TextInput) — same target the Robo script used (contentDescription).
+# "Fetch": fetchButtonText in src/app/import.tsx.
+# "Queue": header in src/components/QueueList.tsx, rendered only when
+#   queue items exist.
+# '.*titles? fetched.*': results header in src/app/import.tsx
+#   (fetchResults.length === 1 ? '1 title fetched' : 'N titles fetched');
+#   wrapped for full-text regex matching (header note 2).
+# "Couldn't verify this title": unverifiedTitle in src/app/import.tsx
+#   (Couldn&apos;t → straight apostrophe), rendered in the results card
+#   AND in an expanded Recent row.
+# ".*Recent videos.*": Recent heading in src/app/import.tsx — NEVER the
+#   full string (contains a non-breaking space, §2 rule 2).
+# '.*\d+ titles?$': Recent subtitle in src/app/import.tsx
+#   (entry.titles.length === 1 ? '1 title' : 'N titles'); $ anchor keeps
+#   the results header "N titles fetched" out of the match set; index 0
+#   = newest row because recordVideo prepends (src/lib/recentVideos.ts).
+# Shorts URL: stage-G test data, testlab/robo-script.json stage G and
+#   the pivot plan §3 stage G (same video as stage F, 4th import).

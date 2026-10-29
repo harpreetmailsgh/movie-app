@@ -1,0 +1,162 @@
+# Stage F — rapid-3 queue block (Robo actions 46-60).
+# Cases: Q01, Q02, Q03, Q04, Q07, Q08, I02, I06, G01 (Recent-rows half;
+# G01's Watchlist half is asserted in stage H).
+#
+# Sequence (mirrors testlab/robo-script.json stage F):
+#   launch (state kept) -> shared open-import -> three rapid enqueues with
+#   NO waits between them (Shorts, watch, youtu.be forms of JeHimZxgX48)
+#   -> Queue/Queued/Processing asserts -> first completion via the shared
+#   outcome wait -> Queue-drain wait -> Recent rows + screenshot + Q08.
+#
+# Design decisions (read before changing this file):
+# 1. NO fixed drain delay anywhere. The Robo 120 s drain delay is REPLACED
+#    by two outcome waits: the shared results-or-error wait (first
+#    completion, Q04/Q08) and then an extendedWaitUntil on Queue NOT
+#    visible (360000 ms cap = 3 x the 120 s per-import cap). The drain
+#    wait returns the moment the last row auto-dismisses; it is a bound,
+#    not a sleep. A second call to the shared wait would NOT work as a
+#    drain wait: the results card already shows the first completion, so
+#    it would return immediately without waiting for imports 2-3.
+# 2. assertNotVisible "Queue" immediately after the FIRST completion would
+#    be wrong: imports 2-3 are still queued/processing then, so the Queue
+#    header is still rendered. The assertNotVisible therefore runs only
+#    AFTER the drain wait. (The plan's stage-F text lists the assert
+#    right after the first-completion wait; that ordering fails on a
+#    3-item sequential queue and is corrected here — Tester to confirm.)
+# 3. I06 (field cleared after each Fetch) is asserted via the Fetch
+#    button's enabled state: submitLink clears the link (import.tsx) and
+#    the button is disabled={!link.trim()}, so Fetch disabled ⟺ field
+#    empty. assertNotVisible on the URL text would be WRONG here: the
+#    Queue row itself shows the raw URL until the video title is known
+#    (QueueList.tsx: item.videoTitle ?? item.url), so the URL text is
+#    legitimately still on screen right after a Fetch tap.
+# 4. Recent subtitles use the end-anchored regex '.*\d+ titles?$' (NOT
+#    the literal '5 titles', §2 rule 3 — yield-proof). The $ anchor is
+#    load-bearing: without it the pattern would also match the results
+#    header "N titles fetched". The .* wrappers are load-bearing too:
+#    Maestro text regexes match against the FULL element text, so a bare
+#    partial pattern does not match a longer string.
+# 5. Q08 (row title replaces URL) is asserted as assertNotVisible on each
+#    raw URL after the drain: a success Recent row shows entry.videoTitle
+#    (import.tsx RecentVideoRow: entry.videoTitle ?? entry.url), never
+#    the URL. The Queue rows that showed the URLs are gone by then.
+# 6. The 3-row proof is assertVisible on the subtitle regex with
+#    index: 2 (0-based: a third match exists ⟺ ≥3 success rows). A
+#    double-enqueue surfaces as 4+ rows in the screenshot (index: 2
+#    still passes, so the count itself is screenshot-judged).
+# 7. FLAG FOR T1 (not changed here — shared interface is fixed): the
+#    shared wait-import-outcome.yaml uses the BARE alternation
+#    "titles? fetched|doesn’t look|...". Under full-text regex matching
+#    that bare form does NOT match "1 title fetched" or the full error
+#    sentences (both need .* wrappers). T1 must confirm Maestro's actual
+#    matcher (find vs full-match) against the installed CLI version; if
+#    it is full-match, D2's shared file needs wrappers before the runner
+#    run. This file's own patterns are all wrapped, so they are safe
+#    under either semantics.
+#
+# Maestro syntax verified against the Maestro docs (current version) and
+# the D2 files' verified notes: launchApp map form with appId +
+# clearState; runFlow string form relative to THIS file; extendedWaitUntil
+# takes visible/notVisible + timeout in MILLISECONDS; text selectors are
+# regex-based; index is 0-based among matches; takeScreenshot takes a
+# string name; assertVisible supports the enabled state filter.
+
+appId: com.harpreetmails.moviedeck
+---
+# Launch, state kept (foregrounds the running app; stage E's state stays).
+- launchApp:
+    appId: com.harpreetmails.moviedeck
+    clearState: false
+- runFlow: ../shared/open-import.yaml
+
+# F1: Shorts form enqueue — no wait before the next Fetch (Q01, I02, I06).
+- tapOn: "Paste link"
+- inputText: "https://youtube.com/shorts/JeHimZxgX48"
+- hideKeyboard
+- tapOn: "Fetch"
+- assertVisible: "Queue"
+- assertVisible:
+    text: "Fetch"
+    enabled: false
+
+# F2: watch form enqueue — no wait before the next Fetch (Q01, I02, I06).
+- tapOn: "Paste link"
+- inputText: "https://www.youtube.com/watch?v=JeHimZxgX48"
+- hideKeyboard
+- tapOn: "Fetch"
+- assertVisible: "Queue"
+- assertVisible:
+    text: "Fetch"
+    enabled: false
+
+# F3: youtu.be form enqueue (Q01, I02, I06).
+- tapOn: "Paste link"
+- inputText: "https://youtu.be/JeHimZxgX48"
+- hideKeyboard
+- tapOn: "Fetch"
+
+# Q01 + Q02 + Q03, immediately after the 3rd Fetch: Queue header visible,
+# a Queued row visible, a Processing row visible (dots animate, so the
+# regex — never a fixed dot count), and Queued still present while
+# Processing shows (one-at-a-time processing).
+- assertVisible: "Queue"
+- assertVisible: "Queued"
+- assertVisible:
+    text: 'Processing\.+'
+- assertVisible: "Queued"
+
+# Q04/Q08: first completion, via the shared results-or-error wait.
+- runFlow: ../shared/wait-import-outcome.yaml
+
+# Drain: wait for the Queue to disappear (all three sequential imports
+# done, rows auto-dismissed). Outcome wait, NOT a fixed delay — see
+# header note 1. Cap 360000 ms = 3 x the 120 s per-import cap.
+- extendedWaitUntil:
+    notVisible:
+      text: "Queue"
+    timeout: 360000
+- assertNotVisible: "Queue"
+
+# Recent rows: scroll down to the Recent section, then prove ≥3 success
+# rows (Q07 all three complete; G01 Recent half; R01 presence half).
+- scrollUntilVisible:
+    element:
+      text: ".*Recent videos.*"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: ".*Recent videos.*"
+- assertVisible:
+    text: '.*\d+ titles?$'
+    index: 2
+# R01/G03 ordering (newest-first) + I02 (all three forms → same titles)
+# are judged from this screenshot (§4 exception): the three rows must
+# share one video title and one subtitle count.
+- takeScreenshot: f-recent-list
+
+# Q08, row-title half: no Recent row shows a raw URL any more — each
+# success row shows the video title instead (see header note 5).
+- assertNotVisible:
+    text: 'https://youtube\.com/shorts/JeHimZxgX48'
+- assertNotVisible:
+    text: 'https://www\.youtube\.com/watch\?v=JeHimZxgX48'
+- assertNotVisible:
+    text: 'https://youtu\.be/JeHimZxgX48'
+
+# ---- Selector -> source trace -------------------------------------------
+# "Paste link" field: accessibilityLabel in src/app/import.tsx (link
+# TextInput) — same target the Robo script used (contentDescription).
+# "Fetch": fetchButtonText in src/app/import.tsx; disabled={!link.trim()}
+#   on the same Pressable — the I06 field-cleared signal (header note 3).
+# "Queue": header in src/components/QueueList.tsx, rendered only when
+#   queue items exist; rows auto-dismiss via removeItem in import.tsx.
+# "Queued": statusQueued in src/components/QueueList.tsx (status queued).
+# 'Processing\.+': ProcessingStatus in src/components/QueueList.tsx —
+#   "Processing" + dots cycling 1→2→3 (500 ms interval), hence regex.
+# ".*Recent videos.*": Recent heading in src/app/import.tsx — NEVER the
+#   full string (contains a non-breaking space, §2 rule 2).
+# '.*\d+ titles?$': Recent subtitle in src/app/import.tsx
+#   (entry.titles.length === 1 ? '1 title' : 'N titles'); $ anchor keeps
+#   the results header "N titles fetched" out of the match set.
+# The three URLs: stage-F test data, testlab/robo-script.json F1-F3 and
+#   the pivot plan §3 stage F (same three forms, same order).
