@@ -448,6 +448,11 @@
     "description": "F: Recent rows newest-first visible in video [R01,G03,R08]"
   },
   {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,30%)->(50%,70%)",
+    "description": "G: scroll Import back up to link section [G02]"
+  },
+  {
     "eventType": "VIEW_TEXT_CHANGED",
     "replacementText": "https://youtube.com/shorts/JeHimZxgX48",
     "elementDescriptors": [
@@ -861,6 +866,11 @@
       }
     ],
     "description": "I: Retry outcome error card; note the old error card persists, so video must show the Queue row and a NEW Recent row at top for R07 [R07,Q05]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,30%)->(50%,70%)",
+    "description": "K: scroll Import back up to link section [I03]"
   },
   {
     "eventType": "VIEW_TEXT_CHANGED",

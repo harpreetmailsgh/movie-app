@@ -128,6 +128,7 @@ jobs:
         run: |
           set -o pipefail
           set +e
+          # Timeout 1800s: covers 188s of fixed script waits plus Gemini-path imports, inside the 60-min virtual-device ceiling.
           gcloud firebase test android run --type robo --app ./app.apk --device "${{ inputs.device }}" --robo-script "${{ inputs.robo_script }}" --timeout 1800s --project=movie-deck-b7eec 2>&1 | tee testlab-output.txt
           GCLOUD_EXIT=${PIPESTATUS[0]}
           echo "Full Robo output: testlab-output.txt"
