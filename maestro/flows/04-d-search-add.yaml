@@ -1,0 +1,87 @@
+# Stage D — Predestination search-add (Robo actions 30-37).
+# Cases: I08, W01 (Predestination half).
+#
+# Sequence (mirrors testlab/robo-script.json stage D):
+#   foreground app -> shared open-import -> scroll back up to the search
+#   field -> tap Search movies -> type Predestination -> hideKeyboard ->
+#   30s wait for the TMDB result row -> tap it -> Watchlist tab ->
+#   List view -> assert Predestination present.
+#
+# Selector notes (every string traced to source; see trace at the bottom):
+#   - open-import leaves Import scrolled to the link section, so the
+#     search field is scrolled back into view first with
+#     scrollUntilVisible (UP) before tapping it.
+#   - The result-row tap uses the ANCHORED regex `^Predestination$`:
+#     the save-as-typed row also contains "Predestination" as a substring
+#     ("Save "Predestination" exactly as typed"), so a bare match could
+#     select the wrong row; only the TMDB result row's title is exactly
+#     "Predestination".
+#   - addManual navigates back to the previous tab (import.tsx), so the
+#     Watchlist tab tap + List view switch follow, exactly as Robo did.
+#
+# Maestro syntax verified against https://docs.maestro.dev (current docs):
+#   launchApp map form with stopApp: false (foreground, no state wipe);
+#   runFlow string form with a path relative to THIS file;
+#   scrollUntilVisible element + direction + timeout (ms);
+#   extendedWaitUntil visible + timeout in ms; inputText; hideKeyboard.
+
+appId: com.harpreetmails.moviedeck
+---
+# D: foreground the running app (no state wipe — state from stages A-C
+# is preserved).
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Watchlist"
+    timeout: 30000
+
+# D: open Import via the shared sub-flow (Add Movie tab + scroll to the
+# link section).
+- runFlow: ../shared/open-import.yaml
+
+# D: scroll back up so the search field is on screen before tapping it.
+- scrollUntilVisible:
+    element:
+      text: "Search movies"
+    direction: UP
+    timeout: 30000
+
+# I08: type Predestination in the search field, dismiss the keyboard.
+- tapOn: "Search movies"
+- inputText: "Predestination"
+- hideKeyboard
+
+# I08: debounce + TMDB search, 30s bound — wait for the TMDB result row
+# specifically (anchored regex, see header note).
+- extendedWaitUntil:
+    visible:
+      text: "^Predestination$"
+    timeout: 30000
+- tapOn:
+    text: "^Predestination$"
+
+# W01: Watchlist List view shows Predestination.
+- tapOn: "Watchlist"
+- tapOn: "List view"
+- assertVisible: "Predestination"
+
+# ---- Selector -> source trace -------------------------------------------
+# "Watchlist" settle text: src/app/(tabs)/index.tsx ViewHeader
+#   title="Watchlist".
+# "Add Movie" tab (inside open-import.yaml): src/app/(tabs)/_layout.tsx
+#   title 'Add Movie' (tabPress pushes /import).
+# "Search movies": src/app/import.tsx search TextInput
+#   accessibilityLabel="Search movies" (line 289) — Android
+#   contentDescription, matched via Maestro's text selector (per D2).
+# "Predestination": the TMDB result row's title text
+#   (src/app/import.tsx resultTitle, line 307) — the typed query is the
+#   well-known title "Predestination".
+# "Watchlist" tab label: src/app/(tabs)/_layout.tsx title 'Watchlist'.
+#   addManual (src/app/import.tsx:150-175) calls router.back() after
+#   adding, returning to the previous tab; the explicit Watchlist tab
+#   tap then lands on Watchlist regardless of which tab Import was
+#   opened from.
+# "List view": accessibilityLabel in src/components/ViewHeader.tsx
+#   MODES labels.
+# Final assert "Predestination": the added entry's title in the
+#   Watchlist List view.

@@ -1,0 +1,116 @@
+# Stage C — cold Trending + filter no-match + clear (Robo actions 18-29).
+# Cases: T01 (assert + screenshot), T02, T05, T06.
+#
+# Sequence (mirrors testlab/robo-script.json stage C):
+#   foreground app -> Trending -> IMMEDIATELY screenshot + loading-text
+#   assert -> 60s load wait -> Tiles/Cards switches -> two LEFT swipes
+#   -> Language pill -> Hindi -> Done -> no-match assert -> Clear ->
+#   feed-restored asserts -> Last-refreshed assert.
+#
+# Selector notes (every string traced to source; see trace at the bottom):
+#   - The Language pill renders as `Language ▾` (FilterBar.tsx:119).
+#     Bare `Language` is the exact match that killed Robo run #6
+#     (action 24) — NEVER use the bare form here.
+#   - The spinner itself has no text, so the loading text + the immediate
+#     screenshot jointly cover T01 (screenshot exception, plan §4).
+#   - Directional swipes use `swipe: { direction: LEFT }` — the current
+#     Maestro docs list no dedicated left-swipe command; `swipe` with
+#     `direction` is the documented form (docs.maestro.dev, swipe ref).
+#   - NEVER right-swipe: a right swipe adds the card to Watchlist.
+#   - T06 FLAG (see trace): the assertNotVisible below is written exactly
+#     as the plan specifies, but the code path contradicts it — the first
+#     successful Trending load writes a cache entry and sets
+#     lastRefreshedAt (trending.ts loadCountryTrending / Cinemeta
+#     fallback), so trending.tsx renders the "Last refreshed" line after
+#     a successful cold load. Expect T06 to FAIL on a successful run
+#     until the Planner redefines it. Kept per plan; flagged, not hidden.
+#
+# Maestro syntax verified against https://docs.maestro.dev (current docs):
+#   launchApp map form with stopApp: false (foreground, no state wipe);
+#   extendedWaitUntil visible/notVisible + timeout in ms; takeScreenshot
+#   shorthand with a path; swipe with direction.
+
+appId: com.harpreetmails.moviedeck
+---
+# C: foreground the running app (no state wipe — state from stages A/B
+# is preserved). Stage B ends on Watchlist, so this is the settle point.
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Watchlist"
+    timeout: 30000
+
+# C: FIRST Trending visit, cold load starts [T01, T06].
+- tapOn: "Trending"
+
+# T01: IMMEDIATELY capture the loading state + assert its text.
+- takeScreenshot: trending-loading
+- assertVisible: "Finding what's trending…"
+
+# C: cold load, 60s bound [T02]. The load ends when the loading text
+# leaves; the ViewHeader switchers below prove the loaded state rendered
+# (they exist only in the loaded branch, not the loading/error branches).
+- extendedWaitUntil:
+    notVisible: "Finding what's trending…"
+    timeout: 60000
+- assertVisible: "Tiles view"
+
+# T02: Tiles + Cards switches, then two LEFT swipes only.
+- tapOn: "Tiles view"
+- tapOn: "Cards view"
+- swipe:
+    direction: LEFT
+- swipe:
+    direction: LEFT
+
+# T05: Language pill in GLYPH FORM, then Hindi, then Done.
+- tapOn: "Language ▾"
+- tapOn: "Hindi"
+- tapOn: "Done"
+- assertVisible:
+    text: 'No matches — trending items do not carry language or rating data; try clearing those\.'
+
+# T05: Clear restores the feed — no-match text gone, pill back to its
+# unfiltered label.
+- tapOn: "✕ Clear"
+- assertNotVisible:
+    text: 'No matches — trending items do not carry language or rating data; try clearing those\.'
+- assertVisible: "Language ▾"
+
+# T06: no "Last refreshed" line (fresh install has no cache — per plan).
+# See the T06 FLAG in the header: this contradicts the first-load cache
+# write in trending.ts and is expected to fail on a successful run.
+- assertNotVisible:
+    text: ".*Last refreshed.*"
+
+# ---- Selector -> source trace -------------------------------------------
+# "Watchlist" settle text: src/app/(tabs)/index.tsx ViewHeader
+#   title="Watchlist" (stage B ends on Watchlist).
+# "Trending" tab label: src/app/(tabs)/_layout.tsx title 'Trending'.
+# "Finding what's trending…" : src/app/(tabs)/trending.tsx loading
+#   branch (line 166) — straight apostrophe, U+2026 ellipsis.
+# "Tiles view" / "Cards view": accessibilityLabel values in
+#   src/components/ViewHeader.tsx MODES labels; ViewHeader renders only
+#   in the loaded branch of trending.tsx (line 173), so its presence
+#   proves the feed loaded.
+# "Language ▾": src/components/FilterBar.tsx:119 — pillLabel + ` ▾`.
+#   pillLabel for the language sheet returns the bare title 'Language'
+#   when nothing is selected (FilterBar.tsx:66-73), so the unfiltered
+#   pill text is exactly `Language ▾`.
+# "Hindi": src/components/FilterBar.tsx LANGUAGES list (line 15-18);
+#   language sheet is multi: true, options include 'Hindi'.
+# "Done": src/components/FilterBar.tsx doneBtnText (sheet footer).
+# 'No matches — trending items do not carry language or rating data;
+#   try clearing those.': src/app/(tabs)/trending.tsx cards empty state
+#   (line 195), shown when filtersActive and the filtered list is empty.
+#   Final period escaped for Maestro's regex text matching.
+# "✕ Clear": src/components/FilterBar.tsx:126, rendered only when
+#   filtersActive(values) — true after Hindi is picked.
+# ".*Last refreshed.*": src/app/(tabs)/trending.tsx refresh line
+#   (lines 180-182), rendered when refreshedAt !== null. T06 conflict:
+#   src/lib/trending.ts loadCountryTrending sets lastRefreshedAt =
+#   entry.at (line 416) and the Cinemeta fallback sets it too (line 478)
+#   on the FIRST successful load, and trending.tsx:56-61 copies it into
+#   refreshedAt — so the line appears after a successful cold load even
+#   on a fresh install. The plan's "fresh install has no cache" premise
+#   holds only until the first load completes, not after it.

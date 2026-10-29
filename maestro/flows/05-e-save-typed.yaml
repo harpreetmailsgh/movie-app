@@ -1,0 +1,88 @@
+# Stage E — gibberish save-as-typed (Robo actions 38-45).
+# Cases: I09, U04 (entry-present half).
+#
+# Sequence (mirrors testlab/robo-script.json stage E):
+#   foreground app -> shared open-import -> scroll back up to the search
+#   field -> tap Search movies -> type Zqxjkv Blorpt -> hideKeyboard ->
+#   30s wait for the save-as-typed row -> tap it -> Watchlist tab ->
+#   List view -> assert Zqxjkv Blorpt present.
+#
+# Selector notes (every string traced to source; see trace at the bottom):
+#   - open-import leaves Import scrolled to the link section, so the
+#     search field is scrolled back into view first with
+#     scrollUntilVisible (UP) before tapping it.
+#   - The save-as-typed row is tapped via the regex `.*exactly as typed.*`
+#     (plan §2 rule 1: match rendered text; the full row text embeds the
+#     typed query, so the stable substring is the row's tail).
+#   - saveAsTyped navigates back to the previous tab (import.tsx), so
+#     the Watchlist tab tap + List view switch follow, exactly as Robo
+#     did.
+#
+# Maestro syntax verified against https://docs.maestro.dev (current docs):
+#   launchApp map form with stopApp: false (foreground, no state wipe);
+#   runFlow string form with a path relative to THIS file;
+#   scrollUntilVisible element + direction + timeout (ms);
+#   extendedWaitUntil visible + timeout in ms; inputText; hideKeyboard.
+
+appId: com.harpreetmails.moviedeck
+---
+# E: foreground the running app (no state wipe — state from stages A-D
+# is preserved).
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Watchlist"
+    timeout: 30000
+
+# E: open Import via the shared sub-flow (Add Movie tab + scroll to the
+# link section).
+- runFlow: ../shared/open-import.yaml
+
+# E: scroll back up so the search field is on screen before tapping it.
+- scrollUntilVisible:
+    element:
+      text: "Search movies"
+    direction: UP
+    timeout: 30000
+
+# I09: type the gibberish title (no TMDB match) in the search field,
+# dismiss the keyboard.
+- tapOn: "Search movies"
+- inputText: "Zqxjkv Blorpt"
+- hideKeyboard
+
+# I09: no-match wait, 30s bound — the save-as-typed row renders once the
+# query is non-empty; the wait succeeds on its stable tail text.
+- extendedWaitUntil:
+    visible:
+      text: ".*exactly as typed.*"
+    timeout: 30000
+- tapOn:
+    text: ".*exactly as typed.*"
+
+# U04 (entry-present half): Watchlist List view shows Zqxjkv Blorpt.
+- tapOn: "Watchlist"
+- tapOn: "List view"
+- assertVisible: "Zqxjkv Blorpt"
+
+# ---- Selector -> source trace -------------------------------------------
+# "Watchlist" settle text: src/app/(tabs)/index.tsx ViewHeader
+#   title="Watchlist".
+# "Add Movie" tab (inside open-import.yaml): src/app/(tabs)/_layout.tsx
+#   title 'Add Movie' (tabPress pushes /import).
+# "Search movies": src/app/import.tsx search TextInput
+#   accessibilityLabel="Search movies" (line 289) — Android
+#   contentDescription, matched via Maestro's text selector (per D2).
+# ".*exactly as typed.*": the save-as-typed row in src/app/import.tsx
+#   (line 327), rendered text: `Don't see it? Save "Zqxjkv Blorpt"
+#   exactly as typed` — straight apostrophe (from &apos;), query
+#   interpolated verbatim. The regex matches the row's stable tail.
+# "Watchlist" tab label: src/app/(tabs)/_layout.tsx title 'Watchlist'.
+#   saveAsTyped (src/app/import.tsx:178-187) calls router.back() after
+#   adding, returning to the previous tab; the explicit Watchlist tab
+#   tap then lands on Watchlist regardless of which tab Import was
+#   opened from.
+# "List view": accessibilityLabel in src/components/ViewHeader.tsx
+#   MODES labels.
+# Final assert "Zqxjkv Blorpt": the added entry's title in the
+#   Watchlist List view.
