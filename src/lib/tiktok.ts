@@ -13,6 +13,24 @@ const TIKTOK_HOSTS = new Set([
   'vt.tiktok.com',
 ]);
 
+/**
+ * Timeout for import-path TikTok fetches: 15s — same value and
+ * AbortController pattern as the YouTube import fetches in lib/youtube.ts.
+ * A hung fetch must fail fast instead of stalling the sequential queue.
+ */
+const IMPORT_FETCH_TIMEOUT_MS = 15_000;
+
+/** fetch with a 15s timeout (same shape as timedFetch in lib/tmdb.ts). */
+async function timedFetch(url: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), IMPORT_FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** True when the pasted text is a TikTok link we can try to read. */
 export function isTikTokUrl(url: string): boolean {
   try {
@@ -33,7 +51,9 @@ export interface TikTokVideoInfo {
  * Share links (vm./vt.tiktok.com) redirect to the canonical video URL;
  * fetch follows redirects and response.url carries the final address,
  * which is what oEmbed wants. Returns null when the video can't be read
- * (private, removed, or region-blocked).
+ * (private, removed, or region-blocked). Both fetches are timed out, so a
+ * hung fetch returns null (or keeps the pasted link, for the redirect
+ * resolution) instead of stalling the queue.
  */
 export async function fetchTikTokInfo(
   url: string
@@ -42,13 +62,13 @@ export async function fetchTikTokInfo(
   if (!isTikTokUrl(link)) return null;
   let canonical = link;
   try {
-    const page = await fetch(link);
+    const page = await timedFetch(link);
     if (page.url && isTikTokUrl(page.url)) canonical = page.url;
   } catch {
     /* keep the pasted link; oEmbed may still resolve it */
   }
   try {
-    const res = await fetch(
+    const res = await timedFetch(
       `https://www.tiktok.com/oembed?url=${encodeURIComponent(canonical)}`
     );
     if (!res.ok) return null;

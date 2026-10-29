@@ -40,19 +40,37 @@ const YT_IPHONE_SAFARI_UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 
 /**
+ * Timeout for the import-path duration scrape: 15s — same value and
+ * AbortController pattern as the YouTube/TikTok import fetches, so a hung
+ * watch-page fetch is bounded instead of stalling the sequential queue.
+ */
+const IMPORT_FETCH_TIMEOUT_MS = 15_000;
+
+/**
  * Best-effort YouTube video duration in seconds, scraped from the watch
  * page's embedded player JSON. Null when it can't be determined — the
  * caller proceeds anyway in that case. (Copied from import.tsx.)
+ * A timed-out fetch also returns null, preserving that same semantics.
  */
 async function fetchYouTubeDurationSeconds(url: string): Promise<number | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    IMPORT_FETCH_TIMEOUT_MS
+  );
   try {
-    const res = await fetch(url, { headers: { 'User-Agent': YT_IPHONE_SAFARI_UA } });
+    const res = await fetch(url, {
+      headers: { 'User-Agent': YT_IPHONE_SAFARI_UA },
+      signal: controller.signal,
+    });
     if (!res.ok) return null;
     const html = await res.text();
     const m = /"lengthSeconds":"(\d+)"/.exec(html);
     return m ? Number(m[1]) : null;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

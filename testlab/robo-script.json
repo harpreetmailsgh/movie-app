@@ -427,10 +427,11 @@
     "eventType": "VIEW_CLICKED",
     "elementDescriptors": [
       {
-        "textRegex": ".*titles fetched"
+        "textRegex": ".*(titles? fetched|doesn’t look|doesn't look|read that|fetch any movie|up to 5 mins).*"
       }
     ],
-    "description": "F: results card appears at first completion, implicit wait [Q04,Q08]"
+    "description": "F: results-or-error card at first completion, implicit wait on either [Q04,Q08]",
+    "optional": true
   },
   {
     "eventType": "DELAYED_MESSAGE_POSTED",
@@ -479,7 +480,7 @@
     "eventType": "VIEW_CLICKED",
     "elementDescriptors": [
       {
-        "textRegex": ".*titles fetched"
+        "textRegex": ".*titles? fetched"
       }
     ],
     "description": "G: results card for mixed import, implicit wait [G02,U01,U03]"

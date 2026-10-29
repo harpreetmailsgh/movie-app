@@ -62,19 +62,36 @@ export interface YouTubeVideoInfo {
 }
 
 /**
+ * Timeout for import-path metadata fetches (oEmbed / watch-page scrape):
+ * 15s — long enough for a full YouTube page on a slow device, far below
+ * the queue's script drain window, and bounded so one hung import fails
+ * fast instead of stalling the strictly sequential queue forever.
+ * Same AbortController pattern as lib/gemini.ts (30s) and lib/tmdb.ts (6s).
+ */
+const IMPORT_FETCH_TIMEOUT_MS = 15_000;
+
+/**
  * Keyless video title/author via YouTube's public oEmbed endpoint.
  * Returns null for private, removed, or otherwise unreadable videos.
+ * A timed-out fetch also returns null, so the caller takes its existing
+ * "couldn't read that video" error path instead of hanging.
  */
 export async function fetchYouTubeTitle(
   url: string
 ): Promise<YouTubeVideoInfo | null> {
   const videoId = parseYouTubeId(url);
   if (!videoId) return null;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    IMPORT_FETCH_TIMEOUT_MS
+  );
   try {
     const res = await fetch(
       `https://www.youtube.com/oembed?url=${encodeURIComponent(
         url.trim()
-      )}&format=json`
+      )}&format=json`,
+      { signal: controller.signal }
     );
     if (!res.ok) return null;
     const data = await res.json();
@@ -83,5 +100,7 @@ export async function fetchYouTubeTitle(
     return { videoId, title, author: (data?.author_name ?? '').trim() };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
