@@ -44,15 +44,15 @@
 #    index: 2 (0-based: a third match exists ⟺ ≥3 success rows). A
 #    double-enqueue surfaces as 4+ rows in the screenshot (index: 2
 #    still passes, so the count itself is screenshot-judged).
-# 7. FLAG FOR T1 (not changed here — shared interface is fixed): the
-#    shared wait-import-outcome.yaml uses the BARE alternation
-#    "titles? fetched|doesn’t look|...". Under full-text regex matching
-#    that bare form does NOT match "1 title fetched" or the full error
-#    sentences (both need .* wrappers). T1 must confirm Maestro's actual
-#    matcher (find vs full-match) against the installed CLI version; if
-#    it is full-match, D2's shared file needs wrappers before the runner
-#    run. This file's own patterns are all wrapped, so they are safe
-#    under either semantics.
+# 7. RESOLVED (commit 9137d47, D2 fix): the shared
+#    wait-import-outcome.yaml regex is ALREADY wrapped —
+#    ".*(titles? fetched|doesn’t look|...).*". The bare form it
+#    replaced did NOT match "1 title fetched" or the full error
+#    sentences under full-text regex matching; the wrapped form
+#    matches under both find and full-match semantics. This file's
+#    own patterns are all wrapped, so they are safe under either
+#    semantics. (Stale-note fix, T1 loop 2026-10-29: the previous
+#    version of this note claimed the shared wait was still bare.)
 #
 # Maestro syntax verified against the Maestro docs (current version) and
 # the D2 files' verified notes: launchApp map form with appId +
@@ -94,6 +94,9 @@ appId: com.harpreetmails.moviedeck
 - inputText: "https://youtu.be/JeHimZxgX48"
 - hideKeyboard
 - tapOn: "Fetch"
+- assertVisible:
+    text: "Fetch"
+    enabled: false
 
 # Q01 + Q02 + Q03, immediately after the 3rd Fetch: Queue header visible,
 # a Queued row visible, a Processing row visible (dots animate, so the

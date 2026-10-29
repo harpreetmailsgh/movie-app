@@ -11,7 +11,13 @@
 #   presence asserts (W01) -> Predestination detail (W06) -> back ->
 #   Zqxjkv Blorpt detail (W06, clapboard fallback) -> tap `Trash` ->
 #   entry gone (W07, U04 deletion half) -> Watchlist Cards deck:
-#   swipe LEFT / RIGHT / UP -> Seen shows the swiped-up title (W04/S01)
+#   swipe UP / LEFT / RIGHT -> Seen shows the swiped-up title (W04/S01)
+#   (UP FIRST, T1 fix 2026-10-29: LEFT/RIGHT cycle the top card to the
+#   back, so UP must run before them or it moves a JeHim title, not
+#   Predestination — the deck-top title at this point. LEFT/RIGHT are
+#   kept: W03 needs them. The h-deck-before-swipes screenshot below is
+#   taken BEFORE the UP swipe, so it shows the full deck in stored
+#   order.)
 #   -> NEW S04 filter half on Seen (Type -> Series -> sheet Clear).
 #
 # NOTE 1 — row-agnostic closed loop (read before "fixing" this): the
@@ -181,17 +187,20 @@ appId: com.harpreetmails.moviedeck
 
 # W03 + W04/S01, deck: Watchlist Cards. Directional swipes act at
 # screen center (swipe docs table), which is where the deck card sits.
-# Left/right cycle the card to the back (no assert — order is
-# screenshot-judged, §4); up moves the top card to Seen.
+# UP FIRST (T1 fix): up moves the top card (Predestination) to Seen;
+# left/right cycle the card to the back (no assert — order is
+# screenshot-judged, §4), so running them first would make UP move a
+# different title. The screenshot below is taken BEFORE the UP swipe,
+# so it shows the full deck in stored order (W03 evidence).
 - tapOn: "Cards view"
 - takeScreenshot:
     path: h-deck-before-swipes
 - swipe:
+    direction: UP
+- swipe:
     direction: LEFT
 - swipe:
     direction: RIGHT
-- swipe:
-    direction: UP
 
 # W04/S01 verdict (note 3): the swiped-up top card landed in Seen.
 - tapOn: "Seen"

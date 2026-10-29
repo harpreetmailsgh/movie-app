@@ -86,16 +86,16 @@ appId: com.harpreetmails.moviedeck
 # their union is the shared wait's regex). The log names the branch.
 - runFlow:
     when:
-      visible: "titles? fetched"
+      visible: ".*titles? fetched.*"
     commands:
       - assertVisible:
-          text: "titles? fetched"
+          text: ".*titles? fetched.*"
 - runFlow:
     when:
-      visible: "doesn’t look|doesn't look|read that|fetch any movie|up to 5 mins"
+      visible: ".*(doesn’t look|doesn't look|read that|fetch any movie|up to 5 mins).*"
     commands:
       - assertVisible:
-          text: "doesn’t look|doesn't look|read that|fetch any movie|up to 5 mins"
+          text: ".*(doesn’t look|doesn't look|read that|fetch any movie|up to 5 mins).*"
 # The import's Recent row: its title is the TikTok caption on success
 # (src/lib/importWorker.ts fetchTikTok returns caption as videoTitle)
 # or the raw URL on failure (videoTitle null -> row shows entry.url,
@@ -137,7 +137,7 @@ appId: com.harpreetmails.moviedeck
 # a "titles fetched" header; its absence plus the error card above is
 # the no-addition proof (the worker only addMovie's on match paths).
 - assertNotVisible:
-    text: "titles? fetched"
+    text: ".*titles? fetched.*"
 
 # ---- E04: >5-min video (Robo 127-130) ----------------------------------
 - scrollUntilVisible:
@@ -154,7 +154,7 @@ appId: com.harpreetmails.moviedeck
 # Known outcomes only: the duration gate OR a direct-match success.
 # Any other outcome fails here (screenshot above holds the evidence).
 - assertVisible:
-    text: 'Share a video up to 5 mins long\.|titles? fetched'
+    text: 'Share a video up to 5 mins long\.|.*titles? fetched.*'
 # Expected path: the duration gate fired (Gemini path).
 - runFlow:
     when:
@@ -167,10 +167,10 @@ appId: com.harpreetmails.moviedeck
 # question (the gate only fires on the Gemini path).
 - runFlow:
     when:
-      visible: "titles? fetched"
+      visible: ".*titles? fetched.*"
     commands:
       - assertVisible:
-          text: "titles? fetched"
+          text: ".*titles? fetched.*"
 # Q05 completion: the queue auto-dismisses each row on completion, so by
 # journey's end no Queue header may remain. ("Queue" as a regex also
 # matches a stuck "Queued" row, which is exactly what Q05 forbids.)

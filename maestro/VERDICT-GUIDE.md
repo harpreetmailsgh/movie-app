@@ -95,15 +95,16 @@ agreement (plan §4):
   before the run. The flow FAILS only on crash or silent drop: the
   shared outcome wait fails if NO card ever appears, and the Recent
   section assert fails if no Recent rows were recorded.
-- **R03/R04 glyphs (reading note for T1)**: §4 names R08 thumbnails
-  but not R03/R04 glyphs explicitly. They are judged from the SAME
-  Recent screenshots already mandated for R01/R08 (no new screenshots):
-  a fully verified import's row shows ✓ green (R03); the JeHim mixed
-  import's row shows ⚠ orange (R04). If the run's JeHim import comes
-  back fully verified, its row showing ✓ is consistent and R04 becomes
-  NOT RUN on this run, not FAIL (Robo rule). If no fully verified
-  import occurs in the run, R03 is NOT RUN, not FAIL. Tester confirms
-  this reading at T1; a hard glyph assert would be wrong here because
+- **R03/R04 glyphs (CONFIRMED at T1, 2026-10-29 — not a widening)**:
+  §4 names R08 thumbnails but not R03/R04 glyphs explicitly. They are
+  judged from the SAME Recent screenshots already mandated for R01/R08
+  (no new screenshots): a fully verified import's row shows ✓ green
+  (R03); the JeHim mixed import's row shows ⚠ orange (R04). If the
+  run's JeHim import comes back fully verified, its row showing ✓ is
+  consistent and R04 becomes NOT RUN on this run, not FAIL (Robo
+  rule). If no fully verified import occurs in the run, R03 is NOT
+  RUN, not FAIL. Explicit R03/R04 rows are now in the §1 stage-F and
+  stage-G tables. A hard glyph assert would be wrong here because
   which glyph appears depends on the run's Gemini yield.
 
 ## Special verdict rules (do not re-interpret per run)
@@ -189,9 +190,11 @@ agreement (plan §4):
 | Q03 (one at a time) | `Queued` still visible while `Processing` shows (both labels co-visible) |
 | Q04 (success auto-dismiss) | Per-import outcome wait (120s each) → `Queue` header gone after drain (rows auto-dismiss; no `done` state exists) |
 | Q07 (all complete) | All 3 imports land in Recent (3 rows) |
-| Q08 (row title replaces URL) | Asserted only if the transition is observed during the run; otherwise NOT RUN, not FAIL (see special rules) |
+| Q08 (row title replaces URL) | End-state proof: after the drain, no Recent row shows a raw URL (flow 06 asserts `assertNotVisible` on each of the three raw URLs) — NOT a "transition observed" claim; if no step catches the Queue row changing from raw URL to video title mid-run, that transition observation itself is NOT RUN, not FAIL (see special rules) |
+| R03 (fully verified glyph) | Screenshot-judged from the already-mandated Recent screenshot (flow 06 `f-recent-list`): a fully verified import's row shows ✓ green. If the run's imports yield no fully verified row, R03 is NOT RUN, never FAIL — the glyph depends on the run's Gemini yield (see §4 R03/R04 note) |
+| R04 (mixed glyph) | Screenshot-judged from the already-mandated Recent screenshot (flow 06 `f-recent-list`): a mixed import's row shows ⚠ orange. If the run's imports come back fully verified (no mixed row), R04 is NOT RUN, never FAIL — the glyph depends on the run's Gemini yield (see §4 R03/R04 note) |
 | I02 (URL variants) | All 3 forms (Shorts / watch / youtu.be) of JeHimZxgX48 → same titles |
-| I06 (field cleared, no double-enqueue) | Field empty after each Fetch (`assertNotVisible` of the URL text); exactly one Queue row per tap — 3 rows at drain, 4+ rows = double-enqueue FAIL |
+| I06 (field cleared, no double-enqueue) | Fetch-disabled after each Fetch: flow 06 asserts `Fetch` `enabled: false` after F1, F2 and F3 (submitLink clears the link and the button is `disabled={!link.trim()}`, so Fetch disabled ⟺ field empty). An `assertNotVisible` of the URL text would be WRONG here: the Queue row itself shows the raw URL until the video title is known. Exactly one Queue row per tap — 3 rows at drain, 4+ rows = double-enqueue FAIL |
 | I10 (re-import recorded) | Stage G's re-import (4th total) lands a new Recent row (asserted in flow G) |
 | G01 (no title lost) | Every video's titles in Watchlist (asserted per title in stage H) + Recent rows (asserted here) |
 | G03 (Recent newest-first) | ORDER screenshot of the Recent list (§4) |
@@ -207,6 +210,8 @@ agreement (plan §4):
 | U03 (unverified label) | `assertVisible` `Couldn't verify this title` + the raw title text |
 | R06 (expand/collapse) | Tap newest row via subtitle regex `\d+ titles?` (index 0 — NOT the literal `5 titles`, plan §2 rule 3) → expanded list shows the video's titles → tap again → expansion closed |
 | I10 (re-import row) | Re-import of the Shorts URL lands a new Recent row |
+| R03 (fully verified glyph) | Screenshot-judged from the already-mandated Recent screenshots (flow 06 `f-recent-list`, flow 07 `g-expanded-row`): a fully verified import's row shows ✓ green. If the run yields no fully verified row, R03 is NOT RUN, never FAIL (see §4 R03/R04 note) |
+| R04 (mixed glyph) | Screenshot-judged from the already-mandated Recent screenshots (flow 06 `f-recent-list`, flow 07 `g-expanded-row`): the JeHim mixed import's row shows ⚠ orange. If the run's JeHim import comes back fully verified (no mixed row), R04 is NOT RUN, never FAIL (see §4 R03/R04 note) |
 | G05 | NOT asserted here — screenshot-judged from stage H's W02 List screenshot (§4 correction above). Any G05 tap in flow G is out of date and must be removed (D4-fix) |
 
 ### 08-h-watchlist-seen.yaml — stage H (D5)
@@ -215,7 +220,7 @@ agreement (plan §4):
 | --- | --- |
 | W01 (auto-appear, completion) | Fetched titles present across Watchlist views |
 | W02 (A→Z sort) | ORDER screenshots of Tiles + List (§4); presence of each title asserted |
-| W03 (deck order) | Deck swipes (left, right, up) + ORDER screenshot of the deck (§4: stored order, not A→Z); swipe-up move asserted via the title appearing in Seen |
+| W03 (deck order) | Deck swipes (UP first, then left, right — T1 fix 2026-10-29: LEFT/RIGHT cycle the top card to the back, so UP must run first or it moves a JeHim title, not Predestination) + ORDER screenshot of the deck taken BEFORE the UP swipe (§4: stored order, not A→Z); swipe-up move asserted via the title appearing in Seen |
 | W04 (move to Seen) | Title leaves Watchlist, appears in Seen (List swipe → `✓ Seen`, and Cards swipe-up) |
 | W05 (script half) | Detail `Trash` delete → title gone from Watchlist in later views; no Trash/Restore UI anywhere in the journey (`assertNotVisible` `Restore` if such a string exists) |
 | W06 (details render) | `Predestination` detail renders (poster); `Zqxjkv Blorpt` detail renders clapboard fallback, no broken image |

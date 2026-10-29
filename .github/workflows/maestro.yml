@@ -143,6 +143,7 @@ jobs:
             eas-build.json
             download.json
             maestro/flows/*.yaml
+            maestro/shared/*.yaml
             maestro-run.sh
 
       - name: Upload Maestro report

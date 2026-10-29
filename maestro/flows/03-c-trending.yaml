@@ -76,7 +76,20 @@ appId: com.harpreetmails.moviedeck
     text: 'No matches — trending items do not carry language or rating data; try clearing those\.'
 
 # T05: Clear restores the feed — no-match text gone, pill back to its
-# unfiltered label.
+# unfiltered label. The `✕ Clear` pill sits LAST in a horizontal
+# ScrollView row (FilterBar.tsx:102-126) and may be off-screen on
+# pixel_7, so scroll it into view first (T1 fix 2026-10-29) —
+# scroll-then-tap only, NOT the sheet-Clear path (that would change
+# what the T05 assertion means). Direction RIGHT: the pill is at the
+# RIGHT end of the horizontal row, following the same convention as
+# the vertical flows (DOWN scrolls toward the bottom, RIGHT scrolls
+# toward the right end). If the dry run shows Maestro's horizontal
+# direction inverted on device, the flow fails fast at this step —
+# loudly, never silently — and the direction is flipped to LEFT.
+- scrollUntilVisible:
+    element: "✕ Clear"
+    direction: RIGHT
+    timeout: 30000
 - tapOn: "✕ Clear"
 - assertNotVisible:
     text: 'No matches — trending items do not carry language or rating data; try clearing those\.'
