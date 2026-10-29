@@ -41,6 +41,14 @@
 #   report); it does NOT verify the flows, which need the T1 dry run
 #   and the real emulator run.
 #
+# DRIVER-STARTUP RETRY (run #1 harness failure):
+#   If a flow fails with Maestro's "did not start up in time" driver
+#   error, the run retries that flow exactly ONCE after uninstalling
+#   the Maestro driver packages and waiting 30 s — the failure happens
+#   before any flow command executes, so nothing partially ran. Any
+#   other failure (assertions included) is never retried, and if the
+#   retry also fails, fail-fast still marks later stages NOT RUN.
+#
 # EXIT CODES: 0 = all flows passed. 1 = at least one flow failed, a flow
 #   file was missing, or the maestro binary was not found.
 
@@ -120,7 +128,19 @@ for flow in "${FLOWS[@]}"; do
   # Exit code captured via `||` (errexit-exempt) — never a bare call
   # whose failure could abort the script before the summary prints.
   code=0
-  "$MAESTRO_BIN" test --test-output-dir "$REPORT_DIR" "$flow_path" || code=$?
+  tmp_out=$(mktemp)
+  "$MAESTRO_BIN" test --test-output-dir "$REPORT_DIR" "$flow_path" >"$tmp_out" 2>&1 || code=$?
+  cat "$tmp_out"
+  if [ "$code" -ne 0 ] && grep -q "did not start up in time" "$tmp_out"; then
+    echo "RETRY: $flow (driver startup timeout, attempt 2/2)"
+    adb uninstall dev.mobile.maestro >/dev/null 2>&1 || true
+    adb uninstall dev.mobile.maestro.test >/dev/null 2>&1 || true
+    sleep 30
+    code=0
+    "$MAESTRO_BIN" test --test-output-dir "$REPORT_DIR" "$flow_path" >"$tmp_out" 2>&1 || code=$?
+    cat "$tmp_out"
+  fi
+  rm -f "$tmp_out"
   if [ "$code" -eq 0 ]; then
     echo "PASS: $flow"
     STATUS+=("PASS")
