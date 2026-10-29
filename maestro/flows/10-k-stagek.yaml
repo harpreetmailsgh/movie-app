@@ -1,0 +1,216 @@
+# Stage K — TikTok import, no-movie Short, >5-min video (Robo actions 117-132).
+# Cases: I03, E05, E04, Q05 (completion), R01 (completion), R05 (completion),
+#   R08 (screenshot thumbnails).
+#
+# Sequence (mirrors testlab/robo-script.json stage K):
+#   foreground app (no state wipe — state from stage I is preserved)
+#   -> scroll back up to the link section -> TikTok import -> outcome wait
+#   -> outcome screenshot + when-branches -> scroll to Recent -> Recent
+#   screenshot -> no-movie Short -> verbatim error assert -> >5-min video
+#   -> verbatim gate assert (or direct-match spec-question branch)
+#   -> queue-drained assert -> final Recent screenshot.
+#
+# I03 VERDICT EXCEPTION (narrowed by the when-branch enhancement below):
+#   The TikTok outcome (results vs error) is not known in advance. The
+#   outcome BRANCH is now asserted by Maestro `when`-conditional sub-flows
+#   (docs.maestro.dev "Conditions": runFlow with a `when: visible` block
+#   runs its commands only when the selector is visible, otherwise skips
+#   them — so exactly one branch below executes, and the Maestro log
+#   names which one ran). The EXACT outcome text (which title, or which
+#   error string) is still read from the outcome screenshot, because the
+#   TikTok caption — and therefore the matched title or the error — is
+#   not known before the run. The flow FAILS only on crash or silent drop:
+#   the shared outcome wait fails if NO card ever appears, and the Recent
+#   section assert fails if no Recent rows were recorded.
+#   (The branch asserts themselves cannot misfire: each branch's assert
+#   repeats its own `when` selector, which the wait just proved visible.)
+#
+# E04 SPEC-QUESTION BRANCH: a >5-min video whose title matches TMDB
+#   directly succeeds BEFORE the duration gate is checked (the gate only
+#   fires on the Gemini path, src/lib/importWorker.ts). So a results card
+#   here is a SPEC QUESTION, not a FAIL — recorded from the outcome
+#   screenshot (quote the matched title in the verdict). Any OTHER
+#   outcome (e.g. "Couldn't read that video") fails the combined assert
+#   below, because it is neither the gate nor a direct match.
+#
+# E05 HALLUCINATION RULE: a title from a cooking video is app
+#   misbehaviour, not a pass. The shared wait succeeds on a results card
+#   too, the screenshot captures the hallucinated title, and the
+#   verbatim error assert then FAILS the flow — quote the title from the
+#   screenshot in the verdict.
+#
+# Scroll-direction convention (flagged for T1 dry-run confirmation):
+#   docs.maestro.dev's scrollUntilVisible example scrolls DOWN the page
+#   with direction DOWN, so direction UP scrolls back UP the page. This
+#   file follows that convention (and D2's open-import.yaml, which uses
+#   DOWN to go down to the link section). If the dry run shows the
+#   directions inverted on device, the flow fails fast at the first
+#   scroll step — loudly, never silently — and the direction is flipped.
+#
+# Maestro syntax verified against https://docs.maestro.dev (current docs):
+#   launchApp map form with stopApp; extendedWaitUntil visible + timeout
+#   in ms; runFlow string form with a path relative to THIS file;
+#   runFlow with `when` + inline `commands` (Conditions page);
+#   scrollUntilVisible element + direction + timeout in ms;
+#   takeScreenshot with no arguments.
+#
+# Ordered-sequence assumption: stage I ends on the Import screen, so
+# foregrounding the app lands back on Import and the link section is
+# reachable by scrolling up. Run standalone, this flow needs Import
+# opened first (via ../shared/open-import.yaml) — the official verdict
+# run is always the full ordered sequence via maestro-run.sh.
+
+appId: com.harpreetmails.moviedeck
+---
+# Foreground the running app (no state wipe — stage I state preserved).
+# D2 pattern (02-b-tabs.yaml): stopApp: false foregrounds instead of
+# restarting; if the app is not running, Maestro launches it.
+- launchApp:
+    stopApp: false
+
+# Scroll back up to the link section (Robo 117).
+- scrollUntilVisible:
+    element:
+      text: ".*Paste a link from.*"
+    direction: UP
+    timeout: 30000
+
+# ---- I03: TikTok import (Robo 118-121) ---------------------------------
+- tapOn: "Paste link"
+- inputText: "https://www.tiktok.com/@cass.nyuad/video/7646636420697722130"
+- hideKeyboard
+- tapOn: "Fetch"
+- runFlow: ../shared/wait-import-outcome.yaml
+- takeScreenshot
+# I03 branches: exactly one executes (the two regexes are disjoint and
+# their union is the shared wait's regex). The log names the branch.
+- runFlow:
+    when:
+      visible: "titles? fetched"
+    commands:
+      - assertVisible:
+          text: "titles? fetched"
+- runFlow:
+    when:
+      visible: "doesn’t look|doesn't look|read that|fetch any movie|up to 5 mins"
+    commands:
+      - assertVisible:
+          text: "doesn’t look|doesn't look|read that|fetch any movie|up to 5 mins"
+# The import's Recent row: its title is the TikTok caption on success
+# (src/lib/importWorker.ts fetchTikTok returns caption as videoTitle)
+# or the raw URL on failure (videoTitle null -> row shows entry.url,
+# src/app/import.tsx RecentVideoRow) — unknowable in advance, so the row
+# itself is judged from the screenshot below, while this section assert
+# (the section renders only when recentVideos.length > 0) proves a row
+# was recorded at all. A silent drop (card with no row) cannot happen
+# through this path: recordVideo runs before the card is set
+# (src/app/import.tsx queue worker effect).
+- scrollUntilVisible:
+    element:
+      text: ".*Recent videos.*"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: ".*Recent videos.*"
+- takeScreenshot
+
+# ---- E05: no-movie Short (Robo 123-126) --------------------------------
+- scrollUntilVisible:
+    element:
+      text: ".*Paste a link from.*"
+    direction: UP
+    timeout: 30000
+- tapOn: "Paste link"
+- inputText: "https://www.youtube.com/shorts/kK9jr1CxROs"
+- hideKeyboard
+- tapOn: "Fetch"
+# Shared wait first (either branch) so the screenshot below captures a
+# hallucinated results card too; the verbatim assert after it is what
+# FAILS the flow on hallucination. Typing the URL cleared the previous
+# outcome card (onLinkChange sets fetchResults/fetchError to null,
+# src/app/import.tsx), so no stale card can satisfy this wait.
+- runFlow: ../shared/wait-import-outcome.yaml
+- takeScreenshot
+- assertVisible:
+    text: 'Could not fetch any movie in this video\.'
+# Nothing added: a hallucinated title would render a results card with
+# a "titles fetched" header; its absence plus the error card above is
+# the no-addition proof (the worker only addMovie's on match paths).
+- assertNotVisible:
+    text: "titles? fetched"
+
+# ---- E04: >5-min video (Robo 127-130) ----------------------------------
+- scrollUntilVisible:
+    element:
+      text: ".*Paste a link from.*"
+    direction: UP
+    timeout: 30000
+- tapOn: "Paste link"
+- inputText: "https://www.youtube.com/watch?v=0BWo6VhJ8zI"
+- hideKeyboard
+- tapOn: "Fetch"
+- runFlow: ../shared/wait-import-outcome.yaml
+- takeScreenshot
+# Known outcomes only: the duration gate OR a direct-match success.
+# Any other outcome fails here (screenshot above holds the evidence).
+- assertVisible:
+    text: 'Share a video up to 5 mins long\.|titles? fetched'
+# Expected path: the duration gate fired (Gemini path).
+- runFlow:
+    when:
+      visible: 'Share a video up to 5 mins long\.'
+    commands:
+      - assertVisible:
+          text: 'Share a video up to 5 mins long\.'
+# Spec-question path: direct-match success. NOT a fail — record the
+# matched title from the outcome screenshot and raise it as a spec
+# question (the gate only fires on the Gemini path).
+- runFlow:
+    when:
+      visible: "titles? fetched"
+    commands:
+      - assertVisible:
+          text: "titles? fetched"
+# Q05 completion: the queue auto-dismisses each row on completion, so by
+# journey's end no Queue header may remain. ("Queue" as a regex also
+# matches a stuck "Queued" row, which is exactly what Q05 forbids.)
+- assertNotVisible: "Queue"
+
+# ---- Final Recent (Robo 131-132) ---------------------------------------
+# R01 completion (newest-first judged from this screenshot), R05
+# completion (failed rows show ✕ + error subtitle), R08 thumbnails
+# (YouTube rows show i.ytimg.com thumbnails, the TikTok row the
+# clapboard, no broken-image box).
+- scrollUntilVisible:
+    element:
+      text: ".*Recent videos.*"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: ".*Recent videos.*"
+- takeScreenshot
+
+# ---- Selector -> source trace -------------------------------------------
+# "Paste link": accessibilityLabel on the link TextInput,
+#   src/app/import.tsx:349 (Android contentDescription; Maestro matches
+#   accessibility info — plan §2 rule 5, DRY-RUN ITEM #1 applies).
+# "Fetch": fetch button label, src/app/import.tsx:360.
+# ".*Paste a link from.*": link-section heading renders as
+#   "🔗<NBSP> Paste a link from" (src/app/import.tsx) — regex, never the
+#   full string (plan §2 rule 2 pattern).
+# "titles? fetched": results header "1 title fetched" / "N titles
+#   fetched" (src/app/import.tsx:368) — regex, never a hardcoded count
+#   (plan §2 rule 3).
+# ".*Recent videos.*": Recent heading renders as "🕘<NBSP> Recent
+#   videos" (src/app/import.tsx:394) — regex, never the full string
+#   (plan §2 rule 2).
+# 'Could not fetch any movie in this video.': verbatim worker error,
+#   src/lib/importWorker.ts:183 (period escaped: the selector is a regex).
+# 'Share a video up to 5 mins long.': verbatim worker error,
+#   src/lib/importWorker.ts:134 (period escaped: the selector is a regex).
+# Error-branch regex: the shared wait's error branches, verbatim from
+#   src/lib/importWorker.ts (see ../shared/wait-import-outcome.yaml).
+# "Queue": QueueList header, rendered only when queue items exist
+#   (src/components/QueueList.tsx; 01-a-launch.yaml trace).
+# TikTok / Short / >5-min URLs: plan §3 stage K test data (Robo 118,
+#   123, 127) — unchanged.
