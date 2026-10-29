@@ -1,15 +1,16 @@
-# Stage G — single mixed import + Recent expand/collapse + duplicate check
+# Stage G — single mixed import + Recent expand/collapse
 # (Robo actions 61-70).
-# Cases: G02 (card half; Watchlist half in stage H), I10/G05, U01, U02,
-# U03, R06.
+# Cases: G02 (card half; Watchlist half in stage H), I10, U01, U02,
+# U03, R06, and G05 — G05 stays in stage G's scope but is
+# screenshot-judged in stage H, NOT asserted or tapped in flow G
+# (see header note 6).
 #
 # Sequence (mirrors testlab/robo-script.json stage G):
 #   launch (state kept) -> Import -> Shorts URL again (4th import of the
 #   same video) -> results-card wait + screenshot -> unverified-label
 #   assert -> Recent -> newest-row expand (subtitle regex, index 0) ->
 #   expansion screenshot + unverified-label assert -> collapse ->
-#   collapse screenshot -> G05 duplicate check (optional index-1 tap +
-#   screenshot).
+#   collapse screenshot. Flow G performs no G05 tap (header note 6).
 #
 # Design decisions (read before changing this file):
 # 1. Navigation uses the shared open-import sub-flow, NOT a literal
@@ -52,29 +53,24 @@
 #    Gemini-yield-dependent (no JeHim title is recorded anywhere — see
 #    note 6), so the flow asserts the label and the results-card
 #    screenshot carries the label + raw-title pairing verbatim.
-# 6. G05 DUPLICATE CHECK — status: INDEX SELECTOR VALIDATED, title
-#    operand ADAPTED (Tester sign-off required, see below). Maestro
-#    index selectors ARE supported: index is 0-based among matches and
-#    performs final selection (Maestro selectors docs, verified this
-#    build). But the plan's literal form — tapOn { text: <a JeHim
-#    title>, index: 1 } — CANNOT be written: no JeHim video title and
-#    none of its Gemini titles is recorded in the repo, the verdict
-#    guide, or memory (only "5 Gemini titles, mixed" is recorded), and
-#    inventing one would violate the trace rule. The check therefore
-#    uses the same validated index mechanism on the yield-proof
-#    subtitle regex: after this 4th import there are 4 success Recent
-#    rows for the same video, so index: 1 taps the SECOND instance.
-#    The tap is optional: true BY DESIGN — per the plan, neither G05
-#    outcome is a FAIL (index-1 matches → duplicate confirmed, recorded
-#    finding, candidate minor defect; index-1 fails → no duplicate,
-#    recorded observation), so G05 must never fail this flow. The
-#    verdict is read from the Maestro log (tap taken vs skipped) plus
-#    the duplicate screenshot (row count + expanded second row).
-#    The Watchlist-duplicate half (entry counts before/after) is NOT
-#    assertable from the Import screen and stays with stage H / Tester
-#    judgment. If Tester requires the literal-title form, the title
-#    must be read from stage F's results-card screenshot and patched
-#    in before a rerun — it cannot be written from any record today.
+# 6. G05 DUPLICATE CHECK — CORRECTED DEFINITION (Planner decision
+#    2026-10-29, D4 fix; supersedes the adapted index-1 tap form).
+#    The plan's index-1 literal-title form for G05 is NOT writable:
+#    no JeHim title or Gemini title is recorded anywhere, and Gemini
+#    yield varies run to run, so no literal title operand can be
+#    written without inventing one. The adapted index-1 tap on the
+#    second Recent row does NOT test Watchlist duplication either:
+#    Recent rows are per-video by design, so 4 imports correctly
+#    yield 4 rows — a second Recent row is expected, not a duplicate.
+#    G05 is therefore SCREENSHOT-JUDGED from stage H's W02 Watchlist
+#    List screenshot (flow 08-h-watchlist-seen.yaml already takes
+#    Tiles + List screenshots): same title twice in that screenshot
+#    → duplicate confirmed (recorded finding, candidate minor
+#    defect, NOT FAIL); no title twice → no duplicate observed.
+#    No literal title is needed — the judge reads whatever titles
+#    rendered. Flow G performs NO G05 tap and takes no G05 screenshot;
+#    G05 stays listed in stage G's scope above only because the 4th
+#    import here creates the precondition stage H judges.
 #
 # Maestro syntax verified against the Maestro docs (current version) and
 # the D2 files' verified notes: launchApp map form with appId +
@@ -94,7 +90,8 @@ appId: com.harpreetmails.moviedeck
 # Fresh Import instance (see header note 1) + scroll to link section.
 - runFlow: ../shared/open-import.yaml
 
-# G: single mixed import, same Shorts URL a 4th time (G02, I10/G05).
+# G: single mixed import, same Shorts URL a 4th time (G02, I10;
+# G05 screenshot-judged in stage H, no tap here — header note 6).
 - tapOn: "Paste link"
 - inputText: "https://youtube.com/shorts/JeHimZxgX48"
 - hideKeyboard
@@ -143,15 +140,6 @@ appId: com.harpreetmails.moviedeck
     text: '.*\d+ titles?$'
     index: 0
 - takeScreenshot: g-collapsed-row
-
-# G05 duplicate check (header note 6): tap the SECOND success Recent row
-# (second instance of the same video's import). Optional by design — this
-# step must never fail the flow; the verdict is log + screenshot.
-- tapOn:
-    text: '.*\d+ titles?$'
-    index: 1
-    optional: true
-- takeScreenshot: g-duplicate-row
 
 # ---- Selector -> source trace -------------------------------------------
 # "Paste link" field: accessibilityLabel in src/app/import.tsx (link
