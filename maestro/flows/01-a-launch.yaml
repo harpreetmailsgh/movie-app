@@ -1,0 +1,89 @@
+# Stage A — launch + fresh-install empty states (Robo actions 1-16).
+# Cases: L01 (launch/nav), L02 (empty states), M01, M02, M03, M04.
+# All verdicts are Maestro assertions, not screenshot review.
+#
+# Sequence (mirrors testlab/robo-script.json stage A):
+#   launch (clearState) -> Watchlist Tiles/List/Cards empty texts
+#   -> Seen Cards/List empty texts -> Import (via shared sub-flow) with
+#   assertNotVisible Recent/Queue -> back -> Watchlist.
+#
+# Selector notes (every string traced to source; see trace at the bottom):
+#   - View switchers are tapped by their accessibilityLabel, which Maestro
+#     matches via the text selector on Android (contentDescription).
+#   - "Nothing here yet" renders WITHOUT a period on Watchlist Cards and
+#     Seen Cards, but WITH a period on Seen Tiles/List, so the regex
+#     'Nothing here yet\.?' covers both forms.
+#   - Tab taps are unique at the moment they run: e.g. "Seen" is tapped
+#     from Watchlist (header "Watchlist", only the tab says "Seen"), and
+#     "Watchlist" is tapped at the end from Import (no "Watchlist"
+#     header there, only the tab).
+#   - "Recent videos" is matched via regex '.*Recent videos.*' — NEVER
+#     the full heading string, which contains a non-breaking space
+#     (src/app/import.tsx Recent heading).
+#
+# Maestro syntax verified against https://docs.maestro.dev (current docs):
+#   launchApp map form with appId + clearState; extendedWaitUntil timeout
+#   in ms; runFlow string form with a path relative to THIS file.
+
+appId: com.harpreetmails.moviedeck
+---
+# L01: fresh launch, Watchlist renders (clearState = fresh-install state).
+- launchApp:
+    appId: com.harpreetmails.moviedeck
+    clearState: true
+- extendedWaitUntil:
+    visible: "Watchlist"
+    timeout: 30000
+- assertVisible: "Watchlist"
+
+# L02 + M01: Watchlist empty texts in all three views.
+- tapOn: "Tiles view"
+- assertVisible:
+    text: 'Nothing in your watchlist yet\.'
+- tapOn: "List view"
+- assertVisible:
+    text: 'Nothing in your watchlist yet\.'
+- tapOn: "Cards view"
+- assertVisible:
+    text: 'Nothing here yet\.?'
+
+# L01 + L02 + M02: Seen empty texts in Cards and List views.
+- tapOn: "Seen"
+- assertVisible: "Seen"
+- tapOn: "Cards view"
+- assertVisible:
+    text: 'Nothing here yet\.?'
+- tapOn: "List view"
+- assertVisible:
+    text: 'Nothing here yet\.?'
+
+# L01 + L02 + M03 + M04: Import on a fresh install shows no Recent
+# section and no Queue header. Navigation + scroll come from the shared
+# sub-flow; the two assertNotVisible checks are the M03/M04 verdicts.
+- runFlow: ../shared/open-import.yaml
+- assertNotVisible:
+    text: ".*Recent videos.*"
+- assertNotVisible: "Queue"
+
+# Back to Watchlist (Robo: PRESSED_BACK, then Watchlist tab).
+- back
+- tapOn: "Watchlist"
+- assertVisible: "Watchlist"
+
+# ---- Selector -> source trace -------------------------------------------
+# "Watchlist" header + tab label: src/app/(tabs)/index.tsx ViewHeader
+#   title="Watchlist"; src/app/(tabs)/_layout.tsx title 'Watchlist'.
+# "Tiles view" / "List view" / "Cards view": accessibilityLabel values in
+#   src/components/ViewHeader.tsx MODES labels.
+# 'Nothing in your watchlist yet.' : src/app/(tabs)/index.tsx TilesView /
+#   ListView emptyText props.
+# 'Nothing here yet' (no period): src/app/(tabs)/index.tsx Cards empty
+#   title; 'Nothing here yet.' (period): src/app/(tabs)/seen.tsx TilesView
+#   / ListView emptyText props (no filters active on fresh install).
+# "Seen" tab label: src/app/(tabs)/_layout.tsx title 'Seen'.
+# "Add Movie" tab label (inside open-import.yaml): src/app/(tabs)/_layout.tsx
+#   title 'Add Movie' (tabPress pushes /import).
+# ".*Recent videos.*" : Recent heading in src/app/import.tsx, rendered
+#   only when recentVideos.length > 0 — absent on fresh install.
+# "Queue" : src/components/QueueList.tsx header, rendered only when queue
+#   items exist — absent on fresh install.

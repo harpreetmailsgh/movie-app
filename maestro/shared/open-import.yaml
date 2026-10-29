@@ -1,0 +1,37 @@
+# Shared sub-flow: open the Import screen and scroll to the link section.
+#
+# CALL FORM (stable interface for later stage flows D3-D6 — do not change
+# the file path or add parameters without updating every caller):
+#   From any flow under maestro/flows/, call:
+#     - runFlow: ../shared/open-import.yaml
+#   Object form (equivalent):
+#     - runFlow:
+#         file: ../shared/open-import.yaml
+#   The path is relative to the CALLING flow file (maestro/flows/ -> ../shared/).
+#   No parameters. No launchApp inside: the caller launches the app first
+#   (stage flows start with launchApp + tab navigation, per the pivot plan).
+#
+# Steps:
+#   1. Tap the "Add Movie" tab. The tab's tabPress listener prevents the
+#      tab switch and pushes /import instead (src/app/(tabs)/_layout.tsx),
+#      so the tab label "Add Movie" is the correct tap target — the same
+#      target the Robo script used (robo-script.json stage A).
+#   2. Scroll down until the link-section heading is visible. The heading
+#      renders as "🔗<NBSP> Paste a link from" (src/app/import.tsx), so it
+#      is matched with a .*...* regex, never the full string.
+#   3. Assert the link section is visible (proves Import rendered).
+#
+# Maestro notes (verified against https://docs.maestro.dev, current docs):
+#   - text selectors are regex-based; ".*...*" wraps a partial match.
+#   - scrollUntilVisible takes element + direction + timeout (ms).
+
+appId: com.harpreetmails.moviedeck
+---
+- tapOn: "Add Movie"
+- scrollUntilVisible:
+    element:
+      text: ".*Paste a link from.*"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: ".*Paste a link from.*"

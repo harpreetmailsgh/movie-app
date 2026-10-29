@@ -1,0 +1,40 @@
+# Stage B — tab navigation incl. Settings (Robo actions 17-20).
+# Case: L01 (Settings renders). No other assertions needed here.
+#
+# Sequence: foreground the running app (no state wipe — state from stage A
+# is preserved) -> Seen -> Settings (assert it renders) -> Watchlist.
+#
+# launchApp WITHOUT a state wipe: stopApp: false foregrounds the running
+# app instead of restarting it (per https://docs.maestro.dev launchApp
+# reference). If the app is not running, Maestro launches it; state is
+# preserved either way because no wipe is requested. This flow assumes
+# stage A already ran in the official ordered sequence, but it is also
+# independently runnable from a fresh launch (initial tab is Watchlist).
+#
+# Selector notes (every string traced to source):
+#   - Tab taps are unique at the moment they run: "Seen" is tapped from
+#     Watchlist (header "Watchlist", only the tab says "Seen"); "Settings"
+#     is tapped from Seen (no "Settings" header there, only the tab);
+#     "Watchlist" is tapped from Settings (header "Settings", only the
+#     tab says "Watchlist").
+#   - "Settings" assert matches the Settings page header text.
+
+appId: com.harpreetmails.moviedeck
+---
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Watchlist"
+    timeout: 30000
+- tapOn: "Seen"
+- assertVisible: "Seen"
+- tapOn: "Settings"
+- assertVisible: "Settings"
+- tapOn: "Watchlist"
+- assertVisible: "Watchlist"
+
+# ---- Selector -> source trace -------------------------------------------
+# "Seen" / "Settings" / "Watchlist" tab labels: src/app/(tabs)/_layout.tsx
+#   titles 'Seen', 'Settings', 'Watchlist'.
+# "Settings" page header: src/app/(tabs)/settings.tsx pageHeader text
+#   'Settings'.

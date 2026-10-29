@@ -1,0 +1,43 @@
+# Shared sub-flow: wait for an import to finish (success OR worker error).
+#
+# CALL FORM (stable interface for later stage flows D3-D6 — do not change
+# the file path or add parameters without updating every caller):
+#   From any flow under maestro/flows/, call:
+#     - runFlow: ../shared/wait-import-outcome.yaml
+#   Object form (equivalent):
+#     - runFlow:
+#         file: ../shared/wait-import-outcome.yaml
+#   The path is relative to the CALLING flow file (maestro/flows/ -> ../shared/).
+#   No parameters. No launchApp inside: the caller launches the app and
+#   navigates to Import (via ../shared/open-import.yaml) first.
+#
+# Single command: extendedWaitUntil (120000 ms = 120 s) on a regex that
+# matches the results card OR any worker error card, so the wait succeeds
+# on either branch (Maestro flows are linear — there is no if/else here).
+#
+# Regex branch -> source (copy, never paraphrase):
+#   titles? fetched  -> results header "1 title fetched" / "N titles fetched"
+#                        (src/app/import.tsx resultsHeader)
+#   doesn’t look     -> "That doesn’t look like a link — paste the full reel
+#                        URL." — CURLY ’ (src/lib/importWorker.ts reel error)
+#   doesn't look     -> "That doesn't look like a YouTube link — …" and
+#                        "That doesn't look like a TikTok link — …" —
+#                        STRAIGHT ' (src/lib/importWorker.ts)
+#   read that        -> "Couldn't read that video (it may be private or
+#                        removed)." and "Couldn’t read that reel (it may be
+#                        private). …" (src/lib/importWorker.ts)
+#   fetch any movie  -> "Could not fetch any movie in this video."
+#                        (src/lib/importWorker.ts)
+#   up to 5 mins     -> "Share a video up to 5 mins long."
+#                        (src/lib/importWorker.ts)
+#
+# Maestro notes (verified against https://docs.maestro.dev, current docs):
+#   - extendedWaitUntil takes visible + timeout in MILLISECONDS.
+#   - text selectors are regex-based.
+
+appId: com.harpreetmails.moviedeck
+---
+- extendedWaitUntil:
+    visible:
+      text: "titles? fetched|doesn’t look|doesn't look|read that|fetch any movie|up to 5 mins"
+    timeout: 120000
