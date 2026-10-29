@@ -17,13 +17,14 @@
 #     Maestro docs list no dedicated left-swipe command; `swipe` with
 #     `direction` is the documented form (docs.maestro.dev, swipe ref).
 #   - NEVER right-swipe: a right swipe adds the card to Watchlist.
-#   - T06 FLAG (see trace): the assertNotVisible below is written exactly
-#     as the plan specifies, but the code path contradicts it — the first
-#     successful Trending load writes a cache entry and sets
-#     lastRefreshedAt (trending.ts loadCountryTrending / Cinemeta
-#     fallback), so trending.tsx renders the "Last refreshed" line after
-#     a successful cold load. Expect T06 to FAIL on a successful run
-#     until the Planner redefines it. Kept per plan; flagged, not hidden.
+#   - T06 (corrected 2026-10-29, Planner decision D3): absence is
+#     asserted ONLY pre-load (no stale line before any load); presence
+#     is asserted post-load, because the first successful Trending load
+#     itself sets lastRefreshedAt (trending.ts:416,478) and
+#     getTrendingMeta returns it (trending.ts:491-493), so trending.tsx
+#     renders the "Last refreshed" line immediately after the first load
+#     (trending.tsx:180-182). The plan's original post-load
+#     assertNotVisible was wrong and would fail a correct app.
 #
 # Maestro syntax verified against https://docs.maestro.dev (current docs):
 #   launchApp map form with stopApp: false (foreground, no state wipe);
@@ -46,6 +47,10 @@ appId: com.harpreetmails.moviedeck
 # T01: IMMEDIATELY capture the loading state + assert its text.
 - takeScreenshot: trending-loading
 - assertVisible: "Finding what's trending…"
+
+# T06 (pre-load): no stale "Last refreshed" line before any load.
+- assertNotVisible:
+    text: ".*Last refreshed.*"
 
 # C: cold load, 60s bound [T02]. The load ends when the loading text
 # leaves; the ViewHeader switchers below prove the loaded state rendered
@@ -77,11 +82,10 @@ appId: com.harpreetmails.moviedeck
     text: 'No matches — trending items do not carry language or rating data; try clearing those\.'
 - assertVisible: "Language ▾"
 
-# T06: no "Last refreshed" line (fresh install has no cache — per plan).
-# See the T06 FLAG in the header: this contradicts the first-load cache
-# write in trending.ts and is expected to fail on a successful run.
-- assertNotVisible:
-    text: ".*Last refreshed.*"
+# T06 (post-load, corrected 2026-10-29): the first successful load
+# creates the cache entry, so the "Last refreshed" line IS present.
+- assertVisible:
+    text: "Last refreshed.*"
 
 # ---- Selector -> source trace -------------------------------------------
 # "Watchlist" settle text: src/app/(tabs)/index.tsx ViewHeader
@@ -106,11 +110,14 @@ appId: com.harpreetmails.moviedeck
 #   Final period escaped for Maestro's regex text matching.
 # "✕ Clear": src/components/FilterBar.tsx:126, rendered only when
 #   filtersActive(values) — true after Hindi is picked.
-# ".*Last refreshed.*": src/app/(tabs)/trending.tsx refresh line
-#   (lines 180-182), rendered when refreshedAt !== null. T06 conflict:
-#   src/lib/trending.ts loadCountryTrending sets lastRefreshedAt =
-#   entry.at (line 416) and the Cinemeta fallback sets it too (line 478)
-#   on the FIRST successful load, and trending.tsx:56-61 copies it into
-#   refreshedAt — so the line appears after a successful cold load even
-#   on a fresh install. The plan's "fresh install has no cache" premise
-#   holds only until the first load completes, not after it.
+# "Last refreshed": src/app/(tabs)/trending.tsx refresh line
+#   (lines 180-182), rendered when refreshedAt !== null. T06 corrected
+#   definition (2026-10-29, D3): src/lib/trending.ts loadCountryTrending
+#   sets lastRefreshedAt = entry.at (line 416) and the Cinemeta fallback
+#   sets it too (line 478) on the FIRST successful load, and
+#   getTrendingMeta returns it (lines 491-493); trending.tsx:56-61
+#   copies it into refreshedAt — so the line appears after a successful
+#   cold load even on a fresh install. Hence assertNotVisible pre-load
+#   (no stale line before any load) and assertVisible "Last refreshed.*"
+#   post-load. The plan's "fresh install has no cache" premise holds
+#   only until the first load completes, not after it.
