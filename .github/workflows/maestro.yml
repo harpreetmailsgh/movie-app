@@ -138,7 +138,7 @@ jobs:
             LOW=0
             for i in $(seq 1 40); do
               LOAD=$(adb shell cat /proc/loadavg 2>/dev/null | awk '{print $1}')
-              if awk -v l="$LOAD" 'BEGIN{exit !(l < 4.0)}'; then LOW=$((LOW+1)); else LOW=0; fi
+              if [ -n "$LOAD" ] && awk -v l="$LOAD" 'BEGIN{exit !(l < 4.0)}'; then LOW=$((LOW+1)); else LOW=0; fi
               if [ "$LOW" -ge 2 ]; then break; fi
               sleep 15
             done
