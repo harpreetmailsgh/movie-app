@@ -1,0 +1,275 @@
+# Stage H — Watchlist/Seen moves, detail, deck, + NEW S04 filter half
+# (Robo actions 71-94, plus the filter half Robo could not cover).
+# Cases: W01, W02, W03, W04, W05 (script half), W06, W07, U04, S01, S02,
+#   S04 (views + NEW filter half).
+#
+# Sequence (mirrors testlab/robo-script.json stage H):
+#   Watchlist List -> row swipe left -> tap `✓ Seen` -> Seen List shows a
+#   landed entry (closed loop, see note 1) -> Seen Tiles/List (S04 views)
+#   -> row swipe left -> tap `＋ Watchlist` -> Seen empty again (S02)
+#   -> Watchlist Tiles + List screenshots (W02) + deterministic-title
+#   presence asserts (W01) -> Predestination detail (W06) -> back ->
+#   Zqxjkv Blorpt detail (W06, clapboard fallback) -> tap `Trash` ->
+#   entry gone (W07, U04 deletion half) -> Watchlist Cards deck:
+#   swipe LEFT / RIGHT / UP -> Seen shows the swiped-up title (W04/S01)
+#   -> NEW S04 filter half on Seen (Type -> Series -> sheet Clear).
+#
+# NOTE 1 — row-agnostic closed loop (read before "fixing" this): the
+#   A->Z-first Watchlist row's title is run data (the JeHim titles from
+#   stages F/G are only known after the run), so no step here names the
+#   moved title. The verdict instead rests on a closed loop that is
+#   exact regardless of which row the swipe hits: Seen is empty before
+#   stage H (fresh install, nothing moved yet), so after the `✓ Seen`
+#   tap Seen List must NOT show its empty text (exactly one entry
+#   landed, W04/S01), and after the `＋ Watchlist` tap Seen List must
+#   show its empty text again (that entry left, S02). The moved title's
+#   Watchlist presence is asserted where it IS deterministic: after the
+#   move-back, Watchlist Tiles/List assert `Predestination` and
+#   `Zqxjkv Blorpt` (stages D/E titles, still present at that point).
+#
+# NOTE 2 — row-swipe targeting (task-mandated validation): Maestro has
+#   no bare `swipeLeft` command in the current docs; the `swipe` command
+#   takes `direction` (screen-center gesture, used for the deck below)
+#   or `start`/`end` percentage coordinates (docs.maestro.dev swipe
+#   reference). A directional swipe acts at 50% height and cannot be
+#   aimed at a list row, so row swipes use coordinate form with the
+#   Robo-equivalent band: start "50%, 30%" -> end "15%, 30%" (Robo
+#   (50%,30%)->(15%,30%)). That band is Robo-proven: run #5 executed
+#   past stage H, which requires the swipe to have revealed `✓ Seen`.
+#   On the pixel_7 profile the band lands on an upper list row; the
+#   exact row does not matter (note 1). If the dry run shows the band
+#   missing rows on this device, the fix is a different band, not a
+#   directional swipe.
+#
+# NOTE 3 — deck-top identity assumption (flagged for T1/dry-run): the
+#   deck shows library (insertion) order, not A->Z (index.tsx deckOrder),
+#   and moveMovie maps in place (store.tsx) — nothing before the deck
+#   step reorders the library, and cycleToBack never runs on it. The
+#   first-inserted library title is `Predestination` (stage D), so the
+#   deck's top card at this point is `Predestination`, and the swipe-up
+#   + S04-filter assertions name it. If the dry run shows a different
+#   top card, those two assertions (not the deck swipes) are the items
+#   to re-point — the swipes themselves are title-agnostic.
+#
+# NOTE 4 — W05 script half: a grep of src/ finds NO `Restore` string
+#   anywhere, so there is no Restore UI to assertNotVisible against.
+#   Per the task, the absence is proven by this journey completing with
+#   no Trash screen appearing (every delete in the journey is an inline
+#   button, never a Trash screen); no `Restore` assert is included, so
+#   the flow cannot pass vacuously on a string that cannot exist.
+#
+# NOTE 5 — guide overlay: on a fresh install the first Cards visit
+#   shows pointer-transparent coach marks (index.tsx showGuide), so the
+#   deck swipes pass through to SwipeDeck. If the dry run shows the
+#   overlay intercepting gestures, that is a dry-run finding, not a
+#   reason to add app code here.
+#
+# Maestro syntax verified against https://docs.maestro.dev (current
+# docs): launchApp map form with stopApp (02-b-tabs.yaml precedent);
+# swipe direction/start/end; scrollUntilVisible element+direction+
+# timeout; takeScreenshot map form with path (no extension);
+# extendedWaitUntil timeout in ms; text selectors are regex-based, so
+# partial matches are wrapped in .*...* and standalone texts are used
+# bare (see trace).
+
+appId: com.harpreetmails.moviedeck
+---
+# H: foreground (no state wipe — state from stages A-G is preserved).
+# In the ordered sequence the app sits on Import (stage G ended there),
+# so the Watchlist tab tap below is unambiguous (no Watchlist header
+# on Import, only the tab). Standalone runs landing on Watchlist hit
+# the header text first with the same tap; harmless, since the next
+# step (List view) works from Watchlist either way.
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Watchlist"
+    timeout: 30000
+- tapOn: "Watchlist"
+- assertVisible: "Watchlist"
+
+# W04/S01, move 1: Watchlist List -> row swipe -> `✓ Seen`.
+- tapOn: "List view"
+- assertVisible: "Watchlist"
+- swipe:
+    start: "50%, 30%"
+    end: "15%, 30%"
+- tapOn: "✓ Seen"
+
+# W04/S01 verdict (note 1): Seen List is no longer empty. Seen was
+# empty before stage H, so a non-empty Seen List proves the moved row
+# landed here.
+- tapOn: "Seen"
+- assertVisible: "Seen"
+- tapOn: "List view"
+- assertNotVisible:
+    text: 'Nothing here yet\.'
+
+# S04 view half: Seen Tiles, then back to List.
+- tapOn: "Tiles view"
+- assertNotVisible:
+    text: 'Nothing here yet\.'
+- tapOn: "List view"
+
+# S02, move 2: Seen List -> row swipe -> `＋ Watchlist` (move-back
+# label verified from seen.tsx ListView addLabel — NOT a guess).
+- swipe:
+    start: "50%, 30%"
+    end: "15%, 30%"
+- tapOn: "＋ Watchlist"
+
+# S02 verdict (note 1): Seen List is empty again — the entry left.
+- assertVisible:
+    text: 'Nothing here yet\.'
+
+# W01 (completion, deterministic titles) + W02 (A->Z order, screenshot
+# exception §4): Watchlist Tiles + List. Screenshots carry the order
+# verdict; the asserts carry presence. JeHim titles are run data and
+# are asserted in stages F/G via Recent rows, not named here.
+- tapOn: "Watchlist"
+- tapOn: "Tiles view"
+- takeScreenshot:
+    path: h-watchlist-tiles
+- assertVisible: "Predestination"
+- assertVisible: "Zqxjkv Blorpt"
+- tapOn: "List view"
+- takeScreenshot:
+    path: h-watchlist-list
+- assertVisible: "Predestination"
+- assertVisible: "Zqxjkv Blorpt"
+
+# W06, detail 1: Predestination. Title renders with a trailing edit
+# hint (`Predestination ✎`, [id].tsx title block), so the title assert
+# is a partial regex; Trailer + TMDB-link markers prove the detail
+# screen itself rendered (TMDB link only renders for tmdbID > 0).
+- scrollUntilVisible:
+    element: "Predestination"
+    direction: DOWN
+    timeout: 30000
+- tapOn: "Predestination"
+- assertVisible:
+    text: ".*Predestination.*"
+- assertVisible: "Trailer ▶"
+- assertVisible: "More on TMDB ↗"
+- back
+
+# W06 + U04, detail 2: Zqxjkv Blorpt (unverified, watchlist). Its
+# detail renders the ClapboardPoster branch ([id].tsx: needsReview &&
+# status === 'watchlist' -> ClapboardPoster, else the fallback icon);
+# the review-box text below is that same branch's marker, and the
+# screenshot carries the visual clapboard verdict (no broken image).
+- scrollUntilVisible:
+    element: "Zqxjkv Blorpt"
+    direction: DOWN
+    timeout: 30000
+- tapOn: "Zqxjkv Blorpt"
+- assertVisible:
+    text: ".*Zqxjkv Blorpt.*"
+- assertVisible:
+    text: ".*We couldn’t validate this title.*"
+- assertVisible: "Trailer ▶"
+- takeScreenshot:
+    path: h-zqxjkv-detail
+
+# W07 + U04 deletion half + W05 script half (note 4): detail `Trash`
+# deletes and navigates back itself ([id].tsx trashBtn handler).
+# `Trash` is tapped, not `Trash It`: the action-row button precedes
+# the review-box `Trash It` button in the tree, and under full-match
+# regex semantics plain `Trash` matches only the action button.
+- tapOn: "Trash"
+- assertNotVisible: "Zqxjkv Blorpt"
+
+# W03 + W04/S01, deck: Watchlist Cards. Directional swipes act at
+# screen center (swipe docs table), which is where the deck card sits.
+# Left/right cycle the card to the back (no assert — order is
+# screenshot-judged, §4); up moves the top card to Seen.
+- tapOn: "Cards view"
+- takeScreenshot:
+    path: h-deck-before-swipes
+- swipe:
+    direction: LEFT
+- swipe:
+    direction: RIGHT
+- swipe:
+    direction: UP
+
+# W04/S01 verdict (note 3): the swiped-up top card landed in Seen.
+- tapOn: "Seen"
+- tapOn: "List view"
+- assertVisible: "Predestination"
+- takeScreenshot:
+    path: h-seen-after-swipeup
+
+# W03 deck-order evidence: back on Watchlist Cards, the deck now
+# shows the next card on top.
+- tapOn: "Watchlist"
+- tapOn: "Cards view"
+- takeScreenshot:
+    path: h-deck-after-swipeup
+
+# NEW S04 filter half (on Seen, after the deck swipe-up): Seen holds
+# `Predestination` (note 3), a Movie. FilterBar pills render as
+# `<label> ▾` (FilterBar.tsx pillLabel + ` ▾`); Type is the first pill.
+# Single-select sheets close on pick (FilterBar.tsx toggle), so no
+# `Done` tap is needed after picking `Series`.
+- tapOn: "Seen"
+- tapOn: "List view"
+- assertVisible: "Predestination"
+- tapOn: "Type ▾"
+- tapOn: "Series"
+# Filter applied: pill label flips to the picked value, and the Movie
+# is filtered out of the list (filtered empty text, seen.tsx).
+- assertVisible: "Series ▾"
+- assertNotVisible: "Predestination"
+- assertVisible: "No movies match these filters."
+- takeScreenshot:
+    path: h-seen-filter-series
+# Restore WITHOUT the `✕ Clear` pill: that pill sits at the end of a
+# horizontal bar and may be off-screen, while the sheet `Clear` is
+# always reachable — reopen the sheet, tap its `Clear` (clears only
+# this sheet, FilterBar.tsx clearSheet), then `Done` to close it.
+# Clearing on Seen also clears the shared filter state (sharedFilters
+# is one session store for Watchlist/Seen/Trending), so later stages
+# see unfiltered lists.
+- tapOn: "Series ▾"
+- tapOn: "Clear"
+- tapOn: "Done"
+- assertVisible: "Type ▾"
+- assertVisible: "Predestination"
+
+# ---- Selector -> source trace -------------------------------------------
+# "Watchlist"/"Seen" tab labels + headers: src/app/(tabs)/_layout.tsx
+#   titles; src/app/(tabs)/index.tsx ViewHeader title="Watchlist";
+#   src/app/(tabs)/seen.tsx ViewHeader title="Seen".
+# "Tiles view"/"List view"/"Cards view": accessibilityLabel values in
+#   src/components/ViewHeader.tsx MODES labels.
+# "✓ Seen": src/components/ListView.tsx renderRight onSeen label
+#   ('✓ Seen', non-compact path used by Watchlist/Seen lists).
+# "＋ Watchlist": src/app/(tabs)/seen.tsx ListView addLabel (full-width
+#   U+FF0B ＋, copied byte-wise — NOT ASCII '+').
+# 'Nothing here yet.' : src/app/(tabs)/seen.tsx TilesView/ListView
+#   emptyText (no filters active); the filtered form
+#   'No movies match these filters.' is the same props' filtersActive
+#   branch. Regex-escaped period in assertNotVisible follows the
+#   01-a-launch.yaml precedent ('Nothing in your watchlist yet\.').
+# "Predestination"/"Zqxjkv Blorpt": stages D/E titles, present in the
+#   library at their assertion points (Zqxjkv until its Trash step).
+# "Trailer ▶" / "Trash" / "More on TMDB ↗": src/app/movie/[id].tsx
+#   trailerBtnText, trashBtnText, linkBtnText ('More on TMDB ↗' only
+#   when tmdbUrl(movie.tmdbID, ...) is non-null — true for
+#   Predestination, false for Zqxjkv's tmdbID 0).
+# ".*We couldn’t validate this title.*": src/app/movie/[id].tsx
+#   reviewBox reviewText (CURLY ’ in couldn’t, copied byte-wise);
+#   the same branch renders ClapboardPoster for this entry.
+# "Type ▾"/"Series ▾": src/components/FilterBar.tsx SHEETS title
+#   'Type' + pillLabel single-value form + ' ▾' suffix; options
+#   'Movies'/'Series' from the Type SHEET_DEF.
+# "Series" sheet option, sheet "Clear", "Done": FilterBar.tsx sheet
+#   options, sheetClear text, doneBtnText.
+# "Restore": grep of src/ returns zero hits — no such UI exists, so
+#   no assert is written for it (note 4).
+# Swipe forms: https://docs.maestro.dev/reference/commands-available/
+#   swipe.md — direction LEFT/RIGHT/UP (screen-center gestures) and
+#   start/end as "x%, y%" percentages; NO bare swipeLeft/swipeRight/
+#   swipeUp commands exist in the current docs, so the plan's
+#   shorthand is translated to `swipe: {direction: ...}` here.

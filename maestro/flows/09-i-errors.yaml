@@ -1,0 +1,274 @@
+# Stage I — error sequence + Retry (Robo actions 95-116).
+# Cases: E01, E02, E07, E03, Q05, R05, R07.
+#
+# Pattern per error input (identical all four times): launchApp (no
+# clearState — state from stages A-H is preserved) -> shared open-import
+# (tap "Add Movie" tab + scroll to link section) -> tap `Paste link` ->
+# inputText -> hideKeyboard -> tap `Fetch` -> extendedWaitUntil the
+# EXACT worker error string, 120s -> assertVisible that string verbatim
+# -> Seen-presence check (library unchanged) -> fresh Import via
+# open-import -> scroll to Recent -> assertVisible the error string
+# again, this time via the failed Recent row's subtitle (R05).
+#
+# WHY the error string appears twice, and why that is not double
+# counting: the error card lives in one Import screen instance's local
+# state (import.tsx fetchError), while the Recent failed row is shared
+# persisted history (recentVideos). The second open-import pushes a
+# FRESH Import screen whose fetchError is null, so the only way the
+# error string can be visible there is the failed row's subtitle
+# (import.tsx RecentVideoRow: failed rows render entry.error as the
+# subtitle, collapsed — no expand tap needed). That is the R05 proof.
+#
+# E01 vs E07 apostrophes — BYTE-WISE, copy never paraphrase
+# (importWorker.ts): E01 (reel path) uses CURLY ’:
+#   `That doesn’t look like a link — paste the full reel URL.`
+# E07 (TikTok path) uses STRAIGHT ':
+#   `That doesn't look like a TikTok link — use a tiktok.com or vm.tiktok.com link.`
+# E02 (reel path, URL-shaped input) uses CURLY ’:
+#   `Couldn’t read that reel (it may be private). You can add the title manually below.`
+# E03 (YouTube path, unreadable video) uses STRAIGHT ':
+#   `Couldn't read that video (it may be private or removed).`
+# As Maestro text selectors are regex, the parentheses in E02/E03 act
+# as regex groups whose literal contents still match the rendered
+# text, and the dots in domain names match literal dots — so the
+# verbatim strings below match under either full-match or search
+# semantics. The ONE place regex breaks a verbatim string is the raw
+# E03 URL as a tap target (`?` in `watch?v=` is a regex quantifier and
+# would NOT match the rendered URL), so that tap uses the escaped form
+# `https://www\.youtube\.com/watch\?v=aB3dEf7hJkL` (docs: escape
+# special characters with a backslash; single-quoted YAML keeps the
+# backslashes literal).
+#
+# E02/E03 outcome caveats (Robo rules, carried over): if example.com
+# ever genuinely yielded titles, or the aB3dEf7hJkL ID ever turned out
+# live, the extendedWaitUntil on the error string would fail — that
+# failure would record a DATA change (a success where an error was
+# expected), not an app failure, and T2 must judge it as such. Neither
+# is expected: example.com serves no reel, and the ID is invented.
+#
+# "Nothing added" form (task-mandated, concrete): error inputs name no
+# title, so there is no title to assertNotVisible. The check is: (a)
+# the error card + failed Recent row exist (a success would instead
+# produce a results card + success row), and (b) a previously-present
+# library title is still present — `Predestination` in Seen List
+# (stage H's deck swipe-up moved it there; see 08-h note 3 for the
+# insertion-order reasoning). Both halves run after every error input.
+#
+# R07 caveat (task-mandated): the verdict is judged from the Queue row
+# + the NEW Recent row at top, NOT from the error card — the Retry path
+# re-enqueues, and the error card after Retry is a fresh outcome card
+# on the R05-step Import screen, not proof of a new Recent row. The
+# new-row assert uses index: 0 (docs: index picks a specific occurrence
+# when multiple match, 0-based; Recent renders newest-first, so index 0
+# is the top row) because after Retry the E03 URL title exists twice.
+#
+# R07 Queue race (flagged for T1/dry-run): the fake ID fails fast, so
+# the Queued->Processing window is short. The assert uses the
+# alternation `Queued|Processing\.+` (dots animate, QueueList.tsx
+# ProcessingStatus) so either state at check time passes; if the dry
+# run shows the row already dismissed before the assert runs, that
+# assert — not the Retry behaviour — is the item to soften.
+#
+# Maestro syntax verified against https://docs.maestro.dev (current
+# docs): launchApp map form with stopApp (02-b-tabs.yaml precedent);
+# runFlow string form with path relative to THIS file (shared-flow
+# precedent); extendedWaitUntil visible + timeout in ms; tapOn/inputText/
+# hideKeyboard/back; assertVisible/assertNotVisible with text+index.
+
+appId: com.harpreetmails.moviedeck
+---
+# ---- E01: `hello world` -> curly-' link error -------------------------
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Watchlist"
+    timeout: 30000
+- runFlow: ../shared/open-import.yaml
+- tapOn: "Paste link"
+- inputText: "hello world"
+- hideKeyboard
+- tapOn: "Fetch"
+- extendedWaitUntil:
+    visible:
+      text: "That doesn’t look like a link — paste the full reel URL."
+    timeout: 120000
+- assertVisible:
+    text: "That doesn’t look like a link — paste the full reel URL."
+# Library unchanged (b): Predestination still in Seen.
+- tapOn: "Seen"
+- tapOn: "List view"
+- assertVisible: "Predestination"
+# R05: fresh Import -> Recent failed row subtitle carries the error.
+- runFlow: ../shared/open-import.yaml
+- scrollUntilVisible:
+    element:
+      text: ".*Recent videos.*"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: "That doesn’t look like a link — paste the full reel URL."
+
+# ---- E02: `https://example.com/some-video` -> curly-' reel error -----
+# (Outcome caveat above: a genuine success here is a data change, not
+# an app failure, and must be recorded as such by T2.)
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Watchlist"
+    timeout: 30000
+- runFlow: ../shared/open-import.yaml
+- tapOn: "Paste link"
+- inputText: "https://example.com/some-video"
+- hideKeyboard
+- tapOn: "Fetch"
+- extendedWaitUntil:
+    visible:
+      text: "Couldn’t read that reel (it may be private). You can add the title manually below."
+    timeout: 120000
+- assertVisible:
+    text: "Couldn’t read that reel (it may be private). You can add the title manually below."
+- tapOn: "Seen"
+- tapOn: "List view"
+- assertVisible: "Predestination"
+- runFlow: ../shared/open-import.yaml
+- scrollUntilVisible:
+    element:
+      text: ".*Recent videos.*"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: "Couldn’t read that reel (it may be private). You can add the title manually below."
+
+# ---- E07: `https://www.tiktok.com/@user` -> straight-' TikTok error --
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Watchlist"
+    timeout: 30000
+- runFlow: ../shared/open-import.yaml
+- tapOn: "Paste link"
+- inputText: "https://www.tiktok.com/@user"
+- hideKeyboard
+- tapOn: "Fetch"
+- extendedWaitUntil:
+    visible:
+      text: "That doesn't look like a TikTok link — use a tiktok.com or vm.tiktok.com link."
+    timeout: 120000
+- assertVisible:
+    text: "That doesn't look like a TikTok link — use a tiktok.com or vm.tiktok.com link."
+- tapOn: "Seen"
+- tapOn: "List view"
+- assertVisible: "Predestination"
+- runFlow: ../shared/open-import.yaml
+- scrollUntilVisible:
+    element:
+      text: ".*Recent videos.*"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: "That doesn't look like a TikTok link — use a tiktok.com or vm.tiktok.com link."
+
+# ---- E03: nonexistent YouTube ID -> straight-' video error -----------
+# (Outcome caveat above: a live ID would make this NOT RUN, not FAIL.)
+- launchApp:
+    stopApp: false
+- extendedWaitUntil:
+    visible: "Watchlist"
+    timeout: 30000
+- runFlow: ../shared/open-import.yaml
+- tapOn: "Paste link"
+- inputText: "https://www.youtube.com/watch?v=aB3dEf7hJkL"
+- hideKeyboard
+- tapOn: "Fetch"
+- extendedWaitUntil:
+    visible:
+      text: "Couldn't read that video (it may be private or removed)."
+    timeout: 120000
+- assertVisible:
+    text: "Couldn't read that video (it may be private or removed)."
+- tapOn: "Seen"
+- tapOn: "List view"
+- assertVisible: "Predestination"
+- runFlow: ../shared/open-import.yaml
+- scrollUntilVisible:
+    element:
+      text: ".*Recent videos.*"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: "Couldn't read that video (it may be private or removed)."
+
+# ---- R07 + Q05: Retry the failed E03 row ------------------------------
+# The E03 row is the newest Recent row (just recorded); its title is
+# the raw URL (videoTitle is null for a failed YouTube fetch, so
+# RecentVideoRow falls back to entry.url). Tap it (escaped regex form,
+# see header) to expand, revealing `Retry` (only expanded failed rows
+# render Retry, import.tsx RecentVideoRow).
+- tapOn:
+    text: 'https://www\.youtube\.com/watch\?v=aB3dEf7hJkL'
+    index: 0
+- tapOn: "Retry"
+# Q05: the Queue row reappears (header + either transient state).
+- assertVisible: "Queue"
+- assertVisible:
+    text: "Queued|Processing\\.+"
+# Retry outcome: the E03 error again, 120s.
+- extendedWaitUntil:
+    visible:
+      text: "Couldn't read that video (it may be private or removed)."
+    timeout: 120000
+- assertVisible:
+    text: "Couldn't read that video (it may be private or removed)."
+# R07 verdict: a NEW Recent row at top (index 0) with the same raw-URL
+# title — judged from this row, not from the error card above.
+- scrollUntilVisible:
+    element:
+      text: ".*Recent videos.*"
+    direction: DOWN
+    timeout: 30000
+- assertVisible:
+    text: 'https://www\.youtube\.com/watch\?v=aB3dEf7hJkL'
+    index: 0
+- assertVisible:
+    text: "Couldn't read that video (it may be private or removed)."
+- takeScreenshot:
+    path: i-recent-after-retry
+
+# ---- Selector -> source trace -------------------------------------------
+# "Add Movie" tab + link-section scroll: maestro/shared/open-import.yaml
+#   (tabPress pushes /import, (tabs)/_layout.tsx; heading
+#   "🔗 Paste a link from", import.tsx headingRow).
+# "Paste link": accessibilityLabel in src/app/import.tsx link TextInput.
+# "Fetch": src/app/import.tsx fetchButtonText.
+# E01 error: src/lib/importWorker.ts fetchReel non-URL branch
+#   ('That doesn’t look like a link — paste the full reel URL.',
+#   CURLY ’ — byte-verified against the file).
+# E02 error: src/lib/importWorker.ts fetchReel URL branch
+#   ('Couldn’t read that reel (it may be private). You can add the
+#   title manually below.', CURLY ’ — byte-verified).
+# E07 error: src/lib/importWorker.ts fetchTikTok non-TikTok branch
+#   ("That doesn't look like a TikTok link — use a tiktok.com or
+#   vm.tiktok.com link.", STRAIGHT ' — byte-verified).
+# E03 error: src/lib/importWorker.ts fetchYouTube no-info branch
+#   ("Couldn't read that video (it may be private or removed).",
+#   STRAIGHT ' — byte-verified; same string in fetchTikTok no-info).
+# "Seen"/"List view": (tabs)/_layout.tsx title 'Seen';
+#   ViewHeader.tsx MODES label 'List view'.
+# "Predestination": stage D title, in Seen after stage H's deck
+#   swipe-up (08-h note 3 insertion-order reasoning).
+# ".*Recent videos.*": import.tsx Recent heading renders as
+#   "🕘<NBSP> Recent videos" — never matched by its full string (§2
+#   rule 2); the failed-row subtitle form is import.tsx
+#   RecentVideoRow recentErrorSub (entry.error, collapsed).
+# "Queue"/"Queued"/"Processing...": src/components/QueueList.tsx
+#   header, statusQueued, ProcessingStatus (dots cycle 1-3, hence
+#   the `Processing\.+` regex, double-quoted YAML with an escaped
+#   backslash so Maestro receives `\.`).
+# "Retry": import.tsx RecentVideoRow retryButtonText, rendered only
+#   when the row is expanded and its status is failed.
+# E03 raw-URL row title: import.tsx RecentVideoRow resultTitle renders
+#   `entry.videoTitle ?? entry.url`; failed YouTube imports record
+#   videoTitle null (import.tsx worker loop), so the title IS the URL.
+# takeScreenshot map form: docs.maestro.dev takescreenshot reference
+#   (path without extension); index selector: core-selectors reference
+#   (0-based occurrence pick).
