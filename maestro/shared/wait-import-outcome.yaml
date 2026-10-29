@@ -34,10 +34,15 @@
 # Maestro notes (verified against https://docs.maestro.dev, current docs):
 #   - extendedWaitUntil takes visible + timeout in MILLISECONDS.
 #   - text selectors are regex-based.
+#   - WHY THE .* (...) .* WRAP (D2 fix, 2026-10-29): whether the bare
+#     alternation matches a full card sentence depends on Maestro's
+#     matcher semantics (find vs full-match), which is unresolved. The
+#     wrapped form matches under BOTH semantics, so it is strictly
+#     safer. The six-branch list inside the group is UNCHANGED.
 
 appId: com.harpreetmails.moviedeck
 ---
 - extendedWaitUntil:
     visible:
-      text: "titles? fetched|doesn’t look|doesn't look|read that|fetch any movie|up to 5 mins"
+      text: ".*(titles? fetched|doesn’t look|doesn't look|read that|fetch any movie|up to 5 mins).*"
     timeout: 120000
