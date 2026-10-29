@@ -1,0 +1,977 @@
+"roboscript": {
+  "postscript": {
+    "terminate": true
+  }
+}
+[
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 3000,
+    "description": "A: launch settle [L01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Tiles view"
+      }
+    ],
+    "description": "A: Watchlist Tiles empty state [L02,M01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "List view"
+      }
+    ],
+    "description": "A: Watchlist List empty state [L02,M01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Cards view"
+      }
+    ],
+    "description": "A: Watchlist Cards empty state [L02,M01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Seen"
+      }
+    ],
+    "description": "A: Seen tab [L01,L02]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Cards view"
+      }
+    ],
+    "description": "A: Seen Cards empty state [M02]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "List view"
+      }
+    ],
+    "description": "A: Seen List empty state [M02]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Add Movie"
+      }
+    ],
+    "description": "A: Add Movie tab pushes /import [L01,L02]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 2000,
+    "description": "A: Import fresh install, no Recent videos and no Queue header visible [M03,M04]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,70%)->(50%,30%)",
+    "description": "A: Import scroll to link section [M03,M04]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1000,
+    "description": "A: Import link section visible, still no Queue header [M04]"
+  },
+  {
+    "eventType": "PRESSED_BACK",
+    "description": "A: back from /import to previous tab"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Watchlist"
+      }
+    ],
+    "description": "A: back to Watchlist tab"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Seen"
+      }
+    ],
+    "description": "B: tab navigation Seen [L01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Settings"
+      }
+    ],
+    "description": "B: tab navigation Settings [L01]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1500,
+    "description": "B: Settings screen renders [L01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Watchlist"
+      }
+    ],
+    "description": "B: back to Watchlist tab [L01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Trending"
+      }
+    ],
+    "description": "C: FIRST Trending visit, cold load starts [T01,T06]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 8000,
+    "description": "C: loading spinner and Finding what's trending observation window [T01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Tiles view"
+      }
+    ],
+    "description": "C: Trending Tiles view [T02]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Cards view"
+      }
+    ],
+    "description": "C: Trending Cards view [T02]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,50%)->(20%,50%)",
+    "description": "C: Trending card swipe left cycles to back [T02] (right swipe NOT used: it adds the card to Watchlist)"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,50%)->(20%,50%)",
+    "description": "C: Trending card swipe left again, feed still cycling [T02]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Language"
+      }
+    ],
+    "description": "C: Trending FilterBar Language pill [T05]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Hindi"
+      }
+    ],
+    "description": "C: Trending filter pick Hindi [T05]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Done"
+      }
+    ],
+    "description": "C: Trending filter Done, expect no-match message [T05]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1500,
+    "description": "C: no-match message visible [T05]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "✕ Clear"
+      }
+    ],
+    "description": "C: clear filter restores feed [T05]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1500,
+    "description": "C: feed restored after clear [T05]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Add Movie"
+      }
+    ],
+    "description": "D: open /import [I08]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "Predestination",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Search movies"
+      }
+    ],
+    "description": "D: type Predestination in search field [I08]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "D: dismiss keyboard after search typing [I08]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 3000,
+    "description": "D: 500ms debounce plus TMDB search [I08]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Predestination"
+      }
+    ],
+    "description": "D: tap Predestination result row, adds and navigates back [I08,W01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Watchlist"
+      }
+    ],
+    "description": "D: Watchlist tab landing check [W01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "List view"
+      }
+    ],
+    "description": "D: Watchlist List view [W01]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1500,
+    "description": "D: Predestination visible in Watchlist [W01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Add Movie"
+      }
+    ],
+    "description": "E: open /import [I09]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "Zqxjkv Blorpt",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Search movies"
+      }
+    ],
+    "description": "E: type gibberish title with no TMDB match [I09]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "E: dismiss keyboard after gibberish typing [I09]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 3000,
+    "description": "E: debounce plus no-match result [I09]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "textRegex": ".*exactly as typed"
+      }
+    ],
+    "description": "E: tap Don't see it Save exactly as typed row [I09,U04]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Watchlist"
+      }
+    ],
+    "description": "E: Watchlist tab landing check [U04]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "List view"
+      }
+    ],
+    "description": "E: Watchlist List view, gibberish entry visible [U04]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1500,
+    "description": "E: gibberish entry visible in Watchlist [U04]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Add Movie"
+      }
+    ],
+    "description": "F: open /import [Q01,Q03,Q07,G01]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,70%)->(50%,30%)",
+    "description": "F: scroll Import to link section [Q01]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "https://youtube.com/shorts/JeHimZxgX48",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Paste link"
+      }
+    ],
+    "description": "F1: Shorts form enqueue, no wait before next Fetch [Q01,Q03,I02,I06] [type link]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "F1: Shorts form enqueue, no wait before next Fetch [Q01,Q03,I02,I06] [dismiss keyboard]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Fetch"
+      }
+    ],
+    "description": "F1: Shorts form enqueue, no wait before next Fetch [Q01,Q03,I02,I06] [tap Fetch]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "https://www.youtube.com/watch?v=JeHimZxgX48",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Paste link"
+      }
+    ],
+    "description": "F2: watch form enqueue, no wait before next Fetch [Q01,Q03,I02,I06] [type link]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "F2: watch form enqueue, no wait before next Fetch [Q01,Q03,I02,I06] [dismiss keyboard]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Fetch"
+      }
+    ],
+    "description": "F2: watch form enqueue, no wait before next Fetch [Q01,Q03,I02,I06] [tap Fetch]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "https://youtu.be/JeHimZxgX48",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Paste link"
+      }
+    ],
+    "description": "F3: youtu.be form enqueue [Q01,Q03,I02,I06] [type link]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "F3: youtu.be form enqueue [Q01,Q03,I02,I06] [dismiss keyboard]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Fetch"
+      }
+    ],
+    "description": "F3: youtu.be form enqueue [Q01,Q03,I02,I06] [tap Fetch]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "textRegex": ".*titles fetched"
+      }
+    ],
+    "description": "F: results card appears at first completion, implicit wait [Q04,Q08]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 120000,
+    "description": "F: drain delay for the remaining two sequential imports, queue has no completion element [Q03,Q07,G01,G03]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,70%)->(50%,30%)",
+    "description": "F: scroll Import to Recent videos [R01,G03]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1500,
+    "description": "F: Recent rows newest-first visible in video [R01,G03,R08]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "https://youtube.com/shorts/JeHimZxgX48",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Paste link"
+      }
+    ],
+    "description": "G: single mixed multi-title import enqueue, same JeHimZxgX48 Shorts again [G02,I10,G05] [type link]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "G: single mixed multi-title import enqueue, same JeHimZxgX48 Shorts again [G02,I10,G05] [dismiss keyboard]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Fetch"
+      }
+    ],
+    "description": "G: single mixed multi-title import enqueue, same JeHimZxgX48 Shorts again [G02,I10,G05] [tap Fetch]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "textRegex": ".*titles fetched"
+      }
+    ],
+    "description": "G: results card for mixed import, implicit wait [G02,U01,U03]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,70%)->(50%,30%)",
+    "description": "G: scroll Import to Recent videos [R06]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "5 titles"
+      }
+    ],
+    "description": "G: expand newest Recent row, first 5 titles match is the newest row [R06,U02]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1500,
+    "description": "G: expanded titles visible, verified first and unverified last [U01,U02,U03]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "5 titles"
+      }
+    ],
+    "description": "G: collapse the same Recent row [R06]",
+    "optional": true
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1000,
+    "description": "G: row collapsed [R06]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Watchlist"
+      }
+    ],
+    "description": "H: Watchlist tab [W04]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "List view"
+      }
+    ],
+    "description": "H: Watchlist List view [W04]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,30%)->(15%,30%)",
+    "description": "H: swipe first Watchlist row left to reveal actions [W04]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "✓ Seen"
+      }
+    ],
+    "description": "H: List-view Seen action moves first row to Seen [W04,S01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Seen"
+      }
+    ],
+    "description": "H: Seen tab [S01]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Tiles view"
+      }
+    ],
+    "description": "H: Seen Tiles view [S04]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "List view"
+      }
+    ],
+    "description": "H: Seen List view [S01,S02]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,30%)->(15%,30%)",
+    "description": "H: swipe first Seen row left to reveal actions [S02]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "＋ Watchlist"
+      }
+    ],
+    "description": "H: Seen move-back action returns row to Watchlist [S02]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Watchlist"
+      }
+    ],
+    "description": "H: Watchlist tab [W01,W02]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Tiles view"
+      }
+    ],
+    "description": "H: Watchlist Tiles view, A-to-Z order visible [W02]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "List view"
+      }
+    ],
+    "description": "H: Watchlist List view, A-to-Z order visible [W02]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Predestination"
+      }
+    ],
+    "description": "H: open Predestination detail [W06]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1500,
+    "description": "H: detail screen renders with poster and actions [W06]"
+  },
+  {
+    "eventType": "PRESSED_BACK",
+    "description": "H: back from Predestination detail"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Zqxjkv Blorpt"
+      }
+    ],
+    "description": "H: open gibberish unverified detail [W06,U04]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1000,
+    "description": "H: unverified detail renders [W06,U04]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Trash"
+      }
+    ],
+    "description": "H: detail Trash deletes the unverified entry, screen navigates back itself [W07,U04,W05]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1500,
+    "description": "H: unverified entry gone from Watchlist [W07]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Cards view"
+      }
+    ],
+    "description": "H: Watchlist Cards deck view [W03]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,50%)->(20%,50%)",
+    "description": "H: deck swipe left cycles card to back [W03]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,50%)->(80%,50%)",
+    "description": "H: deck swipe right cycles card to back [W03]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,60%)->(50%,25%)",
+    "description": "H: deck swipe up moves top card to Seen [W04,S01]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1000,
+    "description": "H: deck after swipe-up [W04]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Add Movie"
+      }
+    ],
+    "description": "I: open /import [E01]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,70%)->(50%,30%)",
+    "description": "I: scroll Import to link section [E01]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "hello world",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Paste link"
+      }
+    ],
+    "description": "I: E01 plain text enqueue [E01] [type link]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "I: E01 plain text enqueue [E01] [dismiss keyboard]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Fetch"
+      }
+    ],
+    "description": "I: E01 plain text enqueue [E01] [tap Fetch]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "That doesn’t look like a link — paste the full reel URL."
+      }
+    ],
+    "description": "I: E01 error card, implicit wait [E01,Q05,R05]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "https://example.com/some-video",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Paste link"
+      }
+    ],
+    "description": "I: E02 garbage URL enqueue [E02] [type link]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "I: E02 garbage URL enqueue [E02] [dismiss keyboard]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Fetch"
+      }
+    ],
+    "description": "I: E02 garbage URL enqueue [E02] [tap Fetch]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Couldn’t read that reel (it may be private). You can add the title manually below."
+      }
+    ],
+    "description": "I: E02 error card, implicit wait [E02,Q05,R05]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "https://www.tiktok.com/@user",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Paste link"
+      }
+    ],
+    "description": "I: E07 malformed TikTok enqueue [E07] [type link]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "I: E07 malformed TikTok enqueue [E07] [dismiss keyboard]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Fetch"
+      }
+    ],
+    "description": "I: E07 malformed TikTok enqueue [E07] [tap Fetch]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "That doesn't look like a TikTok link — use a tiktok.com or vm.tiktok.com link."
+      }
+    ],
+    "description": "I: E07 error card, implicit wait [E07,Q05,R05]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "https://www.youtube.com/watch?v=aB3dEf7hJkL",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Paste link"
+      }
+    ],
+    "description": "I: E03 nonexistent YouTube video enqueue [E03] [type link]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "I: E03 nonexistent YouTube video enqueue [E03] [dismiss keyboard]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Fetch"
+      }
+    ],
+    "description": "I: E03 nonexistent YouTube video enqueue [E03] [tap Fetch]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Couldn't read that video (it may be private or removed)."
+      }
+    ],
+    "description": "I: E03 error card, implicit wait [E03,Q05,R05]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,70%)->(50%,30%)",
+    "description": "I: scroll Import to Recent videos [R07]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "https://www.youtube.com/watch?v=aB3dEf7hJkL"
+      }
+    ],
+    "description": "I: expand the failed Recent row, row title is the raw URL [R07,R05]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Retry"
+      }
+    ],
+    "description": "I: Recent Retry re-enqueues the failed URL [R07]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Couldn't read that video (it may be private or removed)."
+      }
+    ],
+    "description": "I: Retry outcome error card; note the old error card persists, so video must show the Queue row and a NEW Recent row at top for R07 [R07,Q05]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "https://www.tiktok.com/@cass.nyuad/video/7646636420697722130",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Paste link"
+      }
+    ],
+    "description": "K: I03 TikTok caption names movies enqueue [I03] [type link]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "K: I03 TikTok caption names movies enqueue [I03] [dismiss keyboard]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Fetch"
+      }
+    ],
+    "description": "K: I03 TikTok caption names movies enqueue [I03] [tap Fetch]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "textRegex": ".*(titles fetched|doesn’t look|doesn't look|read that|fetch any movie).*"
+      }
+    ],
+    "description": "K: I03 outcome card, results or error, implicit wait on either [I03]",
+    "optional": true
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 30000,
+    "description": "K: I03 observation window, outcome text was not known in advance [I03]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "https://www.youtube.com/shorts/kK9jr1CxROs",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Paste link"
+      }
+    ],
+    "description": "K: E05 no-movie Short enqueue [E05] [type link]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "K: E05 no-movie Short enqueue [E05] [dismiss keyboard]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Fetch"
+      }
+    ],
+    "description": "K: E05 no-movie Short enqueue [E05] [tap Fetch]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Could not fetch any movie in this video."
+      }
+    ],
+    "description": "K: E05 error card, implicit wait [E05,Q05,R05]"
+  },
+  {
+    "eventType": "VIEW_TEXT_CHANGED",
+    "replacementText": "https://www.youtube.com/watch?v=0BWo6VhJ8zI",
+    "elementDescriptors": [
+      {
+        "contentDescription": "Paste link"
+      }
+    ],
+    "description": "K: E04 over-5-minute non-matching video enqueue [E04] [type link]"
+  },
+  {
+    "eventType": "DISABLE_KEYBOARD",
+    "description": "K: E04 over-5-minute non-matching video enqueue [E04] [dismiss keyboard]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Fetch"
+      }
+    ],
+    "description": "K: E04 over-5-minute non-matching video enqueue [E04] [tap Fetch]"
+  },
+  {
+    "eventType": "VIEW_CLICKED",
+    "elementDescriptors": [
+      {
+        "text": "Share a video up to 5 mins long."
+      }
+    ],
+    "description": "K: E04 error card, implicit wait [E04,Q05,R05]"
+  },
+  {
+    "eventType": "ONE_POINT_GESTURE",
+    "coordinates": "(50%,70%)->(50%,30%)",
+    "description": "K: scroll Import to final Recent videos [R01,R05,R08]"
+  },
+  {
+    "eventType": "DELAYED_MESSAGE_POSTED",
+    "delayTime": 1500,
+    "description": "K: final Recent rows visible, newest first [R01]"
+  }
+]

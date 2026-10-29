@@ -38,6 +38,11 @@ on:
         required: false
         type: string
         default: "model=MediumPhone.arm,version=35,locale=en,orientation=portrait"
+      robo_script:
+        description: "Robo script JSON path passed to the run via gcloud --robo-script (the directed journey; default testlab/robo-script.json)"
+        required: false
+        type: string
+        default: "testlab/robo-script.json"
 
 permissions:
   contents: read
@@ -123,7 +128,7 @@ jobs:
         run: |
           set -o pipefail
           set +e
-          gcloud firebase test android run --type robo --app ./app.apk --device "${{ inputs.device }}" --timeout 300s --project=movie-deck-b7eec 2>&1 | tee testlab-output.txt
+          gcloud firebase test android run --type robo --app ./app.apk --device "${{ inputs.device }}" --robo-script "${{ inputs.robo_script }}" --timeout 1800s --project=movie-deck-b7eec 2>&1 | tee testlab-output.txt
           GCLOUD_EXIT=${PIPESTATUS[0]}
           echo "Full Robo output: testlab-output.txt"
           RESULTS_URL=$(grep -oE 'https://console\.firebase\.google\.com[^ ]*' testlab-output.txt | head -n 1 || true)
@@ -143,3 +148,4 @@ jobs:
             testlab-output.txt
             eas-build.json
             download.json
+            ${{ inputs.robo_script }}

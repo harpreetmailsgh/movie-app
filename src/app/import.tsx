@@ -286,6 +286,7 @@ export default function ImportScreen() {
             style={styles.input}
             value={query}
             onChangeText={onQueryChange}
+            accessibilityLabel="Search movies"
             placeholder="e.g. Predestination"
             placeholderTextColor="#8E8E93"
             onSubmitEditing={submitSearch}
@@ -345,6 +346,7 @@ export default function ImportScreen() {
               style={[styles.input, styles.inputFlex]}
               value={link}
               onChangeText={onLinkChange}
+              accessibilityLabel="Paste link"
               placeholder="Paste a link here"
               placeholderTextColor="#8E8E93"
               autoCapitalize="none"
