@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import * as Notifications from 'expo-notifications';
+import { getSupabase } from './supabase';
 
 const TOKEN_KEY = 'movieapp.pushToken.v1';
 
@@ -25,6 +26,45 @@ export function setQueueIdentity(id: QueueIdentity): void {
 /** Read the identity set by setQueueIdentity (defaults to nulls). */
 export function getQueueIdentity(): QueueIdentity {
   return queueIdentity;
+}
+
+/**
+ * One launch's registered user+token pair; once set, repeat calls for the
+ * same pair are no-ops, so the token is upserted once per launch.
+ */
+let registeredKey: string | null = null;
+
+/**
+ * Upserts the Expo push token to the Supabase `push_tokens` table so the
+ * server can push to this device. No-op when the token is absent
+ * (permission denied), Supabase isn't configured, or there's no user id
+ * yet (the anonymous session is still resolving — the caller retries when
+ * the session lands). Never throws; a failed registration must never break
+ * launch. RLS mirrors fetch_queue: one row per token, owned by its user.
+ */
+export async function registerPushToken(
+  userId: string | null,
+  pushToken: string | null,
+): Promise<void> {
+  if (!pushToken || !userId) return;
+  const key = `${userId}|${pushToken}`;
+  if (registeredKey === key) return;
+  try {
+    const sb = getSupabase();
+    if (!sb) return;
+    const { error } = await sb.from('push_tokens').upsert(
+      {
+        user_id: userId,
+        token: pushToken,
+        platform: Platform.OS,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'token' },
+    );
+    if (!error) registeredKey = key;
+  } catch {
+    // best-effort: registration failure is silent by design
+  }
 }
 
 /**
@@ -86,9 +126,15 @@ export function setupPushListeners(): void {
       /* channel setup is best-effort */
     });
   }
-  // Tap a notification → open the Watchlist tab (the (tabs) group
-  // index route is the Watchlist screen).
-  Notifications.addNotificationResponseReceivedListener(() => {
-    router.replace('/(tabs)');
+  // Tap a notification → open the screen its data names: 'trending' opens
+  // the Trending tab; anything else (queue pushes send 'watchlist', older
+  // pushes send nothing) opens the Watchlist tab as before.
+  Notifications.addNotificationResponseReceivedListener((response) => {
+    const screen = response?.notification?.request?.content?.data?.screen;
+    if (screen === 'trending') {
+      router.replace('/(tabs)/trending');
+    } else {
+      router.replace('/(tabs)');
+    }
   });
 }

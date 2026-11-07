@@ -3,7 +3,7 @@ import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StoreProvider, useStore } from '../lib/store';
 import { AuthProvider, useAuth } from '../lib/auth';
-import { getPushToken, getQueueIdentity, setupPushListeners, setQueueIdentity } from '../lib/push';
+import { getPushToken, getQueueIdentity, registerPushToken, setupPushListeners, setQueueIdentity } from '../lib/push';
 import PrivacySheet from '../components/PrivacySheet';
 
 /**
@@ -50,14 +50,22 @@ function PushSetup() {
       // Preserve a userId the session effect may already have stamped —
       // the permission prompt can delay this fetch past session resolution.
       setQueueIdentity({ userId: getQueueIdentity().userId, pushToken });
+      // Best-effort and fire-and-forget: denied permission returns null,
+      // so nothing is upserted; a missing user id retries below when the
+      // anonymous session lands.
+      void registerPushToken(getQueueIdentity().userId, pushToken);
       setupPushListeners();
     })();
   }, []);
 
   // Stamp the user id on the identity as soon as the session is known.
+  // The token fetch above can resolve before the anonymous session exists,
+  // so register here too — registerPushToken dedupes per launch, so the
+  // token is still upserted only once.
   useEffect(() => {
     const { pushToken } = getQueueIdentity();
     setQueueIdentity({ userId, pushToken });
+    void registerPushToken(userId, pushToken);
   }, [userId]);
 
   return null;
