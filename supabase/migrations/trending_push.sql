@@ -84,10 +84,11 @@ alter table public.trending_snapshots enable row level security;
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
--- pg_cron weekly Friday 9:00 AM Toronto -> trending-push.
--- pg_cron runs on the database clock (UTC): 14:00 UTC is 9:00 AM EST in
--- winter; in daylight time (EDT, UTC-4) it fires at 10:00 AM Toronto.
-select cron.schedule('trending-push-weekly', '0 14 * * 5', $$
+-- pg_cron weekly Friday 9:00 AM Toronto (most of the year) -> trending-push.
+-- pg_cron runs on the database clock (UTC) and has no timezone support:
+-- 13:00 UTC is 9:00 AM EDT in daylight time (Mar-Nov); in winter (EST,
+-- UTC-5) it fires at 8:00 AM Toronto.
+select cron.schedule('trending-push-weekly', '0 13 * * 5', $$
   select net.http_post(
     url := 'https://auizpgdhwelyhlrundbc.supabase.co/functions/v1/trending-push',
     headers := '{"Content-Type":"application/json","apikey":"<ANON_KEY>","Authorization":"Bearer <ANON_KEY>"}'::jsonb,
