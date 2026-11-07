@@ -12,6 +12,7 @@ import {
   cacheIdFor, pushLibrary, pullLibrary, deleteRemoteMovie,
   remoteToMovie, getDeletedIds, addDeletedId, getLastSyncAt,
 } from './sync';
+import { recordWatchlistSave } from './reviewPrompt';
 
 const MOVIES_KEY = 'movies.v1';
 const SETTINGS_KEY = 'settings.v1';
@@ -437,6 +438,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     // closure made every call persist over the same stale array — only the
     // last add survived.
     persist([{ ...m, id: newId(), dateAdded: Date.now() }, ...moviesRef.current]);
+    // Rating prompt (backlog #80): after the save completes. Every save
+    // path (import, search-add, Trending add) flows through here.
+    void recordWatchlistSave();
   }, [persist]);
 
   /** Adds `count` random well-known movies to the Inbox (for testing the deck).
