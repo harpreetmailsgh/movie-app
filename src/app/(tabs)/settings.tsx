@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Platform, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Platform, Alert, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Updates from 'expo-updates';
@@ -10,6 +10,7 @@ import { useStore } from '../../lib/store';
 import { useQueue } from '../../lib/queue';
 import { useAuth } from '../../lib/auth';
 import { getSupabase } from '../../lib/supabase';
+import { readShareLog } from '../../lib/shareLog';
 
 // Version always comes from the running update's own manifest (app.json),
 // so the About screen can never go stale behind a hardcoded string again.
@@ -239,6 +240,22 @@ export default function SettingsScreen() {
   const { clearWatchlist, clearSeen, replayGuide } = useStore();
   const insets = useSafeAreaInsets();
 
+  // Share-extension diagnostics: read the on-phone extension log and
+  // open the share sheet so it can be copied or sent. Empty in Expo Go
+  // (the native module isn't in the binary) — readShareLog returns ''.
+  const showShareLog = async () => {
+    const log = await readShareLog();
+    if (!log) {
+      Alert.alert('Share-extension log is empty.');
+      return;
+    }
+    try {
+      await Share.share({ message: log });
+    } catch {
+      // Share sheet dismissed — nothing to do.
+    }
+  };
+
   const confirmClear = (which: 'watchlist' | 'seen') => {
     const isWatchlist = which === 'watchlist';
     Alert.alert(
@@ -295,6 +312,13 @@ export default function SettingsScreen() {
           Build {Updates.updateId ? Updates.updateId.slice(0, 8) : 'dev'}
           {Updates.createdAt ? ` · ${new Date(Updates.createdAt).toLocaleString()}` : ''}
         </Text>
+      </View>
+
+      <View style={[styles.accountBox, styles.section]}>
+        <Text style={styles.heading}>Diagnostics</Text>
+        <Pressable style={styles.feedbackRow} onPress={() => { void showShareLog(); }}>
+          <Text style={styles.feedbackText}>Share-extension log</Text>
+        </Pressable>
       </View>
 
       <View style={[styles.accountBox, styles.section]}>

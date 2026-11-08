@@ -201,11 +201,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       const { data } = await sb.auth.getSession();
       setSession(data.session);
+      // A signed-in session restored here means any earlier sign-in
+      // failure is stale — clear it. Anonymous restores keep the
+      // message: the user is still not signed in.
+      if (data.session && !data.session.user?.is_anonymous) setAuthMessage(null);
       if (!data.session) {
         const { error } = await sb.auth.signInAnonymously();
         if (error) setAuthMessage('Could not start a cloud session.');
       }
-      const { data: sub } = sb.auth.onAuthStateChange((_event, s) => setSession(s));
+      const { data: sub } = sb.auth.onAuthStateChange((_event, s) => {
+        setSession(s);
+        // Same stale-message clear as the mount restore above: a
+        // signed-in session arriving later (e.g. after a failed link
+        // the server had already completed) clears the old error.
+        // Anonymous sessions never clear it.
+        if (s && !s.user?.is_anonymous) setAuthMessage(null);
+      });
       setReady(true);
       return () => sub.subscription.unsubscribe();
     })();

@@ -209,6 +209,11 @@ export default function ImportScreen() {
   // the worker picks it up; nothing runs immediately.
   const sharedHandled = useRef(false);
   useEffect(() => {
+    // Mount diagnostic: log whether a shared URL arrived and the queue
+    // length at the time, so a share lost to the load race is visible in
+    // the device log instead of failing silently. The URL itself is never
+    // logged.
+    console.log('[import] sharedUrl:', sharedUrl ? 'present' : 'absent', 'queue length:', queueItems.length);
     if (sharedHandled.current || !sharedUrl) return;
     sharedHandled.current = true;
     const incoming = String(sharedUrl);

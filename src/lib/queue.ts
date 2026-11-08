@@ -155,7 +155,18 @@ export function useQueue(): QueueApi {
     (async () => {
       const loaded = await loadQueue();
       if (cancelled) return;
-      await persist(loaded);
+      // A share can enqueue before this read resolves — merging the
+      // loaded snapshot with the live list keeps those items instead of
+      // overwriting them with the stale pre-share snapshot. Live items
+      // win on id clash (they are newer); the load-time 'failed' filter
+      // in loadQueue still applies to the persisted half.
+      const merged = [...loaded];
+      for (const item of itemsRef.current) {
+        const idx = merged.findIndex((m) => m.id === item.id);
+        if (idx >= 0) merged[idx] = item;
+        else merged.push(item);
+      }
+      await persist(merged);
     })();
     return () => { cancelled = true; };
   }, [persist]);
