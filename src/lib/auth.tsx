@@ -166,6 +166,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     authBusyRef.current = false;
     setAuthBusy(false);
   };
+  /**
+   * Restores an anonymous session when there is none (I1: the app
+   * otherwise sits session-less after a sign-out until force-close +
+   * reopen, which silently stops backup, queue-mirror and push
+   * registration). A no-op when a session already exists, and it
+   * never overwrites authMessage — the caller's failure message
+   * stays visible. Never called between a signOut and the fresh
+   * sign-in that follows it in the #85/#86 paths — only after that
+   * sign-in fails or is cancelled.
+   */
+  const ensureAnonymousSession = useCallback(async () => {
+    const sb = getSupabase();
+    if (!sb) return;
+    const { data } = await sb.auth.getSession();
+    if (data.session) return;
+    const { error } = await sb.auth.signInAnonymously();
+    if (error) console.warn('ensureAnonymousSession: could not start a cloud session', error);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -239,10 +257,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e: any) {
       if (e?.code === 'ERR_REQUEST_CANCELED') return; // user dismissed the sheet
       setAuthMessage('Apple sign-in failed. Please try again.');
+      // The fresh path (#85) and the already-linked recovery (#86)
+      // sign the anonymous session out before signing in — if that
+      // sign-in then fails, restore an anonymous session so backup,
+      // queue-mirror and push registration keep working.
+      await ensureAnonymousSession();
     } finally {
       endAuth();
     }
-  }, [session]);
+  }, [session, ensureAnonymousSession]);
 
   const signInWithGoogle = useCallback(async (options?: SignInOptions) => {
     if (!beginAuth()) return; // a sign-in is already running
@@ -261,8 +284,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // wipes the PKCE code verifier that signInWithOAuth stores, so
         // requesting the URL first and signing out after would break
         // the code exchange below. Local data is untouched in storage
-        // either way; if sign-in then fails or the user cancels, a new
-        // anonymous session is created on next launch.
+        // either way; if sign-in then fails or the user cancels, an
+        // anonymous session is restored below, not on next launch.
         await sb.auth.signOut();
       }
       const outcome = await googleOAuthRoundTrip(sb, redirectTo, link);
@@ -279,20 +302,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await sb.auth.signOut();
         const fresh = await googleOAuthRoundTrip(sb, redirectTo, false);
         if (fresh === 'already-linked') throw new Error('already_linked_on_fresh_sign_in');
+        if (fresh === 'cancelled') await ensureAnonymousSession();
+      } else if (outcome === 'cancelled') {
+        await ensureAnonymousSession();
       }
     } catch {
       setAuthMessage('Google sign-in failed. Please try again.');
+      await ensureAnonymousSession();
     } finally {
       endAuth();
     }
-  }, [session]);
+  }, [session, ensureAnonymousSession]);
 
   const signOut = useCallback(async () => {
     const sb = getSupabase();
     if (!sb) return;
     await sb.auth.signOut();
     setSession(null);
-  }, []);
+    // Log out (and deleteAccount, which signs out through here) must
+    // not leave the app session-less — restore an anonymous session
+    // right away so backup, queue-mirror and push registration keep
+    // working. The #85/#86 fresh paths call sb.auth.signOut()
+    // directly, not this, so no anonymous session appears between
+    // their signOut and the fresh sign-in.
+    await ensureAnonymousSession();
+  }, [ensureAnonymousSession]);
 
   const deleteAccount = useCallback(async (): Promise<'deleted' | 'failed'> => {
     if (!beginAuth()) return 'failed'; // a sign-in is already running
