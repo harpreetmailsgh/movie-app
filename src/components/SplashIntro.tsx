@@ -10,11 +10,12 @@ import {
 } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Haptics from 'expo-haptics';
+import { useFonts } from 'expo-font';
 
 /**
  * Animated launch intro — "Save My Movie" clapperboard.
  *
- * Spec: docs/splash-spec-save-my-movie.md (v2, 2026-11-08).
+ * Spec: docs/splash-spec-save-my-movie.md (v4 + 2.0 s retime, 2026-11-08).
  * Built-in `Animated` only — no reanimated, no other animation library.
  *
  * The Watchlist deck is mounted beneath this view from t = 0, fully
@@ -22,22 +23,35 @@ import * as Haptics from 'expo-haptics';
  *
  * Frame 1 is the static splash PNG itself (contain, black background),
  * so the handoff from the native splash has no flash or jump: the native
- * splash IS this image. At the clap onset (t = 0.40 s) the PNG hides and
+ * splash IS this image. At the clap onset (t = 0.50 s) the PNG hides and
  * the layered views beneath take over — the swap is hidden by the
  * motion starting. Layer geometry is the spec's static geometry, scaled
  * from the 1152 x 2048 image with the same contain-fit math, so the
  * layered frame matches the PNG.
  *
- * Timeline (total ~1.53 s, hard ceiling 2.0 s — never waits for data):
- *   0.00-0.40  open hold (400 ms), nothing moves
- *   0.40-0.55  clap (150 ms): stick -30 deg -> 0 deg, Easing.in, hard stop
- *   0.55       impact: board punch 1 -> 1.015 (50 ms) -> 1.0 (150 ms,
+ * Font: the layered "Save My Movie" text renders in the bundled Cinzel
+ * Bold (`assets/fonts/Cinzel-Bold.ttf`, 84 px, #FFC832) — the same font,
+ * size, and colour as the PNG text, so the swap at the clap onset is
+ * invisible. The font loads via `useFonts`
+ * before the animation starts, while the native splash is still
+ * covering the screen (`hideAsync` is deferred until the font settles
+ * or the 1.0 s load timeout fires), so the 2.0 s timeline never slips
+ * waiting for the font. If the font fails to load (or the timeout
+ * fires), the layered text is hidden entirely — a system-font fallback
+ * must never show against the gold PNG text. The PNG itself still
+ * shows the gold name during the open hold, and the underline (a plain
+ * View, not text) still renders.
+ *
+ * Timeline (total exactly 2.0 s, hard ceiling 2.0 s — never waits for data):
+ *   0.00-0.50  open hold (500 ms), nothing moves
+ *   0.50-0.70  clap (200 ms): stick -30 deg -> 0 deg, Easing.in, hard stop
+ *   0.70       impact: board punch 1 -> 1.015 (50 ms) -> 1.0 (150 ms,
  *              Easing.out); text + underline fade out over 80 ms
- *   0.55-0.63  closed hold (80 ms)
- *   0.63-1.33  zoom (700 ms, Easing.in): M 1 -> 3.5x, board (+ stick)
+ *   0.70-0.80  closed hold (100 ms)
+ *   0.80-1.70  zoom (900 ms, Easing.in): M 1 -> 3.5x, board (+ stick)
  *              1 -> 1.5x, both anchored on the M centre (50.0% width,
  *              55.8% height of the static image)
- *   1.33-1.53  reveal (200 ms, linear): whole intro opacity 1 -> 0,
+ *   1.70-2.00  reveal (300 ms, linear): whole intro opacity 1 -> 0,
  *              then unmounts. No crossfade, no ghosting.
  */
 
@@ -52,18 +66,24 @@ const M_CENTRE = { x: 576, y: 1143 };
 const TEXT_TOP = 1500;
 const UNDERLINE_TOP = 1630;
 
-const OPEN_HOLD_MS = 400;
-const CLAP_MS = 150;
-const IMPACT_MS = 550;
+const OPEN_HOLD_MS = 500;
+const CLAP_MS = 200;
+const IMPACT_MS = 700;
 const PUNCH_OUT_MS = 50;
 const PUNCH_BACK_MS = 150;
 const TEXT_FADE_MS = 80;
-const CLOSED_HOLD_MS = 80;
-const ZOOM_START_MS = IMPACT_MS + CLOSED_HOLD_MS; // 630
-const ZOOM_MS = 700;
-const REVEAL_START_MS = ZOOM_START_MS + ZOOM_MS; // 1330
-const REVEAL_MS = 200;
+const CLOSED_HOLD_MS = 100;
+const ZOOM_START_MS = IMPACT_MS + CLOSED_HOLD_MS; // 800
+const ZOOM_MS = 900;
+const REVEAL_START_MS = ZOOM_START_MS + ZOOM_MS; // 1700
+const REVEAL_MS = 300;
 const HARD_CEILING_MS = 2000;
+// Bound on the font load: the native splash covers this wait, and a
+// hung load must never delay launch past this. On timeout the intro
+// starts anyway with the layered text hidden (see above).
+const FONT_LOAD_TIMEOUT_MS = 1000;
+
+const FONT_FAMILY = 'Cinzel-Bold';
 
 const RIVETS = [
   { x: 226, y: 896 },
@@ -97,6 +117,23 @@ export default function SplashIntro({ onDone }: { onDone: () => void }) {
   const doneRef = useRef(false);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
+  // Cinzel Bold for the layered "Save My Movie" text. The intro does
+  // not start (and the native splash does not hide) until this settles
+  // or the load timeout fires — whichever comes first.
+  const [fontsLoaded, fontError] = useFonts({
+    [FONT_FAMILY]: require('../../assets/fonts/Cinzel-Bold.ttf'),
+  });
+  const [introStarted, setIntroStarted] = useState(false);
+
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      setIntroStarted(true);
+      return;
+    }
+    const t = setTimeout(() => setIntroStarted(true), FONT_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [fontsLoaded, fontError]);
+
   const finish = () => {
     if (doneRef.current) return;
     doneRef.current = true;
@@ -104,8 +141,12 @@ export default function SplashIntro({ onDone }: { onDone: () => void }) {
   };
 
   useEffect(() => {
+    if (!introStarted) return;
+
     // Hide the native splash once the intro has mounted and frame 1
-    // (the PNG, identical to the native splash) is on screen.
+    // (the PNG, identical to the native splash) is on screen. The
+    // font is loaded by now (or has failed/timed out), so the layered
+    // text below renders in Cinzel Bold whenever it is visible.
     void SplashScreen.hideAsync().catch(() => {});
 
     const animation = Animated.parallel([
@@ -191,8 +232,9 @@ export default function SplashIntro({ onDone }: { onDone: () => void }) {
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
       }, IMPACT_MS),
     );
-    // Hard ceiling: unmount by 2.0 s even if anything above stalls.
-    // The intro never waits for fonts or data.
+    // Hard ceiling: unmount by 2.0 s after the intro starts even if
+    // anything above stalls. The 2.0 s timeline never waits for data;
+    // the font wait happens before it starts, under the native splash.
     timersRef.current.push(setTimeout(finish, HARD_CEILING_MS));
 
     return () => {
@@ -201,7 +243,7 @@ export default function SplashIntro({ onDone }: { onDone: () => void }) {
       timersRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [introStarted]);
 
   // Stick rotation about the hinge (board-local hinge x 14 px, stick
   // centre x 380 px): translate so the hinge is the rotation origin,
@@ -367,7 +409,7 @@ export default function SplashIntro({ onDone }: { onDone: () => void }) {
         <Text
           style={[
             styles.text,
-            { fontSize: px(96), letterSpacing: px(3), lineHeight: px(115) },
+            { fontSize: px(84), letterSpacing: px(3), lineHeight: px(115) },
           ]}
         >
           Save My Movie
@@ -444,7 +486,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   text: {
-    color: '#FFFFFF',
+    color: '#FFC832',
     fontWeight: '700',
     textAlign: 'center',
   },

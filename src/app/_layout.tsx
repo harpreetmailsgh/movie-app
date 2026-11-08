@@ -86,7 +86,7 @@ function PushSetup() {
 export default function RootLayout() {
   // Animated launch intro (docs/splash-spec-save-my-movie.md). The deck
   // (Stack) is mounted beneath it from t = 0; the intro unmounts itself
-  // ~1.53 s after mounting on a fixed clock — it never waits for the
+  // ~2.0 s after mounting on a fixed clock — it never waits for the
   // store, fonts, or data.
   const [introDone, setIntroDone] = useState(false);
   return (
