@@ -8,6 +8,20 @@ import { getSupabase, isSupabaseConfigured } from './supabase';
 
 WebBrowser.maybeCompleteAuthSession();
 
+interface SignInOptions {
+  /**
+   * True when the anonymous account holds local data worth keeping
+   * (movies the user added, or queued video imports). Defaults to true:
+   * the anonymous account is upgraded by linking, so nothing is lost.
+   * False only when there is nothing local to lose — then the anonymous
+   * session is signed out first and the sign-in runs fresh, so an
+   * Apple/Google identity that already belongs to another account can
+   * sign in as that account instead of failing to link to the
+   * anonymous one (backlog #85).
+   */
+  hasLocalData?: boolean;
+}
+
 interface AuthState {
   ready: boolean;
   configured: boolean;
@@ -15,8 +29,8 @@ interface AuthState {
   isAnonymous: boolean;
   appleAvailable: boolean;
   authMessage: string | null;
-  signInWithApple: () => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithApple: (options?: SignInOptions) => Promise<void>;
+  signInWithGoogle: (options?: SignInOptions) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -35,7 +49,11 @@ export function useAuth(): AuthState {
  *
  * When configured: the app signs in anonymously on first launch (no login
  * screen), and the user can upgrade to Sign in with Apple at any time —
- * the anonymous identity is linked, so nothing is lost.
+ * the anonymous identity is linked, so nothing is lost. Exception
+ * (backlog #85): when the anonymous account has nothing local to lose,
+ * the anonymous session is signed out first and the sign-in runs fresh,
+ * so an identity that already belongs to another account can sign in
+ * instead of failing to link to the anonymous one.
  *
  * NOTE: Supabase Dashboard → Authentication → Anonymous sign-ins must be
  * enabled for the automatic anonymous sign-in to work.
@@ -72,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const signInWithApple = useCallback(async () => {
+  const signInWithApple = useCallback(async (options?: SignInOptions) => {
     setAuthMessage(null);
     try {
       const credential = await AppleAuthentication.signInAsync({
@@ -84,9 +102,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!credential.identityToken) throw new Error('no_token');
       const sb = getSupabase();
       if (!sb) return;
-      // Upgrade the anonymous account when there is one, so the user's
-      // data carries over; otherwise sign in fresh.
-      const { error } = session?.user?.is_anonymous
+      // Upgrade the anonymous account when there is one with local data
+      // to keep, so the user's data carries over; otherwise sign in
+      // fresh. The token is already in hand, so the anonymous session
+      // can be dropped before the fresh sign-in with no window where
+      // the credential is missing.
+      const anonymous = !!session?.user?.is_anonymous;
+      const link = anonymous && (options?.hasLocalData ?? true);
+      if (!link && anonymous) {
+        await sb.auth.signOut();
+      }
+      const { error } = link
         ? await sb.auth.linkIdentity({ provider: 'apple', token: credential.identityToken })
         : await sb.auth.signInWithIdToken({ provider: 'apple', token: credential.identityToken });
       if (error) throw error;
@@ -96,15 +122,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [session]);
 
-  const signInWithGoogle = useCallback(async () => {
+  const signInWithGoogle = useCallback(async (options?: SignInOptions) => {
     setAuthMessage(null);
     try {
       const sb = getSupabase();
       if (!sb) return;
       const redirectTo = Linking.createURL('auth/callback');
-      // Upgrade the anonymous account when there is one, so the user's
-      // data carries over; otherwise sign in fresh.
-      const { data, error } = session?.user?.is_anonymous
+      // Upgrade the anonymous account when there is one with local data
+      // to keep, so the user's data carries over; otherwise sign in
+      // fresh.
+      const anonymous = !!session?.user?.is_anonymous;
+      const link = anonymous && (options?.hasLocalData ?? true);
+      if (!link && anonymous) {
+        // Sign out FIRST, before requesting the OAuth URL. signOut
+        // wipes the PKCE code verifier that signInWithOAuth stores, so
+        // requesting the URL first and signing out after would break
+        // the code exchange below. Local data is untouched in storage
+        // either way; if sign-in then fails or the user cancels, a new
+        // anonymous session is created on next launch.
+        await sb.auth.signOut();
+      }
+      const { data, error } = link
         ? await sb.auth.linkIdentity({ provider: 'google', options: { redirectTo } })
         : await sb.auth.signInWithOAuth({
             provider: 'google',

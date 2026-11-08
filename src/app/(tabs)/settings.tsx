@@ -7,6 +7,7 @@ import Constants from 'expo-constants';
 import { FontAwesome } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useStore } from '../../lib/store';
+import { useQueue } from '../../lib/queue';
 import { useAuth } from '../../lib/auth';
 import { getSupabase } from '../../lib/supabase';
 
@@ -16,7 +17,18 @@ const APP_VERSION = Constants.expoConfig?.version ?? 'dev';
 
 function AccountSection() {
   const { ready, configured, session, isAnonymous, authMessage, signInWithApple, signInWithGoogle, signOut } = useAuth();
-  const { syncState, lastSyncAt } = useStore();
+  const { movies, syncState, lastSyncAt } = useStore();
+  const { items: queueItems } = useQueue();
+  // Whether the anonymous account holds anything worth keeping via the
+  // link upgrade (backlog #85): movies the user added, or queued video
+  // imports. The first-launch guide seeds (ids starting 'guide-seed-')
+  // don't count — a fresh install always carries those five, and losing
+  // them loses nothing. When there is nothing to keep, auth signs the
+  // anonymous session out first and signs in fresh, so an identity that
+  // already belongs to another account can sign in instead of failing
+  // to link to the anonymous one.
+  const hasLocalData =
+    movies.some((m) => !m.id.startsWith('guide-seed-')) || queueItems.length > 0;
   const [appleMsg, setAppleMsg] = useState(false);
   const isExpoGo = Constants.appOwnership === 'expo';
 
@@ -71,12 +83,12 @@ function AccountSection() {
                 buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
                 cornerRadius={12}
                 style={styles.appleBtn}
-                onPress={signInWithApple}
+                onPress={() => signInWithApple({ hasLocalData })}
               />
             )
           )}
           {(!session || isAnonymous) && (
-            <Pressable style={styles.googleBtn} onPress={signInWithGoogle}>
+            <Pressable style={styles.googleBtn} onPress={() => signInWithGoogle({ hasLocalData })}>
               <FontAwesome name="google" size={18} color="#fff" style={styles.googleIcon} />
               <Text style={styles.googleBtnText}>Sign in with Google</Text>
             </Pressable>
