@@ -38,15 +38,18 @@
 <li>Watchlist data (on your device and on our servers): Movies you save and mark as seen are stored on your device, and a copy of your movies is also sent to our servers under a random anonymous identifier, a short time after you make a change. Your preferences stay on your device only. The copy includes the title, year, whether it is a movie or a TV show, genres, description, poster, whether it is on your watchlist or marked as seen, your notes, the video link it came from, and the date you added it. This lets our servers add movies found while the app is closed, and lets your list follow you if you sign in on another device. We do not sell or share this data.</li>
 <li>Anonymous identifier: When the app first opens, it automatically creates a random anonymous identifier on your device. This identifier is not linked to your name, email, or any personal information. It is used to process shared videos in the background and to keep your watchlist copy on our servers.</li>
 <li>Shared video links: When you share a YouTube Short, TikTok, or Instagram Reel to Movie Deck, the video URL is sent to our servers to extract movie titles. The link stays on our servers after processing. We do not store the video content itself.</li>
-<li>Push notification token: If you enable notifications, your device's push token is stored so we can notify you when your videos finish processing, and to send a Trending notification when new popular titles appear (checked once a week). Tapping a Trending notification opens the Trending tab. You can disable this anytime in your device settings.</li>
-<li>Movie data (TMDB): The app fetches public movie information (titles, posters, ratings, descriptions) from The Movie Database (TMDB). No personal data is sent to TMDB.</li>
+<li>Push notification token: If you enable notifications, your device's push token is stored so we can notify you when your videos finish processing, and to send a Trending notification when new popular titles appear (checked once a week). Your push token goes to Expo's servers, which deliver the notifications. Tapping a Trending notification opens the Trending tab. You can disable this anytime in your device settings.</li>
+<li>Movie data (TMDB and Cinemeta): The app fetches public movie information (titles, posters, ratings, descriptions) from The Movie Database (TMDB) and Cinemeta. No personal data is sent to TMDB.</li>
+<li>Your country for Trending: The app asks ipinfo.io for the country from your phone's internet address, at most once a week, only to show the right country's Trending list. No GPS or precise location — country only — and the country is saved on your phone.</li>
+<li>Key-failure diagnostics: When a movie lookup fails because of an invalid key, the app sends the service name, the error code and the app version to our servers — once per service and error each time you open the app — so we can spot broken keys. No account ID, no movie titles.</li>
+<li>Feedback: If you send feedback from Settings, we store your message on our servers with your account ID, the app version and the date.</li>
 </ol>
 
 <h2>Data we do NOT collect</h2>
-<p>We do not collect your name, phone number, location, contacts, or photos. Signing in with Apple may ask whether to share your name, but the app does not store it. We do not collect your email address while you use the app anonymously — but if you choose to sign in with Google, we store the email address from your Google account. Signing in with Apple also asks for an email, but you can choose to hide it. Signing in is optional; the app works fully without it. We do not use advertising SDKs and do not sell data to third parties.</p>
+<p>We do not collect your name, phone number, precise location, contacts, or photos. We do not track your GPS location — we only work out your country from your phone's internet address, to show the right country's Trending list (see above). Signing in with Apple may ask whether to share your name, but the app does not store it. We do not collect your email address while you use the app anonymously — but if you choose to sign in with Google, we store the email address from your Google account. Signing in with Apple also asks for an email, but you can choose to hide it. Signing in is optional; the app works fully without it. We do not use advertising SDKs and do not sell data to third parties.</p>
 
 <h2>Data retention</h2>
-<p>If you delete a movie from your watchlist in the app, it is also removed from your watchlist on our servers. Shared video links stay on our servers after processing. If you delete the app, the copy of your watchlist on our servers is left behind. If you never signed in, it is no longer linked to you, since the anonymous identifier that connected it to your device is gone with the app. If you did sign in, your list stays tied to that account on our servers.</p>
+<p>If you delete a movie from your watchlist in the app, it is also removed from your watchlist on our servers. Shared video links stay on our servers after processing. You can delete your account and all its data in the app: Settings → Delete account &amp; data. It deletes your watchlist, feedback, queued videos and push token from our servers and clears your saved movies from this phone, immediately. If you delete the app, the copy of your watchlist on our servers is left behind. If you never signed in, it is no longer linked to you, since the anonymous identifier that connected it to your device is gone with the app. If you did sign in, your list stays tied to that account on our servers.</p>
 
 <h2>Children</h2>
 <p>Movie Deck is not directed at children under 13. We do not knowingly collect data from children.</p>
@@ -55,7 +58,7 @@
 <p>We may update this policy. Continued use of the app after changes constitutes acceptance.</p>
 
 <h2>Contact</h2>
-<p>For privacy questions: aitbconsulting@gmail.com</p>
+<p>Questions about your privacy: email aitbconsulting@gmail.com, or use Send feedback in Settings.</p>
 </main>
 </body>
 </html>

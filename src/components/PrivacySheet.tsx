@@ -15,7 +15,7 @@ const POINTS = [
   {
     icon: '🛡️',
     title: 'What we don’t do',
-    detail: 'No selling your data. No ads, no ad tracking, no usage analytics, no marketing emails.',
+    detail: 'No selling your data. No ads, no ad tracking, no marketing emails.',
   },
 ];
 

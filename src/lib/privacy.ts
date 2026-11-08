@@ -29,11 +29,11 @@ export const PRIVACY_SECTIONS: PrivacySection[] = [
   },
   {
     title: 'What we don’t do',
-    body: 'We don’t sell your personal information or share your watchlist data. The app has no ads and does no advertising or cross-app tracking. As of this version it also collects no usage analytics (we don’t record how often you open the app or what you tap), and sends no marketing emails. It does send push notifications: your device’s push token is used to tell you when your videos finish processing, and for a weekly Trending notification when new popular titles appear — tapping it opens the Trending tab. You can turn notifications off any time in your device settings. We collect no location, photos, or contacts. If any of that ever changes, this policy will be updated first and the app will ask where the law or Apple requires it.',
+    body: 'We don’t sell your personal information or share your watchlist data. The app has no ads and does no advertising or cross-app tracking. The only usage data it sends is key-failure diagnostics: when a movie lookup fails because of an invalid key, the app sends the service name, the error code and the app version to our servers — once per service and error each time you open the app — so we can spot broken keys. It records nothing about how often you open the app or what you tap, and sends no marketing emails. It does send push notifications: your device’s push token is used to tell you when your videos finish processing, and for a weekly Trending notification when new popular titles appear — tapping it opens the Trending tab. Your push token goes to Expo’s servers, which deliver the notifications. You can turn notifications off any time in your device settings. We collect no precise location, photos, or contacts — we only work out your country from your phone’s internet address, at most once a week, to show the right country’s Trending list, and that country is saved on your phone. If any of that ever changes, this policy will be updated first and the app will ask where the law or Apple requires it.',
   },
   {
     title: 'Your choices',
-    body: 'You can remove any movie, clear your Watchlist or Seen list in Settings, and sign out at any time. Deleting a movie in the app also removes it from your watchlist on our servers. Deleting the app removes the copy on your phone but leaves the server copy behind — if you never signed in, it is no longer linked to you, since the anonymous ID that connected it to your device is gone with the app. To have your cloud backup and account data deleted, send a request through Send feedback in Settings and we will delete it.',
+    body: 'You can remove any movie, clear your Watchlist or Seen list in Settings, and sign out at any time. Deleting a movie in the app also removes it from your watchlist on our servers. Deleting the app removes the copy on your phone but leaves the server copy behind — if you never signed in, it is no longer linked to you, since the anonymous ID that connected it to your device is gone with the app. You can delete your account and all its data in the app: Settings → Delete account & data. It deletes your watchlist, feedback, queued videos and push token from our servers and clears your saved movies from this phone, immediately.',
   },
   {
     title: 'Children',
@@ -45,6 +45,6 @@ export const PRIVACY_SECTIONS: PrivacySection[] = [
   },
   {
     title: 'Contact',
-    body: 'Questions about your privacy: use Send feedback in Settings and we’ll get back to you.',
+    body: 'Questions about your privacy: email aitbconsulting@gmail.com, or use Send feedback in Settings.',
   },
 ];
