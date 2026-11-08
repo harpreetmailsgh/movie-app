@@ -25,7 +25,7 @@ const POINTS = [
   {
     icon: '🔧',
     title: 'Fixing failed lookups',
-    detail: 'If a movie search fails, we send only the service name, error code and app version so we can fix it.',
+    detail: 'If a movie search fails because the app’s key isn’t accepted, we send only the service name, error code and app version — once per service and error each time you open the app — so we can fix it.',
   },
   {
     icon: '💬',
