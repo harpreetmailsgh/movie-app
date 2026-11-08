@@ -31,7 +31,7 @@ const LOOP_MS = 1800;
  * Inverted film-strip loader for black backgrounds. A white film strip
  * (black perforation rows top/bottom, large black frames with thin white
  * dividers in the middle) is revealed left-to-right behind the red
- * "Movie Deck" title, which wipes in with the same progress.
+ * "Save My Movie" title, which wipes in with the same progress.
  * Forward-only: the wipe runs 0→100% then restarts at 0, never reversing.
  * The wipe is a black cover shrinking from the right edge, so the strip and
  * title stay full-size the whole time — nothing stretches. Zero deps,

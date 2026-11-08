@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { close, openHostApp, type InitialProps } from "expo-share-extension";
 
 /**
- * The iOS share extension's root view. When the user taps "Movie Deck" in a
+ * The iOS share extension's root view. When the user taps "Save My Movie" in a
  * reel's share sheet, iOS hands us the shared URL (or text containing one).
  * We immediately hand it to the main app through our URL scheme
  * (movierecommender://import?sharedUrl=...) and close ourselves — the main
