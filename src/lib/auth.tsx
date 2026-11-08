@@ -38,9 +38,12 @@ interface AuthState {
   /**
    * Deletes the account on the server (anonymous or signed-in — the
    * function deletes by the caller's id from the session JWT), then
-   * wipes local account data and signs out. Returns 'failed' on any
-   * failure, in which case nothing is wiped and nothing is signed
-   * out — the account stays fully usable and the user can retry.
+   * wipes local account data and signs out. Returns 'failed' only if
+   * the server call itself fails, in which case nothing is wiped and
+   * nothing is signed out — the account stays fully usable and the
+   * user can retry. Once the server confirms the deletion the answer
+   * is 'deleted', even if the local wipe or sign-out then fails — the
+   * account is already gone, and a retry would 401.
    */
   deleteAccount: () => Promise<'deleted' | 'failed'>;
 }
@@ -302,11 +305,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // the caller's id, anonymous or not.
       const { error } = await sb.functions.invoke('delete-account');
       if (error) throw error;
-      // Server confirmed the deletion — only now wipe local data and
-      // sign out. Any failure above lands in the catch: nothing is
-      // wiped, nothing is signed out, the account stays usable.
-      await AsyncStorage.multiRemove(ACCOUNT_DATA_KEYS);
-      await signOut();
+      // Server confirmed the deletion — that is the truth, so this
+      // returns 'deleted' from here on. The local wipe and sign-out
+      // below are best-effort: either may fail (storage error, or
+      // the token is already invalid now the account is gone), and
+      // that must never report the deletion as failed — a retry
+      // would 401. Each step runs even if the other fails.
+      try {
+        await AsyncStorage.multiRemove(ACCOUNT_DATA_KEYS);
+      } catch (e) {
+        console.warn('deleteAccount: local wipe failed after server deletion', e);
+      }
+      try {
+        await signOut();
+      } catch (e) {
+        console.warn('deleteAccount: sign-out failed after server deletion', e);
+      }
       return 'deleted';
     } catch {
       setAuthMessage("Couldn't delete your account — check your connection and try again.");
