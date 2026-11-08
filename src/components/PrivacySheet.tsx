@@ -17,6 +17,31 @@ const POINTS = [
     title: 'What we don’t do',
     detail: 'No selling your data. No ads, no ad tracking, no marketing emails.',
   },
+  {
+    icon: '🌍',
+    title: 'Country, not location',
+    detail: 'We ask ipinfo.io for your country from your internet address, at most once a week, for the right Trending list. No GPS.',
+  },
+  {
+    icon: '🔧',
+    title: 'Broken-key checks',
+    detail: 'If a movie lookup fails over a bad key, we send only the service, error code and app version, once per error each launch.',
+  },
+  {
+    icon: '💬',
+    title: 'Feedback is stored',
+    detail: 'Feedback you send is stored on our servers with your account ID, the app version and the date.',
+  },
+  {
+    icon: '🔔',
+    title: 'Notifications via Expo',
+    detail: 'Your push token goes to Expo’s servers, which deliver processing and Trending notifications.',
+  },
+  {
+    icon: '🗑️',
+    title: 'Delete anytime',
+    detail: 'Settings → Delete account & data removes your list, feedback, queue and push token from our servers.',
+  },
 ];
 
 export default function PrivacySheet({
