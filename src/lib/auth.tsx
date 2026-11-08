@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
@@ -34,9 +35,37 @@ interface AuthState {
   signInWithApple: (options?: SignInOptions) => Promise<void>;
   signInWithGoogle: (options?: SignInOptions) => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * Deletes the account on the server (anonymous or signed-in — the
+   * function deletes by the caller's id from the session JWT), then
+   * wipes local account data and signs out. Returns 'failed' on any
+   * failure, in which case nothing is wiped and nothing is signed
+   * out — the account stays fully usable and the user can retry.
+   */
+  deleteAccount: () => Promise<'deleted' | 'failed'>;
 }
 
 const Ctx = createContext<AuthState | null>(null);
+
+/**
+ * Local account data, wiped only after the server confirms the account
+ * is deleted. settings.v1 is deliberately NOT here — it holds device
+ * preferences (card style, views, guide-seen flags, privacySeen, saved
+ * TMDB key), not account data, so the guide does not replay after
+ * deletion.
+ */
+const ACCOUNT_DATA_KEYS = [
+  'movies.v1',
+  'movieapp.fetchQueue.v1',
+  'movieapp.recentVideos.v1',
+  'reviewPrompt.v1',
+  'movies.deleted.v1',
+  'movies.lastSync.v1',
+  'trending.country.v1',
+  'trending.cache.v2',
+  'movieapp.pushToken.v1',
+  'detail-backfill.v1',
+];
 
 export function useAuth(): AuthState {
   const a = useContext(Ctx);
@@ -262,6 +291,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null);
   }, []);
 
+  const deleteAccount = useCallback(async (): Promise<'deleted' | 'failed'> => {
+    if (!beginAuth()) return 'failed'; // a sign-in is already running
+    setAuthMessage(null);
+    try {
+      const sb = getSupabase();
+      if (!sb) throw new Error('no_client');
+      // The session JWT authenticates the caller — no user id in the
+      // body. Works for anonymous users too: the function deletes by
+      // the caller's id, anonymous or not.
+      const { error } = await sb.functions.invoke('delete-account');
+      if (error) throw error;
+      // Server confirmed the deletion — only now wipe local data and
+      // sign out. Any failure above lands in the catch: nothing is
+      // wiped, nothing is signed out, the account stays usable.
+      await AsyncStorage.multiRemove(ACCOUNT_DATA_KEYS);
+      await signOut();
+      return 'deleted';
+    } catch {
+      setAuthMessage("Couldn't delete your account — check your connection and try again.");
+      return 'failed';
+    } finally {
+      endAuth();
+    }
+  }, [signOut]);
+
   const value: AuthState = {
     ready,
     configured: isSupabaseConfigured,
@@ -273,6 +327,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signInWithApple,
     signInWithGoogle,
     signOut,
+    deleteAccount,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

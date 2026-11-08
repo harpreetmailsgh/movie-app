@@ -16,7 +16,7 @@ import { getSupabase } from '../../lib/supabase';
 const APP_VERSION = Constants.expoConfig?.version ?? 'dev';
 
 function AccountSection() {
-  const { ready, configured, session, isAnonymous, authMessage, authBusy, signInWithApple, signInWithGoogle, signOut } = useAuth();
+  const { ready, configured, session, isAnonymous, authMessage, authBusy, signInWithApple, signInWithGoogle, signOut, deleteAccount } = useAuth();
   const { movies, syncState, lastSyncAt } = useStore();
   const { items: queueItems } = useQueue();
   // Whether the anonymous account holds anything worth keeping via the
@@ -31,6 +31,23 @@ function AccountSection() {
     movies.some((m) => !m.id.startsWith('guide-seed-')) || queueItems.length > 0;
   const [appleMsg, setAppleMsg] = useState(false);
   const isExpoGo = Constants.appOwnership === 'expo';
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      'Delete account & data?',
+      'This deletes your watchlist, feedback, queued videos and push token from our servers and clears saved movies from this phone. This can’t be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void deleteAccount();
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <View style={styles.accountBox}>
@@ -107,8 +124,21 @@ function AccountSection() {
             </Pressable>
           )}
           {session && !isAnonymous && (
-            <Pressable style={styles.secondaryBtn} onPress={signOut}>
-              <Text style={styles.secondaryBtnText}>Sign out</Text>
+            <Pressable
+              style={[styles.googleBtn, authBusy && styles.authBtnDisabled]}
+              onPress={signOut}
+              disabled={authBusy}
+            >
+              <Text style={styles.googleBtnText}>Log out</Text>
+            </Pressable>
+          )}
+          {session && (
+            <Pressable
+              style={[styles.secondaryBtn, authBusy && styles.authBtnDisabled]}
+              onPress={confirmDeleteAccount}
+              disabled={authBusy}
+            >
+              <Text style={styles.dangerText}>Delete account &amp; data</Text>
             </Pressable>
           )}
         </>
