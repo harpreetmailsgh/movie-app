@@ -25,7 +25,7 @@ export default function ShareExtension({ url, text }: InitialProps) {
   return (
     <View style={styles.root}>
       <Text style={styles.icon} allowFontScaling={false}>🎬</Text>
-      <Text style={styles.title} allowFontScaling={false}>Movie Deck</Text>
+      <Text style={styles.title} allowFontScaling={false}>Save My Movie</Text>
       {link ? (
         <>
           <ActivityIndicator color="#fff" style={styles.spinner} />

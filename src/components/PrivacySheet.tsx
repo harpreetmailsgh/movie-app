@@ -58,7 +58,7 @@ export default function PrivacySheet({
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
           <Text style={styles.heading}>Your privacy</Text>
-          <Text style={styles.sub}>Movie Deck is built to save movies, not to collect data about you. Here’s the short version:</Text>
+          <Text style={styles.sub}>Save My Movie is built to save movies, not to collect data about you. Here’s the short version:</Text>
           <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
             {POINTS.map((p) => (
               <View key={p.title} style={styles.row}>

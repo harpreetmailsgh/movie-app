@@ -12,7 +12,7 @@ export interface PrivacySection {
 
 export const PRIVACY_SECTIONS: PrivacySection[] = [
   {
-    title: 'What Movie Deck saves',
+    title: 'What Save My Movie saves',
     body: 'The movies and shows you add — title, year, whether each one is a movie or a TV show, genres, description, poster, whether it is on your Watchlist or in Seen, your notes, the video link it came from, and the date you added it. They are stored on your phone, and a copy is also sent to our servers under a random anonymous ID, a short time after you make a change. That copy lets our servers add movies found while the app is closed, and lets your list follow you if you sign in on another device. Your preferences stay on your phone only. If you send feedback from Settings, we store your message on our servers with the app version and the date, and your account ID if you are signed in.',
   },
   {
@@ -25,7 +25,7 @@ export const PRIVACY_SECTIONS: PrivacySection[] = [
   },
   {
     title: 'Links you paste',
-    body: 'When you share a reel or video link to Movie Deck, the link is sent to our servers to identify the movie. The link stays on our servers after processing. We do not store the video content itself.',
+    body: 'When you share a reel or video link to Save My Movie, the link is sent to our servers to identify the movie. The link stays on our servers after processing. We do not store the video content itself.',
   },
   {
     title: 'What we don’t do',
@@ -37,7 +37,7 @@ export const PRIVACY_SECTIONS: PrivacySection[] = [
   },
   {
     title: 'Children',
-    body: 'Movie Deck is not directed at children under 13, and we do not knowingly collect personal information from them.',
+    body: 'Save My Movie is not directed at children under 13, and we do not knowingly collect personal information from them.',
   },
   {
     title: 'Changes to this policy',

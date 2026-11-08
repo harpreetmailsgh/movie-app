@@ -22,7 +22,7 @@
         "ITSAppUsesNonExemptEncryption": false
       }
     },
-    "name": "Movie Deck",
+    "name": "Save My Movie",
     "orientation": "portrait",
     "plugins": [
       "expo-router",

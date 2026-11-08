@@ -11,7 +11,7 @@ export default function PrivacyScreen() {
       contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]}
     >
       <Text style={styles.intro}>
-        Movie Deck helps you save movies and shows you find in reels and shorts, and build a watchlist from them.
+        Save My Movie helps you save movies and shows you find in reels and shorts, and build a watchlist from them.
         This policy says what the app saves, where it goes, and what it never does.
       </Text>
       <Text style={styles.updated}>Last updated: {PRIVACY_LAST_UPDATED}</Text>

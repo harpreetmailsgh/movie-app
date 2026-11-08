@@ -187,7 +187,7 @@ index 7f9f6d8..bb035b3 100644
 -      print("[ShareExtension] UIScreen.main.scale: \(currentScale)")
 +    let statusLabel = UILabel()
 +    statusLabel.translatesAutoresizingMaskIntoConstraints = false
-+    statusLabel.text = "Sending to Movie Deck…"
++    statusLabel.text = "Sending to Save My Movie…"
 +    statusLabel.textAlignment = .center
 +    statusLabel.numberOfLines = 0
 +    view.addSubview(statusLabel)

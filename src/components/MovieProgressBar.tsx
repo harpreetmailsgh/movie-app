@@ -24,7 +24,7 @@ const HEIGHTS: Record<NonNullable<MovieProgressBarProps['size']>, number> = {
 
 const PERFORATION_COUNT = 20;
 const FRAME_COUNT = 5;
-const TITLE_TEXT = 'Movie Deck';
+const TITLE_TEXT = 'Save My Movie';
 const LOOP_MS = 1800;
 
 /**
