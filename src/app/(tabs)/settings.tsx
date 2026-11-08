@@ -30,6 +30,7 @@ function AccountSection() {
   const hasLocalData =
     movies.some((m) => !m.id.startsWith('guide-seed-')) || queueItems.length > 0;
   const [appleMsg, setAppleMsg] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
   const isExpoGo = Constants.appOwnership === 'expo';
 
   const confirmDeleteAccount = () => {
@@ -42,7 +43,10 @@ function AccountSection() {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            void deleteAccount();
+            setDeleteSuccess(false);
+            void deleteAccount().then((result) => {
+              if (result === 'deleted') setDeleteSuccess(true);
+            });
           },
         },
       ],
@@ -68,6 +72,7 @@ function AccountSection() {
               : 'Log in to save and never lose your lists and settings.'}
           </Text>
           {authMessage && <Text style={styles.error}>{authMessage}</Text>}
+          {deleteSuccess && <Text style={styles.success}>Your account and data were deleted.</Text>}
           {configured && session && (
             <Text style={styles.dim}>
               {syncState === 'syncing'
@@ -108,7 +113,10 @@ function AccountSection() {
                   buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
                   cornerRadius={12}
                   style={[styles.appleBtn, authBusy && styles.authBtnDisabled]}
-                  onPress={() => signInWithApple({ hasLocalData })}
+                  onPress={() => {
+                    setDeleteSuccess(false);
+                    signInWithApple({ hasLocalData });
+                  }}
                 />
               </View>
             )
@@ -116,7 +124,10 @@ function AccountSection() {
           {(!session || isAnonymous) && (
             <Pressable
               style={[styles.googleBtn, authBusy && styles.authBtnDisabled]}
-              onPress={() => signInWithGoogle({ hasLocalData })}
+              onPress={() => {
+                setDeleteSuccess(false);
+                signInWithGoogle({ hasLocalData });
+              }}
               disabled={authBusy}
             >
               <FontAwesome name="google" size={18} color="#fff" style={styles.googleIcon} />
@@ -350,6 +361,7 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   error: { color: '#ff9f0a', fontSize: 13, marginTop: 8 },
+  success: { color: '#30d158', fontSize: 13, marginTop: 8 },
   dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
   modalRoot: { flex: 1, backgroundColor: '#000', padding: 20, paddingTop: 16 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
