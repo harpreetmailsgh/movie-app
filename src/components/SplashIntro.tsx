@@ -123,14 +123,14 @@ export default function SplashIntro({ onDone }: { onDone: () => void }) {
   const [fontsLoaded, fontError] = useFonts({
     [FONT_FAMILY]: require('../../assets/fonts/Cinzel-Bold.ttf'),
   });
-  const [introStarted, setIntroStarted] = useState(false);
+  // The font gate sets this state ONLY from the timeout callback —
+  // never synchronously in the effect body (react-hooks/set-state-in-effect).
+  const [fontTimedOut, setFontTimedOut] = useState(false);
+  const introStarted = fontsLoaded || !!fontError || fontTimedOut;
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
-      setIntroStarted(true);
-      return;
-    }
-    const t = setTimeout(() => setIntroStarted(true), FONT_LOAD_TIMEOUT_MS);
+    if (fontsLoaded || fontError) return;
+    const t = setTimeout(() => setFontTimedOut(true), FONT_LOAD_TIMEOUT_MS);
     return () => clearTimeout(t);
   }, [fontsLoaded, fontError]);
 
@@ -406,14 +406,20 @@ export default function SplashIntro({ onDone }: { onDone: () => void }) {
           },
         ]}
       >
-        <Text
-          style={[
-            styles.text,
-            { fontSize: px(84), letterSpacing: px(3), lineHeight: px(115) },
-          ]}
-        >
-          Save My Movie
-        </Text>
+        {/* The layered text renders only once Cinzel Bold has loaded,
+            so it never shows in a system font against the PNG's Cinzel
+            text. On font failure/timeout it stays hidden entirely;
+            the underline (a plain View, not text) still renders. */}
+        {fontsLoaded && (
+          <Text
+            style={[
+              styles.text,
+              { fontSize: px(84), letterSpacing: px(3), lineHeight: px(115) },
+            ]}
+          >
+            Save My Movie
+          </Text>
+        )}
         <View
           style={[
             styles.underline,
@@ -487,6 +493,7 @@ const styles = StyleSheet.create({
   },
   text: {
     color: '#FFC832',
+    fontFamily: FONT_FAMILY,
     fontWeight: '700',
     textAlign: 'center',
   },

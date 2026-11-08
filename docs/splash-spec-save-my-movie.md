@@ -171,9 +171,9 @@ seamless — no flash or jump.
   verify visually on device.
 
 ### Timeline (total exactly 2.0 s — the intro animation only, see the
-### boundary note below; hard ceiling 2.0 s — unmount by then even if
-### fonts/data aren't ready; the deck may show its own loading state,
-### the intro must never wait for data)
+### boundary note below; hard ceiling 2.0 s from intro start — unmount
+### by then even if data isn't ready; the deck may show its own loading
+### state, the intro must never wait for data)
 | t (s) | What happens |
 |---|---|
 | 0.00–0.50 | **OPEN HOLD (500 ms).** Static open frame, nothing moves. The mockup started clapping immediately (no hold) — the board never registered. |
@@ -184,11 +184,19 @@ seamless — no flash or jump.
 | 1.70–2.00 | **REVEAL (300 ms).** Whole intro opacity 1 → 0 (linear), deck revealed clean beneath. Intro **unmounts at 2.00 s**. No crossfade, no ghosting. |
 
 ### What the 2.0 s covers — the boundary (in Harpreet's terms)
-The 2.0 s is the **intro animation only**. It does **not** include
-loading the first screen. The intro runs its 2.0 s and unmounts;
-whatever the Watchlist deck needs to load afterwards happens **after**
-the reveal and is not counted in the 2 s. The intro never waits for
-data, and the deck may show its own loading state after the reveal.
+The 2.0 s is the **intro animation only**, counted from intro start.
+It does **not** include loading the first screen. The intro runs its
+2.0 s and unmounts; whatever the Watchlist deck needs to load
+afterwards happens **after** the reveal and is not counted in the 2 s.
+The intro never waits for data, and the deck may show its own loading
+state after the reveal.
+- **The font gate is outside the 2.0 s:** before the intro starts,
+  the font load is bounded separately by a 1.0 s timeout while the
+  native splash still covers the screen — the font wait is not part
+  of the 2.0 s. Worst case, mount → unmount is 1.0 s (font wait) +
+  2.0 s (intro) = 3.0 s. If the font fails or the timeout fires, the
+  layered text stays hidden (the PNG still shows the gold name
+  during the open hold) and the intro still runs its 2.0 s.
 - **Dead-tail rule:** the mockup ran 4.17 s while the animation was done
   by ~2 s — frames `f_05`–`f_08` are four static deck shots
   (f_06–f_08 byte-identical, f_05 nearly so). The launch ends at the
