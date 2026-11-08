@@ -317,15 +317,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     const sb = getSupabase();
     if (!sb) return;
-    await sb.auth.signOut();
-    setSession(null);
-    // Log out (and deleteAccount, which signs out through here) must
-    // not leave the app session-less — restore an anonymous session
-    // right away so backup, queue-mirror and push registration keep
-    // working. The #85/#86 fresh paths call sb.auth.signOut()
-    // directly, not this, so no anonymous session appears between
-    // their signOut and the fresh sign-in.
-    await ensureAnonymousSession();
+    try {
+      await sb.auth.signOut();
+      setSession(null);
+    } finally {
+      // The anonymous-session restore must run even if signOut itself
+      // throws (e.g. the token is already invalid) — otherwise the app
+      // sits session-less until relaunch. It no-ops when a session
+      // already exists. The #85/#86 fresh paths call sb.auth.signOut()
+      // directly, not this, so no anonymous session appears between
+      // their signOut and the fresh sign-in.
+      await ensureAnonymousSession();
+    }
   }, [ensureAnonymousSession]);
 
   const deleteAccount = useCallback(async (): Promise<'deleted' | 'failed'> => {

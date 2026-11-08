@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Modal, ScrollView } from 'react-native';
 
 const POINTS = [
   {
@@ -30,7 +30,7 @@ const POINTS = [
   {
     icon: '💬',
     title: 'Feedback is stored',
-    detail: 'Feedback you send is stored on our servers with your account ID, the app version and the date.',
+    detail: 'Feedback you send is stored on our servers with the app version and the date, and your account ID if you are signed in.',
   },
   {
     icon: '🔔',
@@ -59,17 +59,19 @@ export default function PrivacySheet({
         <View style={styles.sheet}>
           <Text style={styles.heading}>Your privacy</Text>
           <Text style={styles.sub}>Movie Deck is built to save movies, not to collect data about you. Here’s the short version:</Text>
-          {POINTS.map((p) => (
-            <View key={p.title} style={styles.row}>
-              <View style={styles.badge}>
-                <Text style={styles.badgeIcon}>{p.icon}</Text>
+          <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+            {POINTS.map((p) => (
+              <View key={p.title} style={styles.row}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeIcon}>{p.icon}</Text>
+                </View>
+                <View style={styles.rowText}>
+                  <Text style={styles.rowTitle}>{p.title}</Text>
+                  <Text style={styles.rowDetail}>{p.detail}</Text>
+                </View>
               </View>
-              <View style={styles.rowText}>
-                <Text style={styles.rowTitle}>{p.title}</Text>
-                <Text style={styles.rowDetail}>{p.detail}</Text>
-              </View>
-            </View>
-          ))}
+            ))}
+          </ScrollView>
           <Pressable style={styles.button} onPress={onContinue}>
             <Text style={styles.buttonText}>Continue</Text>
           </Pressable>
@@ -90,7 +92,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 28,
   },
-  sheet: { width: '100%', maxWidth: 380 },
+  sheet: { width: '100%', maxWidth: 380, maxHeight: '92%' },
+  scroll: { flexGrow: 1, flexShrink: 1 },
   heading: { color: '#fff', fontSize: 32, fontWeight: '800', textAlign: 'center' },
   sub: { color: 'rgba(255,255,255,0.7)', fontSize: 14, textAlign: 'center', marginTop: 10, lineHeight: 20 },
   row: { flexDirection: 'row', alignItems: 'center', marginTop: 18 },

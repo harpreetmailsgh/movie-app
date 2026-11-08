@@ -13,7 +13,7 @@ export interface PrivacySection {
 export const PRIVACY_SECTIONS: PrivacySection[] = [
   {
     title: 'What Movie Deck saves',
-    body: 'The movies and shows you add — title, year, whether each one is a movie or a TV show, genres, description, poster, whether it is on your Watchlist or in Seen, your notes, the video link it came from, and the date you added it. They are stored on your phone, and a copy is also sent to our servers under a random anonymous ID, a short time after you make a change. That copy lets our servers add movies found while the app is closed, and lets your list follow you if you sign in on another device. Your preferences stay on your phone only. If you send feedback from Settings, we store your message on our servers with your account ID, the app version and the date.',
+    body: 'The movies and shows you add — title, year, whether each one is a movie or a TV show, genres, description, poster, whether it is on your Watchlist or in Seen, your notes, the video link it came from, and the date you added it. They are stored on your phone, and a copy is also sent to our servers under a random anonymous ID, a short time after you make a change. That copy lets our servers add movies found while the app is closed, and lets your list follow you if you sign in on another device. Your preferences stay on your phone only. If you send feedback from Settings, we store your message on our servers with the app version and the date, and your account ID if you are signed in.',
   },
   {
     title: 'Where it is stored',
