@@ -40,8 +40,8 @@
 <li>Shared video links: When you share a YouTube Short, TikTok, or Instagram Reel to Movie Deck, the video URL is sent to our servers to extract movie titles. The link stays on our servers after processing. We do not store the video content itself.</li>
 <li>Push notification token: If you enable notifications, your device's push token is stored so we can notify you when your videos finish processing, and to send a Trending notification when new popular titles appear (checked once a week). Your push token goes to Expo's servers, which deliver the notifications. Tapping a Trending notification opens the Trending tab. You can disable this anytime in your device settings.</li>
 <li>Movie data (TMDB and Cinemeta): The app fetches public movie information (titles, posters, ratings, descriptions) from The Movie Database (TMDB) and Cinemeta. No personal data is sent to TMDB.</li>
-<li>Your country for Trending: The app asks ipinfo.io for the country from your phone's internet address, at most once a week, only to show the right country's Trending list. No GPS or precise location — country only — and the country is saved on your phone.</li>
-<li>Key-failure diagnostics: When a movie lookup fails because of an invalid key, the app sends the service name, the error code and the app version to our servers — once per service and error each time you open the app — so we can spot broken keys. No account ID, no movie titles.</li>
+<li>Your country for Trending: The app looks up your country from your phone's internet connection, at most once a week, only to show the right country's Trending list. No GPS or precise location — country only — and the country is saved on your phone.</li>
+<li>Fixing failed lookups: If a movie search fails, the app sends only the service name, the error code and the app version to our servers — once per service and error each time you open the app — so we can fix it. No account ID, no movie titles.</li>
 <li>Feedback: If you send feedback from Settings, we store your message on our servers with the app version and the date, and your account ID if you are signed in.</li>
 </ol>
 

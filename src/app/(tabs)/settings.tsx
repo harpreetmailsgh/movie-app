@@ -72,7 +72,7 @@ function AccountSection() {
               : 'Log in to save and never lose your lists and settings.'}
           </Text>
           {authMessage && <Text style={styles.error}>{authMessage}</Text>}
-          {deleteSuccess && <Text style={styles.success}>Your account and data were deleted.</Text>}
+          {deleteSuccess && <Text style={styles.success}>✓ Your account and data were deleted.</Text>}
           {configured && session && (
             <Text style={styles.dim}>
               {syncState === 'syncing'
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.3)', fontSize: 12, marginTop: 4,
   },
   feedbackRow: {
-    backgroundColor: '#2c2c2e', borderRadius: 12, paddingVertical: 10,
+    backgroundColor: '#2c2c2e', borderRadius: 12, paddingVertical: 12,
     alignItems: 'center', marginTop: 8,
   },
   clearRow: { flexDirection: 'row', gap: 12 },
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#000',
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 13,
     marginTop: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.25)',
@@ -353,15 +353,16 @@ const styles = StyleSheet.create({
   googleBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   secondaryBtn: {
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 13,
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: 'rgba(255,69,58,0.5)',
+    backgroundColor: 'rgba(255,69,58,0.08)',
   },
   secondaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   error: { color: '#ff9f0a', fontSize: 13, marginTop: 8 },
-  success: { color: '#30d158', fontSize: 13, marginTop: 8 },
+  success: { color: '#30d158', fontSize: 14, fontWeight: '700', marginTop: 8 },
   dim: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
   modalRoot: { flex: 1, backgroundColor: '#000', padding: 20, paddingTop: 16 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },

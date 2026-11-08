@@ -20,12 +20,12 @@ const POINTS = [
   {
     icon: '🌍',
     title: 'Country, not location',
-    detail: 'We ask ipinfo.io for your country from your internet address, at most once a week, for the right Trending list. No GPS.',
+    detail: 'We look up your country from your internet connection, at most once a week, for the right Trending list. No GPS.',
   },
   {
     icon: '🔧',
-    title: 'Broken-key checks',
-    detail: 'If a movie lookup fails over a bad key, we send only the service, error code and app version, once per error each launch.',
+    title: 'Fixing failed lookups',
+    detail: 'If a movie search fails, we send only the service name, error code and app version so we can fix it.',
   },
   {
     icon: '💬',
