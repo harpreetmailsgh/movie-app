@@ -16,7 +16,7 @@ import { getSupabase } from '../../lib/supabase';
 const APP_VERSION = Constants.expoConfig?.version ?? 'dev';
 
 function AccountSection() {
-  const { ready, configured, session, isAnonymous, authMessage, signInWithApple, signInWithGoogle, signOut } = useAuth();
+  const { ready, configured, session, isAnonymous, authMessage, authBusy, signInWithApple, signInWithGoogle, signOut } = useAuth();
   const { movies, syncState, lastSyncAt } = useStore();
   const { items: queueItems } = useQueue();
   // Whether the anonymous account holds anything worth keeping via the
@@ -69,7 +69,11 @@ function AccountSection() {
             // black fallback button mirroring the Google button style instead.
             isExpoGo ? (
               <>
-                <Pressable style={styles.googleBtn} onPress={() => setAppleMsg(true)}>
+                <Pressable
+                  style={[styles.googleBtn, authBusy && styles.authBtnDisabled]}
+                  onPress={() => setAppleMsg(true)}
+                  disabled={authBusy}
+                >
                   <FontAwesome name="apple" size={18} color="#fff" style={styles.googleIcon} />
                   <Text style={styles.googleBtnText}>Sign in with Apple</Text>
                 </Pressable>
@@ -78,17 +82,26 @@ function AccountSection() {
                 )}
               </>
             ) : (
-              <AppleAuthentication.AppleAuthenticationButton
-                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                cornerRadius={12}
-                style={styles.appleBtn}
-                onPress={() => signInWithApple({ hasLocalData })}
-              />
+              // The native Apple button has no disabled prop, so the
+              // wrapper blocks taps while a sign-in is running (backlog
+              // #86 — one sign-in at a time); the button itself dims.
+              <View pointerEvents={authBusy ? 'none' : 'auto'}>
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  cornerRadius={12}
+                  style={[styles.appleBtn, authBusy && styles.authBtnDisabled]}
+                  onPress={() => signInWithApple({ hasLocalData })}
+                />
+              </View>
             )
           )}
           {(!session || isAnonymous) && (
-            <Pressable style={styles.googleBtn} onPress={() => signInWithGoogle({ hasLocalData })}>
+            <Pressable
+              style={[styles.googleBtn, authBusy && styles.authBtnDisabled]}
+              onPress={() => signInWithGoogle({ hasLocalData })}
+              disabled={authBusy}
+            >
               <FontAwesome name="google" size={18} color="#fff" style={styles.googleIcon} />
               <Text style={styles.googleBtnText}>Sign in with Google</Text>
             </Pressable>
@@ -283,6 +296,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   appleBtn: { width: '100%', height: 48, marginTop: 12 },
+  authBtnDisabled: { opacity: 0.4 },
   googleBtn: {
     flexDirection: 'row',
     alignItems: 'center',

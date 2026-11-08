@@ -25,6 +25,13 @@ export function getSupabase(): SupabaseClient | null {
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
+        // PKCE, not the implicit default (backlog #86): with the
+        // implicit flow the server returns the tokens in the URL
+        // fragment and the app's code exchange never runs — Google
+        // sign-in failed with "no_code" on every tap. PKCE makes the
+        // server issue a `?code=` that exchangeCodeForSession consumes.
+        // This is the documented flow for native apps.
+        flowType: 'pkce',
       },
     });
   }

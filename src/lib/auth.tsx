@@ -1,9 +1,9 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import type { Session } from '@supabase/supabase-js';
+import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { getSupabase, isSupabaseConfigured } from './supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -29,6 +29,8 @@ interface AuthState {
   isAnonymous: boolean;
   appleAvailable: boolean;
   authMessage: string | null;
+  /** True while a sign-in is running — Settings disables its buttons. */
+  authBusy: boolean;
   signInWithApple: (options?: SignInOptions) => Promise<void>;
   signInWithGoogle: (options?: SignInOptions) => Promise<void>;
   signOut: () => Promise<void>;
@@ -40,6 +42,58 @@ export function useAuth(): AuthState {
   const a = useContext(Ctx);
   if (!a) throw new Error('useAuth must be used inside AuthProvider');
   return a;
+}
+
+type GoogleOAuthOutcome = 'signed-in' | 'cancelled' | 'already-linked';
+
+/**
+ * One Google OAuth round-trip: request the URL, open the browser, exchange
+ * the returned code (backlog #86). `link` picks the linkIdentity branch
+ * (upgrade the anonymous account) or the fresh signInWithOAuth branch.
+ *
+ * Returns 'already-linked' — instead of throwing — when the Google
+ * identity already belongs to another account. Only that error recovers:
+ * any other link error is a real failure (network, misconfigured
+ * provider, …) and must not silently drop the anonymous session for a
+ * fresh sign-in. The server can refuse the link at the authorize call OR
+ * at the callback (after the Google account is chosen), so both spots
+ * check for it.
+ *
+ * `flowId` is carried in memory from the same call that produced the URL
+ * — it is never read back from the redirect, because the server only
+ * appends it when experimental.appendPkceFlowIdToRedirects is on (off by
+ * default). Passing it to exchangeCodeForSession makes the verifier
+ * lookup slot-only, so a second flow's verifier can never be submitted
+ * for this flow's code.
+ */
+async function googleOAuthRoundTrip(
+  sb: SupabaseClient,
+  redirectTo: string,
+  link: boolean,
+): Promise<GoogleOAuthOutcome> {
+  const { data, error } = link
+    ? await sb.auth.linkIdentity({ provider: 'google', options: { redirectTo } })
+    : await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo, skipBrowserRedirect: true },
+      });
+  if (error) {
+    if (link && error.code === 'identity_already_exists') return 'already-linked';
+    throw error;
+  }
+  if (!data.url) throw new Error('no_oauth_url');
+  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+  if (result.type !== 'success') return 'cancelled'; // user cancelled
+  const params = Linking.parse(result.url).queryParams;
+  if (params?.error_code === 'identity_already_exists') return 'already-linked';
+  const code = params?.code;
+  if (typeof code !== 'string') throw new Error('no_code');
+  const { error: exchangeError } = await sb.auth.exchangeCodeForSession(
+    code,
+    data.flowId ? { flowId: data.flowId } : undefined,
+  );
+  if (exchangeError) throw exchangeError;
+  return 'signed-in';
 }
 
 /**
@@ -63,6 +117,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  // One sign-in at a time (backlog #86): a second tap while the browser
+  // is open would start a second PKCE flow whose verifier could be
+  // exchanged against the first flow's code. The ref is the guard — the
+  // callbacks close over a stale `authBusy` otherwise; the state drives
+  // the disabled buttons in Settings.
+  const authBusyRef = useRef(false);
+  const beginAuth = () => {
+    if (authBusyRef.current) return false;
+    authBusyRef.current = true;
+    setAuthBusy(true);
+    return true;
+  };
+  const endAuth = () => {
+    authBusyRef.current = false;
+    setAuthBusy(false);
+  };
 
   useEffect(() => {
     (async () => {
@@ -91,6 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signInWithApple = useCallback(async (options?: SignInOptions) => {
+    if (!beginAuth()) return; // a sign-in is already running
     setAuthMessage(null);
     try {
       const credential = await AppleAuthentication.signInAsync({
@@ -115,14 +187,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { error } = link
         ? await sb.auth.linkIdentity({ provider: 'apple', token: credential.identityToken })
         : await sb.auth.signInWithIdToken({ provider: 'apple', token: credential.identityToken });
-      if (error) throw error;
+      if (error) {
+        // Same already-linked recovery as Google (#86): the Apple
+        // identity belongs to another account, so sign in fresh as
+        // that account instead of failing the link. Sign out first —
+        // the token is already in hand, so nothing is lost by
+        // dropping the anonymous session before the fresh sign-in.
+        if (link && error.code === 'identity_already_exists') {
+          await sb.auth.signOut();
+          const { error: freshError } = await sb.auth.signInWithIdToken({
+            provider: 'apple',
+            token: credential.identityToken,
+          });
+          if (freshError) throw freshError;
+        } else {
+          throw error;
+        }
+      }
     } catch (e: any) {
       if (e?.code === 'ERR_REQUEST_CANCELED') return; // user dismissed the sheet
       setAuthMessage('Apple sign-in failed. Please try again.');
+    } finally {
+      endAuth();
     }
   }, [session]);
 
   const signInWithGoogle = useCallback(async (options?: SignInOptions) => {
+    if (!beginAuth()) return; // a sign-in is already running
     setAuthMessage(null);
     try {
       const sb = getSupabase();
@@ -142,22 +233,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // anonymous session is created on next launch.
         await sb.auth.signOut();
       }
-      const { data, error } = link
-        ? await sb.auth.linkIdentity({ provider: 'google', options: { redirectTo } })
-        : await sb.auth.signInWithOAuth({
-            provider: 'google',
-            options: { redirectTo, skipBrowserRedirect: true },
-          });
-      if (error) throw error;
-      if (!data.url) throw new Error('no_oauth_url');
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-      if (result.type !== 'success') return; // user cancelled
-      const code = Linking.parse(result.url).queryParams?.code;
-      if (typeof code !== 'string') throw new Error('no_code');
-      const { error: exchangeError } = await sb.auth.exchangeCodeForSession(code);
-      if (exchangeError) throw exchangeError;
+      const outcome = await googleOAuthRoundTrip(sb, redirectTo, link);
+      if (outcome === 'already-linked') {
+        // The Google identity is already linked to another account —
+        // on Harpreet's phone, to his own account from the failed
+        // implicit-flow attempt. Sign the anonymous session out FIRST
+        // (signOut wipes the dead flow's PKCE verifier), then sign in
+        // fresh as that Google account: the identity already belongs
+        // to it, so this lands on the same user id and the server copy
+        // of the list follows. Local movies are untouched — they live
+        // under the app's own AsyncStorage keys, not the auth session
+        // keys signOut clears.
+        await sb.auth.signOut();
+        const fresh = await googleOAuthRoundTrip(sb, redirectTo, false);
+        if (fresh === 'already-linked') throw new Error('already_linked_on_fresh_sign_in');
+      }
     } catch {
       setAuthMessage('Google sign-in failed. Please try again.');
+    } finally {
+      endAuth();
     }
   }, [session]);
 
@@ -175,6 +269,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAnonymous: !!session?.user?.is_anonymous,
     appleAvailable,
     authMessage,
+    authBusy,
     signInWithApple,
     signInWithGoogle,
     signOut,
