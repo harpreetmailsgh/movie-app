@@ -55,7 +55,8 @@
         }
       ],
       "./plugins/withAndroidShareTarget",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-splash-screen"
     ],
     "scheme": "movierecommender",
     "slug": "movie-app",
