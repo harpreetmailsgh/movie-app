@@ -3,7 +3,6 @@ import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
 import { useStore } from '../lib/store';
 import { searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
 import { posterUrl } from '../lib/types';
@@ -108,11 +107,6 @@ export default function ImportScreen() {
   const [fetchResults, setFetchResults] = useState<{ title: string; unverified: boolean; caption?: string }[] | null>(null);
   /** Inline error card — shows the worker's error verbatim, in the results card's spot. */
   const [fetchError, setFetchError] = useState<string | null>(null);
-  /** Shown under the link field when a Paste tap reads nothing: on iOS 16+
-   *  getStringAsync returns '' both for an empty clipboard and for a denied
-   *  paste permission, so the two can't be told apart — either way the tap
-   *  must say something instead of doing nothing silently. */
-  const [pasteHint, setPasteHint] = useState(false);
   /** URL behind the current fetch error, so the error card's Retry button
    *  can re-enqueue it. Cleared on new link input and on success. */
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -210,33 +204,9 @@ export default function ImportScreen() {
   // Links enqueue into the fetch queue (worker loop processes them one at a time).
   const onLinkChange = (text: string) => {
     setLink(text);
-    setPasteHint(false);
     setFetchResults(null);
     setFetchError(null);
     setFailedUrl(null);
-  };
-
-  /** Reads the clipboard into the link field (Paste button).
-   *  On iOS 16+ the first read shows a system paste-permission prompt; if
-   *  the user denies it, getStringAsync resolves to '' — the same as an
-   *  empty clipboard, with no way to tell the two apart. Either way the
-   *  tap now shows a visible hint instead of silently doing nothing. */
-  const pasteFromClipboard = async () => {
-    try {
-      const text = await Clipboard.getStringAsync();
-      if (!text) {
-        setPasteHint(true);
-        return;
-      }
-      setPasteHint(false);
-      setLink(text);
-      setFetchResults(null);
-      setFetchError(null);
-      setFailedUrl(null);
-    } catch {
-      // A rejected read (native error) used to fail silently — show the hint.
-      setPasteHint(true);
-    }
   };
 
   /** Queue replaces the immediate-fetch path: Fetch tap enqueues the link. */
@@ -404,12 +374,6 @@ export default function ImportScreen() {
               autoCorrect={false}
             />
             <Pressable
-              style={styles.pasteButton}
-              onPress={() => { void pasteFromClipboard(); }}
-            >
-              <Text style={styles.pasteButtonText}>Paste</Text>
-            </Pressable>
-            <Pressable
               style={[styles.fetchButton, !link.trim() && styles.fetchButtonDisabled]}
               onPress={submitLink}
               disabled={!link.trim()}
@@ -417,9 +381,6 @@ export default function ImportScreen() {
               <Text style={styles.fetchButtonText}>Fetch</Text>
             </Pressable>
           </View>
-          {pasteHint && (
-            <Text style={styles.pasteHint}>Nothing to paste — copy a video link first</Text>
-          )}
           <Text style={styles.body}>Paste a link from YouTube to add a movie</Text>
           {isProcessing && (
             <View style={styles.progressRow}>
@@ -518,14 +479,6 @@ const styles = StyleSheet.create({
   },
   fetchButtonDisabled: { opacity: 0.35 },
   fetchButtonText: { color: '#000', fontSize: 15, fontWeight: '700' },
-  pasteButton: {
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', borderRadius: 12,
-    paddingHorizontal: 14, paddingVertical: 13, alignItems: 'center', justifyContent: 'center',
-  },
-  pasteButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  // Shown under the link field when a Paste tap reads nothing (empty
-  // clipboard or denied paste permission) — small grey, like emptyText.
-  pasteHint: { color: 'rgba(255,255,255,0.55)', fontSize: 13, lineHeight: 18, marginTop: 8 },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 10 },
   progressText: { color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 21 },
   unverifiedRow: { marginTop: 10 },
