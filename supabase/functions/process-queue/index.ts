@@ -163,6 +163,131 @@ function canonicalYouTubeUrl(url: string): string | null {
   return id ? `https://www.youtube.com/watch?v=${id}` : null;
 }
 
+/**
+ * Automatic-retry scheduling (backlog #98). Port of src/lib/retrySchedule.ts
+ * — same rules, same constants: Gemini's daily quota resets at midnight
+ * Pacific Time (3:00 AM Toronto); a 429 waits for that reset, a Retry-After
+ * is honored (capped at 24h), anything else waits 5 min on the first
+ * re-queue and 15 min on the second.
+ */
+const MAX_AUTO_RETRIES = 2;
+const MAX_RETRY_AFTER_MS = 24 * 60 * 60_000;
+const FIRST_RETRY_DELAY_MS = 5 * 60_000;
+const SECOND_RETRY_DELAY_MS = 15 * 60_000;
+
+/** UTC offset (ms) of a timezone at one instant, via Intl. Negative west
+ *  of UTC (e.g. -8h for Pacific Standard Time). */
+function timeZoneOffsetMs(timeZone: string, utcMs: number): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts = dtf.formatToParts(new Date(utcMs));
+  const get = (type: string): number =>
+    Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const asUtcMs = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+    get("second"),
+  );
+  return asUtcMs - utcMs;
+}
+
+/** Epoch ms of midnight (00:00 wall time) on a calendar date in a zone.
+ *  Iterates so a DST change between the guess and the answer converges. */
+function zonedMidnightUtcMs(year: number, month: number, day: number, timeZone: string): number {
+  const wallMidnightAsUtc = Date.UTC(year, month - 1, day, 0, 0, 0);
+  let guess = wallMidnightAsUtc;
+  for (let i = 0; i < 3; i++) {
+    const next = wallMidnightAsUtc - timeZoneOffsetMs(timeZone, guess);
+    if (next === guess) break;
+    guess = next;
+  }
+  return guess;
+}
+
+/** Next midnight in America/Los_Angeles after `fromMs` (epoch ms).
+ *  Timezone-correct via Intl — the Pacific offset (PST/PDT) is read off
+ *  the clock, never hardcoded. */
+function nextMidnightPacific(fromMs: number): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = dtf.formatToParts(new Date(fromMs));
+  const get = (type: string): number =>
+    Number(parts.find((p) => p.type === type)?.value ?? 0);
+  // Next calendar day in Pacific time; Date.UTC rolls month/year over.
+  const nextDay = new Date(Date.UTC(get("year"), get("month") - 1, get("day") + 1));
+  return zonedMidnightUtcMs(
+    nextDay.getUTCFullYear(),
+    nextDay.getUTCMonth() + 1,
+    nextDay.getUTCDate(),
+    "America/Los_Angeles",
+  );
+}
+
+/**
+ * When a transiently-failed row should be tried again (epoch ms).
+ * `retryCount` is the row's count BEFORE this re-queue (0 = first,
+ * 1 = second). Only called for 'transient' / 'deadline' failures.
+ */
+function computeRetryAt(
+  reason: "transient" | "deadline",
+  httpStatus: number | undefined,
+  retryAfterMs: number | undefined,
+  retryCount: number,
+): number {
+  const now = Date.now();
+  // Gemini asked to wait: honor it, capped at 24h (see MAX_RETRY_AFTER_MS).
+  if (typeof retryAfterMs === "number" && retryAfterMs > 0) {
+    return now + Math.min(retryAfterMs, MAX_RETRY_AFTER_MS);
+  }
+  // Daily quota exhausted: the quota resets at midnight Pacific
+  // (3:00 AM Toronto) — retry then, not after a fixed delay.
+  if (httpStatus === 429) {
+    return nextMidnightPacific(now);
+  }
+  // Any other transient blip / deadline: short backoff by re-queue count
+  // (5 min first, 15 min second).
+  return now + (retryCount >= 1 ? SECOND_RETRY_DELAY_MS : FIRST_RETRY_DELAY_MS);
+}
+
+/**
+ * Structured transient Gemini failure: the reason, HTTP status, and
+ * Retry-After ride on the error itself, so the run() catch can decide
+ * re-queue vs failed without parsing the "(gemini: …)" message suffix.
+ * The message text is unchanged (locked sentence + suffix) for the row.
+ */
+class GeminiTransientError extends Error {
+  reason: "transient" | "deadline";
+  httpStatus?: number;
+  retryAfterMs?: number;
+  constructor(
+    message: string,
+    reason: "transient" | "deadline",
+    httpStatus?: number,
+    retryAfterMs?: number,
+  ) {
+    super(message);
+    this.name = "GeminiTransientError";
+    this.reason = reason;
+    this.httpStatus = httpStatus;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
 interface YouTubeVideoInfo {
   videoId: string;
   title: string;
@@ -446,6 +571,8 @@ interface QueueRow {
   user_id: string;
   url: string;
   push_token: string | null;
+  /** Auto re-queues so far (backlog #98); 0 on rows never re-queued. */
+  retry_count: number;
 }
 
 interface MovieItem {
@@ -484,6 +611,8 @@ type GeminiTitlesResult = {
   text: string | null;
   reason: "ok" | "transient" | "permanent" | "no_movies" | "deadline" | "unknown";
   httpStatus?: number;
+  /** Retry-After Gemini asked for (ms), when reported. */
+  retryAfterMs?: number;
 };
 
 async function callGeminiTitles(
@@ -514,6 +643,7 @@ async function callGeminiTitles(
       text: typeof titles === "string" && titles.trim() !== "" ? titles : null,
       reason,
       ...(typeof data?.status === "number" ? { httpStatus: data.status } : {}),
+      ...(typeof data?.retryAfterMs === "number" ? { retryAfterMs: data.retryAfterMs } : {}),
     };
   } catch {
     return { text: null, reason: "transient" };
@@ -552,11 +682,22 @@ async function processYouTubeRow(
     // Locked copy for the genuine "no movies" case. Any other failure
     // keeps the locked sentence but appends the reason (dashboard-only
     // row error, never user-facing copy) so the next outage is visible
-    // in the row instead of indistinguishable from no-movies.
+    // in the row instead of indistinguishable from no-movies. A transient
+    // / deadline failure throws structured (reason + status + Retry-After
+    // on the error) so run() can re-queue it instead of failing the row.
     const suffix = geminiResult.reason === "no_movies"
       ? ""
       : ` (gemini: ${geminiResult.reason}${geminiResult.httpStatus !== undefined ? `, HTTP ${geminiResult.httpStatus}` : ""})`;
-    throw new Error("Could not fetch any movie in this video." + suffix);
+    const message = "Could not fetch any movie in this video." + suffix;
+    if (geminiResult.reason === "transient" || geminiResult.reason === "deadline") {
+      throw new GeminiTransientError(
+        message,
+        geminiResult.reason,
+        geminiResult.httpStatus,
+        geminiResult.retryAfterMs,
+      );
+    }
+    throw new Error(message);
   }
   const matches = await bestMatches(geminiText, tmdbKey || undefined);
   // The same candidate list bestMatches ran internally: a Gemini title TMDB
@@ -717,7 +858,7 @@ async function run(): Promise<number> {
   const staleCutoff = new Date(Date.now() - STALE_PROCESSING_MS).toISOString();
   const { error: staleError } = await sb
     .from("fetch_queue")
-    .update({ status: "queued" })
+    .update({ status: "queued", retry_at: null })
     .eq("status", "processing")
     .lt("updated_at", staleCutoff)
     .or("url.like.%youtube.com%,url.like.%youtu.be%");
@@ -727,12 +868,17 @@ async function run(): Promise<number> {
 
   // Claim rows the app's local worker hasn't finished within the grace
   // window. YouTube-only in v1; everything else stays with the local worker.
+  // A re-queued row is only claimed once its retry time arrives
+  // (retry_at null = never re-queued, or cleared by the stale re-queue
+  // above). The retry count rides along for the re-queue cap in the catch.
   const graceCutoff = new Date(Date.now() - CLAIM_GRACE_MS).toISOString();
+  const nowIso = new Date().toISOString();
   const { data: rows, error } = await sb
     .from("fetch_queue")
-    .select("id,user_id,url,push_token")
+    .select("id,user_id,url,push_token,retry_count")
     .eq("status", "queued")
     .lt("created_at", graceCutoff)
+    .or(`retry_at.is.null,retry_at.lte.${nowIso}`)
     .or("url.like.%youtube.com%,url.like.%youtu.be%")
     .order("created_at", { ascending: true })
     .limit(MAX_ROWS_PER_RUN);
@@ -766,10 +912,33 @@ async function run(): Promise<number> {
         .eq("id", row.id);
       processed += 1;
     } catch (e) {
-      // No server-side retries: a failed row stays failed; the next cron
-      // run will not pick it up again.
+      // Transient Gemini failure (quota / outage / deadline): re-queue
+      // the row for an automatic retry instead of failing it (backlog
+      // #98, max 2 auto re-queues per row). The error text is kept on the
+      // row; the next run only claims it once retry_at arrives. At the
+      // cap — or for any non-transient failure — the row fails as before.
       const message = e instanceof Error && e.message ? e.message : "Something went wrong.";
-      await sb.from("fetch_queue").update({ status: "failed", error: message }).eq("id", row.id);
+      const retryCount = row.retry_count ?? 0;
+      if (e instanceof GeminiTransientError && retryCount < MAX_AUTO_RETRIES) {
+        const retryAtMs = computeRetryAt(e.reason, e.httpStatus, e.retryAfterMs, retryCount);
+        const { error: requeueError } = await sb
+          .from("fetch_queue")
+          .update({
+            status: "queued",
+            retry_at: new Date(retryAtMs).toISOString(),
+            retry_count: retryCount + 1,
+            retry_reason: e.reason,
+            retry_status: e.httpStatus ?? null,
+            error: message,
+          })
+          .eq("id", row.id);
+        if (requeueError) {
+          console.error(`process-queue: re-queue failed for ${row.id}: ${requeueError.message}`);
+          await sb.from("fetch_queue").update({ status: "failed", error: message }).eq("id", row.id);
+        }
+      } else {
+        await sb.from("fetch_queue").update({ status: "failed", error: message }).eq("id", row.id);
+      }
     }
   }
 

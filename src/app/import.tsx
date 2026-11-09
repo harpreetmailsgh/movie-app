@@ -16,6 +16,7 @@ import { useRecentVideos } from '../lib/recentVideos';
 import type { RecentVideoEntry } from '../lib/recentVideos';
 import { describeGeminiFailure } from '../lib/geminiDiagnostics';
 import type { GeminiFailureReason } from '../lib/gemini';
+import { computeRetryAt, formatRetryMessage } from '../lib/retrySchedule';
 
 const FIELD_BG = '#C7C7CC';
 const SEARCH_DEBOUNCE_MS = 500;
@@ -270,10 +271,27 @@ export default function ImportScreen() {
   // Guard ref so the effect never starts two items concurrently. processQueueItem
   // returns a result and never throws; the finally resets the guard regardless.
   const queueProcessingRef = useRef(false);
+  // Retry timer (backlog #98): when the earliest not-yet-due queued retry
+  // is within 60 min, this tick wakes the worker effect at that moment so
+  // an open app retries short waits without user action. Longer waits are
+  // the server's job (its cron claims the row when retry_at is due).
+  const [retryTick, setRetryTick] = useState(0);
+  useEffect(() => {
+    const now = Date.now();
+    const upcoming = queueItems
+      .filter((i) => i.status === 'queued' && i.retryAt && i.retryAt > now)
+      .map((i) => i.retryAt as number)
+      .sort((a, b) => a - b)[0];
+    if (upcoming === undefined || upcoming - now > 60 * 60_000) return;
+    const t = setTimeout(() => setRetryTick((v) => v + 1), upcoming - now);
+    return () => clearTimeout(t);
+  }, [queueItems]);
   useEffect(() => {
     if (queueProcessingRef.current) return;
+    // Not-yet-due retries wait: a re-queued row is only picked up once
+    // its retry time arrives (backlog #98).
     const next = queueItems
-      .filter((i) => i.status === 'queued')
+      .filter((i) => i.status === 'queued' && (!i.retryAt || i.retryAt <= Date.now()))
       .sort((a, b) => a.createdAt - b.createdAt)[0];
     if (!next) return;
     if (queueItems.some((i) => i.status === 'processing')) return;
@@ -309,6 +327,32 @@ export default function ImportScreen() {
           setFailedUrl(null);
           setFetchFailure(null);
           await removeItem(next.id);
+        } else if (
+          (result.failureReason === 'transient' || result.failureReason === 'deadline') &&
+          next.retryCount < 2
+        ) {
+          // Transient Gemini failure (quota / outage / deadline): re-queue
+          // for an automatic retry instead of failing (backlog #98, max 2
+          // auto re-queues per video). The row stays 'queued' with its
+          // retry time and message — NO Recent 'failed' entry, NO error
+          // card, and the item is NOT removed. The server mirrors it via
+          // updateItem (mirrorRetry), so its cron can retry it too.
+          const retryAt = computeRetryAt(
+            result.failureReason,
+            result.failureStatus,
+            result.failureRetryAfterMs,
+            next.retryCount,
+          );
+          const retryMessage = formatRetryMessage(result.failureReason, result.failureStatus, retryAt);
+          await updateItem(next.id, {
+            status: 'queued',
+            retryAt,
+            retryCount: next.retryCount + 1,
+            retryMessage,
+            error: null,
+            retryReason: result.failureReason,
+            retryStatus: result.failureStatus,
+          });
         } else {
           const error = result.error ?? 'Something went wrong.';
           // Mirror the failure BEFORE removing the item: updateItem with
@@ -350,7 +394,7 @@ export default function ImportScreen() {
         queueProcessingRef.current = false;
       }
     })();
-  }, [queueItems, updateItem, removeItem, settings.tmdbKey, importReel, addMovie, hasMovie, recordVideo]);
+  }, [queueItems, retryTick, updateItem, removeItem, settings.tmdbKey, importReel, addMovie, hasMovie, recordVideo]);
 
   const confirmClearVideos = () => {
     Alert.alert(

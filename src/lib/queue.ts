@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSupabase } from './supabase';
 import { getQueueIdentity } from './push';
+import { formatRetryMessage } from './retrySchedule';
+import type { GeminiFailureReason } from './gemini';
 
 export type QueueItemStatus = 'queued' | 'processing' | 'failed';
 
@@ -16,6 +18,12 @@ export type QueueItem = {
   error: string | null;
   /** Row id in the Supabase fetch_queue mirror, null when not mirrored. */
   supabaseId: string | null;
+  /** Automatic-retry state (backlog #98): when a transient Gemini failure
+   *  re-queues the video, the next attempt time (epoch ms), how many auto
+   *  re-queues have happened, and the Queue-row line shown for it. */
+  retryAt: number | null;
+  retryCount: number;
+  retryMessage: string | null;
   createdAt: number;
 };
 
@@ -38,6 +46,11 @@ function normalizeItem(raw: unknown): QueueItem {
     status: r.status === 'failed' ? 'failed' : 'queued',
     error: typeof r.error === 'string' ? r.error : null,
     supabaseId: typeof r.supabaseId === 'string' ? r.supabaseId : null,
+    // Old saves lack these keys entirely — default to "no retry scheduled".
+    // retryMessage normalizes with `||` (an empty string is no message).
+    retryAt: typeof r.retryAt === 'number' ? r.retryAt : null,
+    retryCount: typeof r.retryCount === 'number' ? r.retryCount : 0,
+    retryMessage: typeof r.retryMessage === 'string' ? r.retryMessage || null : null,
     createdAt: typeof r.createdAt === 'number' ? r.createdAt : Date.now(),
   };
 }
@@ -125,10 +138,107 @@ async function mirrorDone(supabaseId: string): Promise<void> {
   } catch { /* mirror is best-effort */ }
 }
 
+/**
+ * Mirror an automatic re-queue (backlog #98): row back to 'queued' with
+ * its retry time, count, reason, and Gemini status. Reads the row's
+ * current retry_count first and writes max(local, server) so a count the
+ * server set (its own re-queue while the app was closed) never regresses;
+ * falls back to the local count if the read fails.
+ */
+async function mirrorRetry(
+  supabaseId: string,
+  opts: { retryAtISO: string; retryCount: number; reason: string; status?: number },
+): Promise<void> {
+  try {
+    const sb = getSupabase();
+    if (!sb) return;
+    let count = opts.retryCount;
+    try {
+      const { data } = await sb
+        .from('fetch_queue')
+        .select('retry_count')
+        .eq('id', supabaseId)
+        .single();
+      const serverCount = (data as { retry_count?: unknown } | null)?.retry_count;
+      if (typeof serverCount === 'number') count = Math.max(count, serverCount);
+    } catch { /* read failed — fall back to the local count */ }
+    await sb
+      .from('fetch_queue')
+      .update({
+        status: 'queued',
+        retry_at: opts.retryAtISO,
+        retry_count: count,
+        retry_reason: opts.reason,
+        retry_status: opts.status ?? null,
+      })
+      .eq('id', supabaseId);
+  } catch { /* mirror is best-effort */ }
+}
+
+/**
+ * Mount merge (backlog #98): the server may have re-queued a row while
+ * the app was closed — pull the signed-in user's queued rows that carry
+ * a retry time and merge that state into the matching local items (by
+ * supabaseId), so the Queue row shows the retry message too. Rows with
+ * no matching local item are left alone (never resurrect a row the app
+ * already finished or removed).
+ */
+async function mergeServerRetries(items: QueueItem[]): Promise<QueueItem[]> {
+  try {
+    const sb = getSupabase();
+    const { userId } = getQueueIdentity();
+    if (!sb || !userId) return items;
+    const { data, error } = await sb
+      .from('fetch_queue')
+      .select('id,retry_at,retry_count,retry_reason,retry_status')
+      .eq('user_id', userId)
+      .eq('status', 'queued')
+      .not('retry_at', 'is', null);
+    if (error || !data) return items;
+    const rows = data as {
+      id?: unknown;
+      retry_at?: unknown;
+      retry_count?: unknown;
+      retry_reason?: unknown;
+      retry_status?: unknown;
+    }[];
+    let changed = false;
+    const next = items.map((item) => {
+      if (!item.supabaseId) return item;
+      const row = rows.find((r) => r.id === item.supabaseId);
+      if (!row || typeof row.retry_at !== 'string') return item;
+      const retryAt = Date.parse(row.retry_at);
+      if (Number.isNaN(retryAt)) return item;
+      changed = true;
+      return {
+        ...item,
+        retryAt,
+        retryCount: typeof row.retry_count === 'number' ? row.retry_count : item.retryCount,
+        retryMessage: formatRetryMessage(
+          typeof row.retry_reason === 'string' && row.retry_reason ? row.retry_reason : 'transient',
+          typeof row.retry_status === 'number' ? row.retry_status : undefined,
+          retryAt,
+        ),
+      };
+    });
+    return changed ? next : items;
+  } catch {
+    return items;
+  }
+}
+
 export interface QueueApi {
   items: QueueItem[];
   enqueue: (url: string) => Promise<QueueItem>;
-  updateItem: (id: string, patch: Partial<QueueItem>) => Promise<void>;
+  /**
+   * `retryReason` / `retryStatus` are mirror-only: they ride along when
+   * the patch re-queues an item (so mirrorRetry can write them to the
+   * server row) but are stripped before the patch hits the stored item.
+   */
+  updateItem: (
+    id: string,
+    patch: Partial<QueueItem> & { retryReason?: GeminiFailureReason; retryStatus?: number },
+  ) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
 }
 
@@ -166,19 +276,34 @@ export function useQueue(): QueueApi {
         if (idx >= 0) merged[idx] = item;
         else merged.push(item);
       }
-      await persist(merged);
+      // Server-re-queued rows (backlog #98) merge their retry state in;
+      // rows with no local item stay untouched.
+      const withServerRetries = await mergeServerRetries(merged);
+      await persist(withServerRetries);
     })();
     return () => { cancelled = true; };
   }, [persist]);
 
-  const updateItem = useCallback(async (id: string, patch: Partial<QueueItem>): Promise<void> => {
+  const updateItem = useCallback(async (
+    id: string,
+    patch: Partial<QueueItem> & { retryReason?: GeminiFailureReason; retryStatus?: number },
+  ): Promise<void> => {
+    const { retryReason, retryStatus, ...itemPatch } = patch;
     await persist(itemsRef.current.map((item) =>
-      item.id === id ? { ...item, ...patch } : item
+      item.id === id ? { ...item, ...itemPatch } : item
     ));
     // Supabase mirror (fire-and-forget, never rejects into the UI).
     const item = itemsRef.current.find((i) => i.id === id);
     if (item?.supabaseId) {
-      if (patch.status === 'processing') {
+      if (itemPatch.retryAt !== undefined && itemPatch.retryAt !== null && itemPatch.retryCount !== undefined) {
+        // Automatic re-queue (backlog #98): mirror the retry state.
+        void mirrorRetry(item.supabaseId, {
+          retryAtISO: new Date(itemPatch.retryAt).toISOString(),
+          retryCount: itemPatch.retryCount,
+          reason: retryReason ?? 'transient',
+          status: retryStatus,
+        });
+      } else if (patch.status === 'processing') {
         void mirrorClaim(item.supabaseId);
       } else if (patch.status === 'failed') {
         void mirrorFail(item.supabaseId, item.error);
@@ -202,6 +327,9 @@ export function useQueue(): QueueApi {
       status: 'queued',
       error: null,
       supabaseId: null,
+      retryAt: null,
+      retryCount: 0,
+      retryMessage: null,
       createdAt: Date.now(),
     };
     await persist([...itemsRef.current, item]);

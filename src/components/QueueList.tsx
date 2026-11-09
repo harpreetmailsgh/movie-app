@@ -43,6 +43,11 @@ function QueueRow({ item }: { item: QueueItem }) {
             {item.error}
           </Text>
         )}
+        {item.status === 'queued' && !!item.retryAt && !!item.retryMessage && (
+          <Text style={styles.resultRetry} numberOfLines={2}>
+            {item.retryMessage}
+          </Text>
+        )}
       </View>
       {item.status === 'queued' && <Text style={styles.statusQueued}>Queued</Text>}
       {item.status === 'processing' && (
@@ -85,6 +90,9 @@ const styles = StyleSheet.create({
   resultText: { flex: 1, marginLeft: 12, marginRight: 10 },
   resultTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
   resultError: { color: '#ff453a', fontSize: 12, marginTop: 4, lineHeight: 16 },
+  // Automatic-retry line (backlog #98): same position as the failed error
+  // line, muted white — the status word on the right stays "Queued".
+  resultRetry: { color: 'rgba(255,255,255,0.65)', fontSize: 12, marginTop: 4, lineHeight: 16 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   // Processing status + the thin bar directly under it. The bar is
   // right-aligned under the status text (same width as the status).

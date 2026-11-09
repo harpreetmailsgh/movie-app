@@ -10,8 +10,8 @@
 // (transient / deadline / permanent) — previously every failure came
 // back as a bare null and the caller could not tell them apart.
 //
-// One attempt per fetch: the server already retries up to 5x inside one
-// invocation (primary + 5 fallback attempts = up to 6 Gemini calls), so
+// One attempt per fetch: the server already retries up to 3x inside one
+// invocation (primary + 3 fallback attempts = up to 4 Gemini calls), so
 // client retries only multiply a rejecting upstream — one user fetch used
 // to fire up to 18 Gemini calls (3 client attempts x 6 server calls).
 // A definitive server answer (no_movies / permanent / deadline) costs

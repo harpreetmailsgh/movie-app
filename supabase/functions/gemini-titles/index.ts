@@ -8,8 +8,8 @@
 //
 // Resilience strategy: the primary model (gemini-flash-latest) gets ONE
 // fast-fail attempt (10s timeout) because its serving endpoint currently
-// hangs. The fallback model (gemini-3.5-flash-lite) gets up to 5 attempts with
-// retries on transient errors (1s -> 2s -> 4s -> 6s, plus jitter). A hard
+// hangs. The fallback model (gemini-3.5-flash-lite) gets up to 3 attempts with
+// retries on transient errors (1s -> 2s, plus jitter). A hard
 // 30s deadline caps the whole function from entry.
 
 const CORS_HEADERS = {
@@ -35,9 +35,9 @@ const PRIMARY_ATTEMPT_TIMEOUT_MS = 10_000;
 // Fallback attempts may take longer, but no single attempt may eat the
 // whole deadline budget.
 const FALLBACK_ATTEMPT_TIMEOUT_MS = 15_000;
-// Waits between fallback attempts (before attempts 2, 3, 4, 5). Jitter is
+// Waits between fallback attempts (before attempts 2, 3). Jitter is
 // added to each wait. Retry-After headers can extend these waits.
-const FALLBACK_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 6_000];
+const FALLBACK_RETRY_DELAYS_MS = [1_000, 2_000];
 const FALLBACK_MAX_ATTEMPTS = FALLBACK_RETRY_DELAYS_MS.length + 1;
 
 // Transient: retry the same model (primary never retries — one attempt).
@@ -262,7 +262,7 @@ async function extractTitles(apiKey: string, youtubeUrl: string): Promise<Extrac
   // Transient, permanent, or malformed on the primary: move on to fallback
   // (the primary is never retried — one attempt by design).
 
-  // Fallback model: up to 5 attempts with retries on transient errors.
+  // Fallback model: up to 3 attempts with retries on transient errors.
   let lastTransient: { retryAfterMs: number; httpStatus?: number } | null = null;
   for (let attempt = 1; attempt <= FALLBACK_MAX_ATTEMPTS; attempt++) {
     if (Date.now() >= deadlineMs) {
