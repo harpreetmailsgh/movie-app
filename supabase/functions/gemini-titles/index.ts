@@ -1,8 +1,10 @@
 // Supabase Edge Function: gemini-titles
-// POST { "youtubeUrl": string } -> { "titles": string | null }
+// POST { "youtubeUrl": string } -> { "titles": string | null, "reason": "ok" | "transient" | "permanent" | "no_movies" | "deadline", "status"?: number, "retryAfterMs"?: number }
 // Asks Gemini to list every movie title mentioned, shown, or discussed
 // in a YouTube video. Titles are returned as a single newline-joined
-// string (or null). Failures always return 200 { "titles": null }.
+// string (or null). Failures always return 200 with titles null plus a
+// `reason` saying why — the client must be able to tell "no movies in
+// this video" (no_movies) from "Gemini is down" (transient / deadline).
 //
 // Resilience strategy: the primary model (gemini-flash-latest) gets ONE
 // fast-fail attempt (10s timeout) because its serving endpoint currently
@@ -216,7 +218,26 @@ function titlesFromParts(parts: unknown[]): string | null {
   return titles.length > 0 ? titles.join("\n") : null;
 }
 
-async function extractTitles(apiKey: string, youtubeUrl: string): Promise<string | null> {
+/** Why a gemini-titles call ended the way it did. `ok` = titles returned;
+ * `no_movies` = Gemini answered NONE (the video genuinely contains no
+ * movies); `transient` = a retryable Gemini failure (429 / 5xx / timeout /
+ * network); `permanent` = a non-retryable Gemini failure (400 / 401 / 403 /
+ * 404 / malformed) or a bad request (invalid URL, missing key);
+ * `deadline` = the 30 s function budget ran out. The client needs this to
+ * tell "no movies in this video" from "Gemini is down" — previously every
+ * failure came back as a bare 200 { titles: null }. */
+export type GeminiFailureReason = "ok" | "transient" | "permanent" | "no_movies" | "deadline";
+
+export type ExtractResult = {
+  titles: string | null;
+  reason: GeminiFailureReason;
+  /** Last Gemini HTTP status seen, when one was observed. */
+  status?: number;
+  /** Longest Retry-After Gemini asked for, when one was given. */
+  retryAfterMs?: number;
+};
+
+async function extractTitles(apiKey: string, youtubeUrl: string): Promise<ExtractResult> {
   const deadlineMs = Date.now() + FUNCTION_DEADLINE_MS;
 
   // Primary model: exactly one attempt, fail fast.
@@ -229,18 +250,24 @@ async function extractTitles(apiKey: string, youtubeUrl: string): Promise<string
   );
   if (primary.status === "deadline") {
     console.log("[gemini-titles] primary deadline — returning null");
-    return null;
+    return { titles: null, reason: "deadline" };
   }
-  if (primary.status === "success") return primary.titles;
+  if (primary.status === "success") {
+    // A success with no titles is Gemini's NONE — genuinely no movies,
+    // not a failure. Thread that distinction out instead of collapsing
+    // it to a bare null.
+    return { titles: primary.titles, reason: primary.titles ? "ok" : "no_movies" };
+  }
   console.log(`[gemini-titles] primary ${PRIMARY_MODEL}: ${primary.status}${primary.status !== "success" && "httpStatus" in primary && primary.httpStatus !== undefined ? ` (HTTP ${primary.httpStatus})` : ""}${primary.status === "transient" && primary.failureKind ? ` (${primary.failureKind})` : ""} — falling back`);
   // Transient, permanent, or malformed on the primary: move on to fallback
   // (the primary is never retried — one attempt by design).
 
   // Fallback model: up to 5 attempts with retries on transient errors.
+  let lastTransient: { retryAfterMs: number; httpStatus?: number } | null = null;
   for (let attempt = 1; attempt <= FALLBACK_MAX_ATTEMPTS; attempt++) {
     if (Date.now() >= deadlineMs) {
       console.log("[gemini-titles] fallback deadline — returning null");
-      return null;
+      return { titles: null, reason: "deadline" };
     }
     const result = await attemptRequest(
       apiKey,
@@ -251,20 +278,33 @@ async function extractTitles(apiKey: string, youtubeUrl: string): Promise<string
     );
     if (result.status === "deadline") {
       console.log(`[gemini-titles] fallback ${FALLBACK_MODEL} attempt ${attempt}: deadline — returning null`);
-      return null;
+      return { titles: null, reason: "deadline" };
     }
-    if (result.status === "success") return result.titles;
-    console.log(`[gemini-titles] fallback ${FALLBACK_MODEL} attempt ${attempt}: ${result.status}${result.status !== "success" && "httpStatus" in result && result.httpStatus !== undefined ? ` (HTTP ${result.httpStatus})` : ""}${result.status === "transient" && result.failureKind ? ` (${result.failureKind})` : ""}${result.status === "transient" && result.retryAfterMs > 0 ? ` retry-after=${result.retryAfterMs}ms` : ""}`);
+    if (result.status === "success") {
+      return { titles: result.titles, reason: result.titles ? "ok" : "no_movies" };
+    }
+    if (result.status === "transient") {
+      lastTransient = { retryAfterMs: result.retryAfterMs, httpStatus: result.httpStatus };
+    }
     // Permanent or malformed: fail immediately, no retries.
     if (result.status === "permanent" || result.status === "malformed") {
       console.log(`[gemini-titles] fallback ${result.status} — returning null`);
-      return null;
+      return {
+        titles: null,
+        reason: "permanent",
+        ...(result.status === "permanent" && result.httpStatus !== undefined ? { status: result.httpStatus } : {}),
+      };
     }
     // Transient: honor Retry-After over the scheduled delay, add jitter,
     // then try again (unless this was the last attempt).
     if (attempt === FALLBACK_MAX_ATTEMPTS) {
       console.log(`[gemini-titles] fallback exhausted ${FALLBACK_MAX_ATTEMPTS} attempts — returning null`);
-      return null;
+      return {
+        titles: null,
+        reason: "transient",
+        ...(lastTransient?.httpStatus !== undefined ? { status: lastTransient.httpStatus } : {}),
+        ...(lastTransient && lastTransient.retryAfterMs > 0 ? { retryAfterMs: lastTransient.retryAfterMs } : {}),
+      };
     }
     const scheduledDelayMs = FALLBACK_RETRY_DELAYS_MS[attempt - 1];
     const delayMs = Math.max(addJitter(scheduledDelayMs), result.retryAfterMs);
@@ -273,7 +313,7 @@ async function extractTitles(apiKey: string, youtubeUrl: string): Promise<string
     const remainingMs = Math.max(0, deadlineMs - Date.now());
     await sleep(Math.min(delayMs, remainingMs));
   }
-  return null;
+  return { titles: null, reason: "transient" };
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -281,28 +321,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return new Response("ok", { headers: CORS_HEADERS });
   }
   if (req.method !== "POST") {
-    return jsonResponse({ titles: null });
+    return jsonResponse({ titles: null, reason: "permanent" });
   }
 
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return jsonResponse({ titles: null });
+    return jsonResponse({ titles: null, reason: "permanent" });
   }
 
   const youtubeUrl = (body as { youtubeUrl?: unknown } | null)?.youtubeUrl;
   if (!validYoutubeUrl(youtubeUrl)) {
-    return jsonResponse({ titles: null });
+    return jsonResponse({ titles: null, reason: "permanent" });
   }
 
   const apiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
   if (apiKey === "") {
-    return jsonResponse({ titles: null });
+    return jsonResponse({ titles: null, reason: "permanent" });
   }
 
   // Normalize to canonical watch form before Gemini: Shorts / youtu.be
   // forms may not fetch the same as watch form (see canonicalYouTubeUrl).
-  const titles = await extractTitles(apiKey, canonicalYouTubeUrl(youtubeUrl));
-  return jsonResponse({ titles });
+  const result = await extractTitles(apiKey, canonicalYouTubeUrl(youtubeUrl));
+  return jsonResponse(result);
 });
