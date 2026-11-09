@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator,
 } from 'react-native';
-import { FontAwesome6 } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import { useStore } from '../lib/store';
 import { searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
 import { posterUrl } from '../lib/types';
@@ -30,22 +30,27 @@ function RecentVideoRow({ entry, expanded, onToggle, onRetry }: {
   const [imgFailed, setImgFailed] = useState(false);
   const glyph = entry.status === 'success' ? '✓' : entry.status === 'partial' ? '⚠' : '✕';
   const glyphColor = entry.status === 'success' ? '#30d158' : entry.status === 'partial' ? '#ff9f0a' : '#ff453a';
+  const statusWord = entry.status === 'success' ? 'Added' : entry.status === 'partial' ? 'Some titles missing' : 'Failed';
+  const fetchedDate = new Date(entry.createdAt).toLocaleDateString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
   return (
     <View style={styles.recentRow}>
       <Pressable style={styles.recentHeader} onPress={onToggle}>
         {videoId && !imgFailed ? (
           <Image
             source={{ uri: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` }}
-            style={styles.thumb}
+            style={styles.videoThumb}
             onError={() => setImgFailed(true)}
           />
         ) : (
-          <ClapboardPoster style={styles.thumb} />
+          <ClapboardPoster style={styles.videoThumb} />
         )}
         <View style={styles.resultText}>
-          <Text style={styles.resultTitle} numberOfLines={1} ellipsizeMode="tail">
+          <Text style={styles.resultTitle} numberOfLines={2} ellipsizeMode="tail">
             {entry.videoTitle ?? entry.url}
           </Text>
+          <Text style={styles.resultDate}>{fetchedDate}</Text>
           {entry.status === 'failed' && !!entry.error ? (
             <Text style={styles.recentErrorSub} numberOfLines={2}>{entry.error}</Text>
           ) : (
@@ -54,7 +59,11 @@ function RecentVideoRow({ entry, expanded, onToggle, onRetry }: {
             </Text>
           )}
         </View>
-        <Text style={[styles.recentGlyph, { color: glyphColor }]}>{glyph}</Text>
+        <View style={styles.recentStatus}>
+          <Text style={[styles.recentGlyph, { color: glyphColor }]}>{glyph}</Text>
+          <Text style={[styles.recentStatusWord, { color: glyphColor }]}>{statusWord}</Text>
+          <Text style={styles.recentChevron}>{expanded ? '˄' : '˅'}</Text>
+        </View>
       </Pressable>
       {expanded && (
         <View style={styles.recentExpanded}>
@@ -99,9 +108,14 @@ export default function ImportScreen() {
   const [fetchResults, setFetchResults] = useState<{ title: string; unverified: boolean; caption?: string }[] | null>(null);
   /** Inline error card — shows the worker's error verbatim, in the results card's spot. */
   const [fetchError, setFetchError] = useState<string | null>(null);
+  /** URL behind the current fetch error, so the error card's Retry button
+   *  can re-enqueue it. Cleared on new link input and on success. */
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
 
   /** Fetch queue: paste/share links enqueue here; the worker loop below processes them one at a time. */
   const { items: queueItems, enqueue, updateItem, removeItem } = useQueue();
+  /** Any item currently processing — drives the "Finding the movies…" line. */
+  const isProcessing = queueItems.some((i) => i.status === 'processing');
 
   /** Recent videos (backlog #72): replaces the "Recently added" section. */
   const { videos: recentVideos, recordVideo, clearVideos } = useRecentVideos();
@@ -193,6 +207,17 @@ export default function ImportScreen() {
     setLink(text);
     setFetchResults(null);
     setFetchError(null);
+    setFailedUrl(null);
+  };
+
+  /** Reads the clipboard into the link field (Paste button). */
+  const pasteFromClipboard = async () => {
+    const text = await Clipboard.getStringAsync();
+    if (!text) return;
+    setLink(text);
+    setFetchResults(null);
+    setFetchError(null);
+    setFailedUrl(null);
   };
 
   /** Queue replaces the immediate-fetch path: Fetch tap enqueues the link. */
@@ -259,9 +284,13 @@ export default function ImportScreen() {
             status: result.results.some((r) => r.unverified) ? 'partial' : 'success',
             error: null,
           });
-          await removeItem(next.id);
+          // Results card is set BEFORE the queue row is removed, so both
+          // state updates flush in the same render — the row never vanishes
+          // leaving a gap before the card appears.
           setFetchResults(result.results.slice(0, 10));
           setFetchError(null);
+          setFailedUrl(null);
+          await removeItem(next.id);
         } else {
           const error = result.error ?? 'Something went wrong.';
           // Record first, then auto-dismiss — mirrors the success path.
@@ -272,9 +301,12 @@ export default function ImportScreen() {
             status: 'failed',
             error,
           });
-          await removeItem(next.id);
+          // Error card set before the row is removed — same no-gap ordering
+          // as the success path above.
           setFetchError(error);
           setFetchResults(null);
+          setFailedUrl(next.url);
+          await removeItem(next.id);
         }
       } finally {
         queueProcessingRef.current = false;
@@ -284,8 +316,8 @@ export default function ImportScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <View style={styles.section}>
-        <Text style={styles.heading}>🎬&nbsp; Add movie</Text>
+      <View style={[styles.section, styles.firstSection]}>
+        <Text style={styles.heading}>Search by title</Text>
         <View style={styles.sectionCard}>
           <TextInput
             style={styles.input}
@@ -339,12 +371,7 @@ export default function ImportScreen() {
       </View>
 
       <View style={styles.section}>
-        <View style={styles.headingRow}>
-          <Text style={styles.heading}>🔗&nbsp; Paste a link from</Text>
-          <View style={styles.headingIcons}>
-            <FontAwesome6 name="youtube" size={20} color="#FF0000" />
-          </View>
-        </View>
+        <Text style={styles.heading}>Paste a link from YouTube, TikTok, Facebook or Instagram</Text>
         <View style={styles.sectionCard}>
           <View style={styles.fetchRow}>
             <TextInput
@@ -358,19 +385,33 @@ export default function ImportScreen() {
               autoCorrect={false}
             />
             <Pressable
-              style={styles.fetchButton}
+              style={styles.pasteButton}
+              onPress={() => { void pasteFromClipboard(); }}
+            >
+              <Text style={styles.pasteButtonText}>Paste</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.fetchButton, !link.trim() && styles.fetchButtonDisabled]}
               onPress={submitLink}
               disabled={!link.trim()}
             >
               <Text style={styles.fetchButtonText}>Fetch</Text>
             </Pressable>
           </View>
-          <Text style={styles.body}>Paste a YouTube Short link to add a movie</Text>
+          <Text style={styles.body}>Paste a link from YouTube, TikTok, Facebook or Instagram to add a movie</Text>
+          {isProcessing && (
+            <View style={styles.progressRow}>
+              <ActivityIndicator size="small" color="#fff" />
+              <Text style={styles.progressText}>Finding the movies in this video…</Text>
+            </View>
+          )}
           <QueueList items={queueItems} />
           {fetchResults && fetchResults.length > 0 && (
             <View style={styles.resultsCard}>
               <Text style={styles.resultsHeader}>
-                {fetchResults.length === 1 ? '1 title fetched' : `${fetchResults.length} titles fetched`}
+                {fetchResults.length === 1
+                  ? 'Added to your watchlist — 1 title'
+                  : `Added to your watchlist — ${fetchResults.length} titles`}
               </Text>
               {fetchResults.map((r, i) => (
                 r.unverified ? (
@@ -379,9 +420,11 @@ export default function ImportScreen() {
                     <Text style={styles.unverifiedRawTitle}>{r.title}</Text>
                   </View>
                 ) : (
-                  <Text key={`${i}-${r.title}`} style={styles.resultsRow}>
-                    {i + 1}. {r.title}
-                  </Text>
+                  <Pressable key={`${i}-${r.title}`} onPress={() => router.push('/(tabs)')}>
+                    <Text style={styles.resultsRow}>
+                      {i + 1}. {r.title}
+                    </Text>
+                  </Pressable>
                 )
               ))}
             </View>
@@ -389,24 +432,31 @@ export default function ImportScreen() {
           {fetchError && (
             <View style={styles.errorCard}>
               <Text style={styles.errorText}>{fetchError}</Text>
+              {!!failedUrl && (
+                <Pressable style={styles.retryButton} onPress={() => { void enqueue(failedUrl); }}>
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </Pressable>
+              )}
             </View>
           )}
         </View>
       </View>
 
-      {recentVideos.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.headingRow}>
-            <Text style={styles.heading}>🕘&nbsp; Recent videos</Text>
-            <Pressable
-              style={styles.clearButton}
-              onPress={() => { setExpandedVideoId(null); void clearVideos(); }}
-            >
-              <Text style={styles.clearButtonText}>Clear</Text>
-            </Pressable>
-          </View>
-          <View style={styles.sectionCard}>
-            {recentVideos.map((entry) => (
+      <View style={styles.section}>
+        <View style={styles.headingRow}>
+          <Text style={styles.heading}>🕘&nbsp; Recent videos</Text>
+          <Pressable
+            style={styles.clearButton}
+            onPress={() => { setExpandedVideoId(null); void clearVideos(); }}
+          >
+            <Text style={styles.clearButtonText}>Clear</Text>
+          </Pressable>
+        </View>
+        <View style={styles.sectionCard}>
+          {recentVideos.length === 0 ? (
+            <Text style={styles.emptyText}>Videos you fetch will show up here.</Text>
+          ) : (
+            recentVideos.map((entry) => (
               <RecentVideoRow
                 key={entry.id}
                 entry={entry}
@@ -414,24 +464,26 @@ export default function ImportScreen() {
                 onToggle={() => setExpandedVideoId((cur) => (cur === entry.id ? null : entry.id))}
                 onRetry={(url) => { void enqueue(url); }}
               />
-            ))}
-          </View>
+            ))
+          )}
         </View>
-      )}
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  content: { padding: 20, paddingBottom: 48 },
+  content: { padding: 20, paddingTop: 8, paddingBottom: 48 },
   section: { marginTop: 20 },
+  // With the screen title dropped, the first section sits closer to the top.
+  firstSection: { marginTop: 4 },
   sectionCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
   divider: { height: 1, backgroundColor: '#2c2c2e', marginTop: 28 },
   heading: { color: '#fff', fontSize: 19, fontWeight: '800' },
   headingRow: { flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', gap: 10 },
-  headingIcons: { flexDirection: 'row', gap: 12, alignItems: 'center' },
-  body: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 21, marginTop: 12, marginBottom: 14 },
+  body: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 21, marginTop: 8, marginBottom: 10 },
+  emptyText: { color: 'rgba(255,255,255,0.55)', fontSize: 14, lineHeight: 21, marginTop: 4 },
   input: {
     backgroundColor: FIELD_BG, color: '#111', borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 13, fontSize: 15,
@@ -442,25 +494,39 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 20,
     paddingVertical: 13, alignItems: 'center', justifyContent: 'center',
   },
+  fetchButtonDisabled: { opacity: 0.35 },
   fetchButtonText: { color: '#000', fontSize: 15, fontWeight: '700' },
-  brandIcons: { flexDirection: 'row', gap: 20, marginTop: 12, marginBottom: 12, alignItems: 'center' },
+  pasteButton: {
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 13, alignItems: 'center', justifyContent: 'center',
+  },
+  pasteButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 10 },
+  progressText: { color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 21 },
   unverifiedRow: { marginTop: 10 },
   unverifiedTitle: { color: '#fff', fontSize: 14, fontWeight: '700', lineHeight: 22 },
   unverifiedRawTitle: { color: 'rgba(255,255,255,0.75)', fontSize: 14, lineHeight: 20, marginTop: 2 },
+  // Flat panels, not nested cards: the section card is the single card,
+  // so results/error sit behind a top divider instead of their own #1c1c1e box.
   resultsCard: {
-    backgroundColor: '#1c1c1e', borderRadius: 14, padding: 16, marginTop: 14,
+    marginTop: 14, paddingTop: 14,
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)',
   },
   resultsHeader: { color: '#fff', fontSize: 16, fontWeight: '800', marginBottom: 10 },
   resultsRow: { color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 24 },
   errorCard: {
-    backgroundColor: '#1c1c1e', borderRadius: 14, padding: 16, marginTop: 14,
+    marginTop: 14, paddingTop: 14,
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)',
   },
   errorText: { color: '#ff453a', fontSize: 14, lineHeight: 21 },
   recentRow: {
-    backgroundColor: '#1c1c1e', borderRadius: 14, padding: 10, marginTop: 10,
+    paddingVertical: 10, marginTop: 4,
   },
   recentHeader: { flexDirection: 'row', alignItems: 'center' },
-  recentGlyph: { fontSize: 18, fontWeight: '800', marginRight: 4 },
+  recentStatus: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 8 },
+  recentStatusWord: { fontSize: 13, fontWeight: '700' },
+  recentChevron: { color: 'rgba(255,255,255,0.55)', fontSize: 14, fontWeight: '700' },
+  recentGlyph: { fontSize: 18, fontWeight: '800' },
   recentErrorSub: { color: '#ff453a', fontSize: 13, marginTop: 4, lineHeight: 18 },
   recentExpanded: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)' },
   retryButton: {
@@ -478,14 +544,18 @@ const styles = StyleSheet.create({
   },
   clearButtonText: { color: '#ff453a', fontSize: 14, fontWeight: '700' },
   loader: { marginTop: 16 },
+  // Flat rows: transparent, no radius — the section card is the single card.
   result: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c1e',
-    borderRadius: 14, padding: 10, marginTop: 10,
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, marginTop: 4,
   },
   thumb: { width: 44, height: 66, borderRadius: 8, backgroundColor: '#2c2c2e' },
+  // Landscape 4:3 video thumb to match hqdefault.jpg (480x360) — no portrait crop.
+  videoThumb: { width: 88, height: 66, borderRadius: 8, backgroundColor: '#2c2c2e' },
   thumbFallback: { alignItems: 'center', justifyContent: 'center' },
   resultText: { flex: 1, marginLeft: 12 },
   resultTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  resultDate: { color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 4 },
   resultSub: { color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 4 },
   addPlus: { color: '#30d158', fontSize: 24, fontWeight: '700', marginRight: 6 },
 });
