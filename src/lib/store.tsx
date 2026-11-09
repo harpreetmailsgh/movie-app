@@ -108,6 +108,8 @@ interface Store {
   deleteMovie: (id: string) => void;
   updateMovie: (id: string, patch: Partial<Movie>) => void;
   addMovie: (m: Omit<Movie, 'id' | 'dateAdded'>) => void;
+  /** True when the library already holds this title (TMDB id or title key). */
+  hasMovie: (m: { title: string; year: number; mediaType: string; tmdbID: number }) => boolean;
   importReel: (url: string) => Promise<ReelImportOutcome>;
   revalidateTitle: (id: string, titleOverride?: string) => Promise<void>;
   addTestMovies: (count: number) => Promise<number>;
@@ -443,6 +445,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     void recordWatchlistSave();
   }, [persist]);
 
+  /** Same identity check as importReel's dedupe (TMDB id, else title/year/
+   *  type, plus the loose title key): a retry after the server already
+   *  added these titles must not add them a second time locally. */
+  const hasMovie = useCallback((m: { title: string; year: number; mediaType: string; tmdbID: number }) => {
+    const keys = new Set(allKeys(m.title, m.year, m.mediaType, m.tmdbID));
+    return moviesRef.current.some((lib) =>
+      allKeys(lib.title, lib.year, lib.mediaType, lib.tmdbID).some((k) => keys.has(k))
+    );
+  }, []);
+
   /** Adds `count` random well-known movies to the Inbox (for testing the deck).
    *  Resolves titles through the keyless search in small parallel batches and
    *  adds everything in a single persist. Returns how many were added. */
@@ -762,10 +774,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<Store>(() => ({
     movies, ready, settings, importing, importMessage, seedingPosters, syncState, lastSyncAt,
-    moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary,
+    moveMovie, deleteMovie, updateMovie, addMovie, hasMovie, addTestMovies, clearLibrary,
     clearWatchlist, clearSeen,
     importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setGuideSeen, setPrivacySeen, replayGuide,
-  }), [movies, ready, settings, importing, importMessage, seedingPosters, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setGuideSeen, setPrivacySeen, replayGuide]);
+  }), [movies, ready, settings, importing, importMessage, seedingPosters, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, hasMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setGuideSeen, setPrivacySeen, replayGuide]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -95,7 +95,7 @@ function RecentVideoRow({ entry, expanded, onToggle, onRetry }: {
 }
 
 export default function ImportScreen() {
-  const { importReel, settings, addMovie } = useStore();
+  const { importReel, settings, addMovie, hasMovie } = useStore();
   // Deep link from the iOS share extension: movierecommender://import?sharedUrl=...
   const { sharedUrl } = useLocalSearchParams<{ sharedUrl?: string }>();
   /** One link field for YouTube — paste a YouTube link to add a movie.
@@ -259,6 +259,7 @@ export default function ImportScreen() {
           tmdbKey: settings.tmdbKey,
           importReel,
           addMovie,
+          hasMovie,
         });
         // Rider (backlog #70): write the worker-fetched video title back so
         // QueueRow shows the title instead of the raw URL.
@@ -302,7 +303,7 @@ export default function ImportScreen() {
         queueProcessingRef.current = false;
       }
     })();
-  }, [queueItems, updateItem, removeItem, settings.tmdbKey, importReel, addMovie, recordVideo]);
+  }, [queueItems, updateItem, removeItem, settings.tmdbKey, importReel, addMovie, hasMovie, recordVideo]);
 
   const confirmClearVideos = () => {
     Alert.alert(

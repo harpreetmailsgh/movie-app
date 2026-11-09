@@ -30,6 +30,10 @@ export type WorkerDeps = {
     savedForReview: { title: string; caption: string }[];
   }>;
   addMovie: (m: any) => void;
+  /** Library already-have check (store.hasMovie): skips the add when the
+   *  title is already in the library — e.g. a retry after the server
+   *  already added it — while still reporting it in the results. */
+  hasMovie?: (m: { title: string; year: number; mediaType: string; tmdbID: number }) => boolean;
 };
 
 // Same iPhone Safari User-Agent pattern as fetchMp4Url in lib/frameOcr.ts.
@@ -147,13 +151,17 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
     : await bestMatchKeyless(info.title);
   if (match) {
     const e = await enrichMatch(match, deps.tmdbKey);
-    deps.addMovie({
-      title: match.title, year: match.year, mediaType: match.mediaType, genres: e.genres,
-      overview: e.overview, posterPath: match.posterPath, reelURL: target,
-      caption, notes: '', status: 'watchlist', tmdbID: match.tmdbID, imdbRating: e.imdbRating,
-      originalLanguage: match.originalLanguage, cast: e.cast,
-      needsReview: false,
-    });
+    // Already-have: report the title but don't add a duplicate (a retry
+    // after the server already added it lands here).
+    if (!deps.hasMovie?.({ title: match.title, year: match.year, mediaType: match.mediaType, tmdbID: match.tmdbID })) {
+      deps.addMovie({
+        title: match.title, year: match.year, mediaType: match.mediaType, genres: e.genres,
+        overview: e.overview, posterPath: match.posterPath, reelURL: target,
+        caption, notes: '', status: 'watchlist', tmdbID: match.tmdbID, imdbRating: e.imdbRating,
+        originalLanguage: match.originalLanguage, cast: e.cast,
+        needsReview: false,
+      });
+    }
     return { ok: true, results: [{ title: match.title, unverified: false }], videoTitle };
   }
   // oEmbed title matched nothing — fall back to Gemini: ask which movie
@@ -186,21 +194,25 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
       if (match) {
         usedMatches.add(match);
         const e = await enrichMatch(match, deps.tmdbKey);
-        deps.addMovie({
-          title: match.title, year: match.year, mediaType: match.mediaType, genres: e.genres,
-          overview: e.overview, posterPath: match.posterPath, reelURL: target,
-          caption, notes: '', status: 'watchlist', tmdbID: match.tmdbID, imdbRating: e.imdbRating,
-          originalLanguage: match.originalLanguage, cast: e.cast,
-          needsReview: false,
-        });
+        if (!deps.hasMovie?.({ title: match.title, year: match.year, mediaType: match.mediaType, tmdbID: match.tmdbID })) {
+          deps.addMovie({
+            title: match.title, year: match.year, mediaType: match.mediaType, genres: e.genres,
+            overview: e.overview, posterPath: match.posterPath, reelURL: target,
+            caption, notes: '', status: 'watchlist', tmdbID: match.tmdbID, imdbRating: e.imdbRating,
+            originalLanguage: match.originalLanguage, cast: e.cast,
+            needsReview: false,
+          });
+        }
         results.push({ title: match.title, unverified: false });
       } else {
-        deps.addMovie({
-          title: candidate, year: 0, mediaType: 'movie', genres: [],
-          overview: '', posterPath: '', reelURL: target,
-          caption, notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
-          originalLanguage: '', cast: [], needsReview: true,
-        });
+        if (!deps.hasMovie?.({ title: candidate, year: 0, mediaType: 'movie', tmdbID: 0 })) {
+          deps.addMovie({
+            title: candidate, year: 0, mediaType: 'movie', genres: [],
+            overview: '', posterPath: '', reelURL: target,
+            caption, notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
+            originalLanguage: '', cast: [], needsReview: true,
+          });
+        }
         results.push({ title: candidate, unverified: true, caption });
       }
     }
