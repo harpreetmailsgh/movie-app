@@ -237,8 +237,26 @@ function FeedbackModal({ visible, onClose }: { visible: boolean; onClose: () => 
 
 export default function SettingsScreen() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const { clearWatchlist, clearSeen, replayGuide } = useStore();
+  const { clearWatchlist, clearSeen, replayGuide, restoreFromBackup, movies, syncState, lastSyncAt, tombstoneCount, lastEmptyBreadcrumb } = useStore();
+  const { session } = useAuth();
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
+
+  const onRestoreFromBackup = () => {
+    setRestoring(true);
+    setRestoreMsg(null);
+    void restoreFromBackup().then((n) => {
+      setRestoring(false);
+      setRestoreMsg(
+        n < 0
+          ? 'Couldn’t reach the backup — check your connection and try again.'
+          : n === 0
+            ? 'Backup has no movies this phone doesn’t already have.'
+            : `Restored ${n} movie${n === 1 ? '' : 's'} from your backup.`,
+      );
+    });
+  };
 
   // Share-extension diagnostics: read the on-phone extension log and
   // open the share sheet so it can be copied or sent. Empty in Expo Go
@@ -282,6 +300,14 @@ export default function SettingsScreen() {
 
       <View style={[styles.accountBox, styles.section]}>
         <Text style={styles.heading}>Library</Text>
+        <Pressable
+          style={[styles.feedbackRow, restoring && styles.authBtnDisabled]}
+          onPress={onRestoreFromBackup}
+          disabled={restoring}
+        >
+          <Text style={styles.feedbackText}>{restoring ? 'Restoring…' : 'Restore from backup'}</Text>
+        </Pressable>
+        {restoreMsg && <Text style={styles.dim}>{restoreMsg}</Text>}
         <View style={styles.clearRow}>
           <Pressable style={[styles.feedbackRow, styles.clearBtn]} onPress={() => confirmClear('watchlist')}>
             <Text style={styles.dangerText}>Clear Watchlist</Text>
@@ -316,6 +342,20 @@ export default function SettingsScreen() {
 
       <View style={[styles.accountBox, styles.section]}>
         <Text style={styles.heading}>Diagnostics</Text>
+        <Text style={styles.dim}>
+          Movies: {movies.length} ({movies.filter((m) => m.status === 'watchlist').length} watchlist · {movies.filter((m) => m.status === 'seen').length} seen)
+        </Text>
+        <Text style={styles.dim}>
+          Last backup: {lastSyncAt ? new Date(lastSyncAt).toLocaleString() : '—'}
+        </Text>
+        <Text style={styles.dim}>Sync: {syncState}</Text>
+        <Text style={styles.dim}>
+          User: {session?.user?.id ? `${session.user.id.slice(0, 8)}…` : 'not signed in'}
+        </Text>
+        <Text style={styles.dim}>Deleted (tombstones): {tombstoneCount}</Text>
+        {lastEmptyBreadcrumb && (
+          <Text style={styles.dim}>Last library emptied: {lastEmptyBreadcrumb}</Text>
+        )}
         <Pressable style={styles.feedbackRow} onPress={() => { void showShareLog(); }}>
           <Text style={styles.feedbackText}>Share-extension log</Text>
         </Pressable>

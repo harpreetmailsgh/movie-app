@@ -156,6 +156,18 @@ export async function addDeletedId(cacheId: number): Promise<void> {
   } catch { /* ignore */ }
 }
 
+/** Drop tombstones for the given ids — used by Restore from backup, so
+ *  movies restored from the cloud aren't filtered out again by the next
+ *  pull (a mistaken Clear tombstones + deletes server rows, and without
+ *  this the restore could never bring them back). */
+export async function removeDeletedIds(cacheIds: number[]): Promise<void> {
+  try {
+    const drop = new Set(cacheIds);
+    const ids = (await getDeletedIds()).filter((id) => !drop.has(id));
+    await AsyncStorage.setItem(DELETED_KEY, JSON.stringify(ids));
+  } catch { /* ignore */ }
+}
+
 export async function getLastSyncAt(): Promise<number | null> {
   try {
     const raw = await AsyncStorage.getItem(LAST_SYNC_KEY);

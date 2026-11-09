@@ -10,13 +10,15 @@ import { useAuth } from './auth';
 import { getSupabase } from './supabase';
 import {
   cacheIdFor, pushLibrary, pullLibrary, deleteRemoteMovie,
-  remoteToMovie, getDeletedIds, addDeletedId, getLastSyncAt,
+  remoteToMovie, getDeletedIds, addDeletedId, removeDeletedIds, getLastSyncAt,
 } from './sync';
 import { recordWatchlistSave } from './reviewPrompt';
 
 const MOVIES_KEY = 'movies.v1';
 const SETTINGS_KEY = 'settings.v1';
 const DETAIL_BACKFILL_KEY = 'detail-backfill.v1';
+// Last time persist([]) emptied a non-empty library (diagnostic breadcrumb).
+const EMPTY_BREADCRUMB_KEY = 'movies.emptyBreadcrumb.v1';
 // First-launch seed enrichment never traps the user on the loader: the
 // Watchlist falls back to the deck (poster fallbacks) after this long.
 const SEED_ENRICH_TIMEOUT_MS = 30000;
@@ -104,6 +106,18 @@ interface Store {
   seedingPosters: boolean;
   syncState: 'idle' | 'syncing' | 'error';
   lastSyncAt: number | null;
+  /** How many delete-tombstones are held (pull filters these out). */
+  tombstoneCount: number;
+  /** Last time the library went from non-empty to empty, or null. */
+  lastEmptyBreadcrumb: string | null;
+  /**
+   * Force-pull the cloud library and merge anything missing locally,
+   * bypassing the once-per-launch sync guard. Drops tombstones for the
+   * restored movies so a mistaken Clear can actually be undone.
+   * Returns how many movies were restored, or -1 when the cloud
+   * couldn't be reached / there is no session.
+   */
+  restoreFromBackup: () => Promise<number>;
   moveMovie: (id: string, status: EntryStatus) => void;
   deleteMovie: (id: string) => void;
   updateMovie: (id: string, patch: Partial<Movie>) => void;
@@ -148,6 +162,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [seedingPosters, setSeedingPosters] = useState(false);
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
+  const [tombstoneCount, setTombstoneCount] = useState(0);
+  const [lastEmptyBreadcrumb, setLastEmptyBreadcrumb] = useState<string | null>(null);
   const { session, ready: authReady } = useAuth();
   const moviesRef = useRef<Movie[]>([]);
   const sessionRef = useRef<string | null>(null);
@@ -245,6 +261,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { moviesRef.current = movies; }, [movies]);
   useEffect(() => { sessionRef.current = session?.user?.id ?? null; }, [session]);
   useEffect(() => { getLastSyncAt().then(setLastSyncAt); }, []);
+  useEffect(() => { getDeletedIds().then((ids) => setTombstoneCount(ids.length)); }, []);
+  useEffect(() => {
+    AsyncStorage.getItem(EMPTY_BREADCRUMB_KEY).then((v) => { if (v) setLastEmptyBreadcrumb(v); }).catch(() => {});
+  }, []);
 
   /** Debounced cloud push after any local change (upsert — safe to repeat). */
   const schedulePush = useCallback(() => {
@@ -262,7 +282,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }, 2000);
   }, []);
 
-  const persist = useCallback(async (next: Movie[]) => {
+  const persist = useCallback(async (next: Movie[], caller = 'unknown') => {
+    // Breadcrumb: the library going from non-empty to empty is the event
+    // a future wipe investigation needs — log it and persist a stamp
+    // naming the caller, so a silent emptying is provable after the fact.
+    if (next.length === 0 && moviesRef.current.length > 0) {
+      const stamp = `${new Date().toISOString()} — library went from ${moviesRef.current.length} movies to empty (caller: ${caller})`;
+      console.warn(`[store] persist([]) on non-empty library: ${stamp}`);
+      setLastEmptyBreadcrumb(stamp);
+      try { await AsyncStorage.setItem(EMPTY_BREADCRUMB_KEY, stamp); } catch { /* ignore */ }
+    }
     // Chain the ref synchronously so rapid back-to-back calls (e.g. the
     // import worker's addMovie loop) each build on the previous call's
     // result instead of the same stale render closure. The [movies] effect
@@ -274,6 +303,39 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } catch { /* storage full etc. — keep in-memory copy */ }
     schedulePush();
   }, [schedulePush]);
+
+  /**
+   * Restore from backup (Settings → Library): force-pull the cloud
+   * library and merge anything missing locally, bypassing the
+   * once-per-launch `syncedUser` guard. Tombstones for restored movies
+   * are dropped first — otherwise the next pull filters them out again
+   * and a mistaken Clear can never be undone by sync.
+   */
+  const restoreFromBackup = useCallback(async (): Promise<number> => {
+    const userId = sessionRef.current;
+    if (!userId || !getSupabase()) return -1;
+    setSyncState('syncing');
+    try {
+      const remote = await pullLibrary(userId);
+      const localIds = new Set(moviesRef.current.map(cacheIdFor));
+      const additions = remote
+        .filter((r) => !localIds.has(r.tmdb_id))
+        .map(remoteToMovie);
+      if (additions.length > 0) {
+        await removeDeletedIds(additions.map((m) => cacheIdFor(m)));
+        await persist([...additions, ...moviesRef.current], 'restoreFromBackup');
+        setTombstoneCount((await getDeletedIds()).length);
+      }
+      // This pull counts as the launch sync — don't re-run it.
+      syncedUser.current = userId;
+      setLastSyncAt(Date.now());
+      setSyncState('idle');
+      return additions.length;
+    } catch {
+      setSyncState('error');
+      return -1;
+    }
+  }, [persist]);
 
   const backfilledOnce = useRef(false);
 
@@ -390,40 +452,48 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addDeletedId(cacheId);
       if (userId) deleteRemoteMovie(userId, cacheId).catch(() => {});
     }
-    persist([]);
+    setTombstoneCount((c) => c + movies.length);
+    persist([], 'clearLibrary');
   }, [movies, persist]);
 
   const clearWatchlist = useCallback(() => {
     const userId = sessionRef.current;
+    let cleared = 0;
     for (const m of movies) {
       if (m.status !== 'watchlist') continue;
       // Tombstone each movie so a later cloud pull doesn't resurrect them.
       const cacheId = cacheIdFor(m);
       addDeletedId(cacheId);
       if (userId) deleteRemoteMovie(userId, cacheId).catch(() => {});
+      cleared += 1;
     }
-    persist(movies.filter((m) => m.status !== 'watchlist'));
+    setTombstoneCount((c) => c + cleared);
+    persist(movies.filter((m) => m.status !== 'watchlist'), 'clearWatchlist');
   }, [movies, persist]);
 
   const clearSeen = useCallback(() => {
     const userId = sessionRef.current;
+    let cleared = 0;
     for (const m of movies) {
       if (m.status !== 'seen') continue;
       // Tombstone each movie so a later cloud pull doesn't resurrect them.
       const cacheId = cacheIdFor(m);
       addDeletedId(cacheId);
       if (userId) deleteRemoteMovie(userId, cacheId).catch(() => {});
+      cleared += 1;
     }
-    persist(movies.filter((m) => m.status !== 'seen'));
+    setTombstoneCount((c) => c + cleared);
+    persist(movies.filter((m) => m.status !== 'seen'), 'clearSeen');
   }, [movies, persist]);
 
   const deleteMovie = useCallback((id: string) => {
     const m = movies.find((x) => x.id === id);
-    persist(movies.filter((x) => x.id !== id));
+    persist(movies.filter((x) => x.id !== id), 'deleteMovie');
     if (m) {
       // Remember the delete so a later cloud pull doesn't resurrect the movie.
       const cacheId = cacheIdFor(m);
       addDeletedId(cacheId);
+      setTombstoneCount((c) => c + 1);
       if (sessionRef.current) {
         deleteRemoteMovie(sessionRef.current, cacheId).catch(() => {});
       }
@@ -774,10 +844,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<Store>(() => ({
     movies, ready, settings, importing, importMessage, seedingPosters, syncState, lastSyncAt,
+    tombstoneCount, lastEmptyBreadcrumb, restoreFromBackup,
     moveMovie, deleteMovie, updateMovie, addMovie, hasMovie, addTestMovies, clearLibrary,
     clearWatchlist, clearSeen,
     importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setGuideSeen, setPrivacySeen, replayGuide,
-  }), [movies, ready, settings, importing, importMessage, seedingPosters, syncState, lastSyncAt, moveMovie, deleteMovie, updateMovie, addMovie, hasMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setGuideSeen, setPrivacySeen, replayGuide]);
+  }), [movies, ready, settings, importing, importMessage, seedingPosters, syncState, lastSyncAt, tombstoneCount, lastEmptyBreadcrumb, restoreFromBackup, moveMovie, deleteMovie, updateMovie, addMovie, hasMovie, addTestMovies, clearLibrary, clearWatchlist, clearSeen, importReel, revalidateTitle, setTmdbKey, playTrailer, setCardAnimation, setDeckStyle, setWatchlistView, setTrendingView, setSeenView, cycleToBack, enrichLibrary, setGuideSeen, setPrivacySeen, replayGuide]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
