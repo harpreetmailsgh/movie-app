@@ -15,9 +15,7 @@
       },
       "channel": "production"
     },
-    "production": {
-      "autoIncrement": true
-    }
+    "production": {}
   },
   "cli": {
     "version": ">= 16.0.0"
