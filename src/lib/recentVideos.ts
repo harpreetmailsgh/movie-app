@@ -106,12 +106,24 @@ export function useRecentVideos(): {
   }, []);
 
   // Load persisted history on mount.
+  // A share/record can land before this read resolves — merge the loaded
+  // snapshot with the live list (same #89 pattern as the fetch queue) so
+  // a resolving load never overwrites live entries with a stale snapshot.
+  // Live entries win on id clash (they are newer). And a loaded snapshot
+  // that is empty must never wipe a non-empty live list (or its storage).
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const loaded = await loadVideos();
       if (cancelled) return;
-      await persist(loaded);
+      if (loaded.length === 0 && videosRef.current.length > 0) return;
+      const merged = [...loaded];
+      for (const entry of videosRef.current) {
+        const idx = merged.findIndex((m) => m.id === entry.id);
+        if (idx >= 0) merged[idx] = entry;
+        else merged.push(entry);
+      }
+      await persist(merged);
     })();
     return () => { cancelled = true; };
   }, [persist]);
