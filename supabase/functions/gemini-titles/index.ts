@@ -80,9 +80,9 @@ function parseRetryAfterMs(res: Response): number {
 
 type AttemptResult =
   | { status: "success"; titles: string | null }
-  | { status: "transient"; retryAfterMs: number }
-  | { status: "permanent" }
-  | { status: "malformed" }
+  | { status: "transient"; retryAfterMs: number; httpStatus?: number; errorExcerpt?: string; failureKind?: "timeout" | "network" }
+  | { status: "permanent"; httpStatus?: number; errorExcerpt?: string }
+  | { status: "malformed"; httpStatus?: number }
   | { status: "deadline" };
 
 // One request to one model with its own timeout. Fresh AbortController per
@@ -125,16 +125,34 @@ async function attemptRequest(
     });
 
     if (!res.ok) {
-      // Release the connection before retrying/failing over.
-      await res.body?.cancel().catch(() => {});
+      // Read the error body (bounded) BEFORE releasing the connection:
+      // Gemini's error body carries the quota/reset detail (e.g. "Quota
+      // exceeded…", retryDelay) that decides the remedy (429 vs 5xx).
+      // Previously the body was cancelled unread and only the category
+      // "transient" survived, so no log could ever say 429 vs 5xx.
+      const retryAfterMs = parseRetryAfterMs(res);
+      let errorExcerpt = "";
+      try {
+        const bodyText = await res.text();
+        errorExcerpt = bodyText.slice(0, 500);
+      } catch {
+        // Body unreadable — keep the status, drop the excerpt.
+      }
+      console.log(
+        `[gemini-titles] ${model}: HTTP ${res.status}` +
+          ` retry-after=${retryAfterMs}ms` +
+          (errorExcerpt ? ` body=${JSON.stringify(errorExcerpt.slice(0, 200))}` : ""),
+      );
       if (Date.now() >= deadlineMs) return { status: "deadline" };
       if (TRANSIENT_STATUSES.has(res.status)) {
-        return { status: "transient", retryAfterMs: parseRetryAfterMs(res) };
+        return { status: "transient", retryAfterMs, httpStatus: res.status, errorExcerpt };
       }
-      if (PERMANENT_STATUSES.has(res.status)) return { status: "permanent" };
+      if (PERMANENT_STATUSES.has(res.status)) {
+        return { status: "permanent", httpStatus: res.status, errorExcerpt };
+      }
       // Any other status: don't retry, but don't treat it as success —
       // fail over to the next model.
-      return { status: "permanent" };
+      return { status: "permanent", httpStatus: res.status, errorExcerpt };
     }
 
     const data: unknown = await res.json();
@@ -142,12 +160,16 @@ async function attemptRequest(
       ?.candidates?.[0]?.content?.parts;
     // A 200 with a malformed body is a contract issue, not transient —
     // never retry it. The fallback model gets its own chance.
-    if (!Array.isArray(parts)) return { status: "malformed" };
+    if (!Array.isArray(parts)) return { status: "malformed", httpStatus: res.status };
     return { status: "success", titles: titlesFromParts(parts) };
-  } catch {
-    // Includes per-attempt timeouts (abort) and network errors.
+  } catch (e) {
+    // Timeout vs network are different failures and used to return an
+    // identical "transient" — distinguish them so the log can tell a
+    // hanging endpoint (AbortError) from a broken connection.
+    const failureKind = e instanceof Error && e.name === "AbortError" ? "timeout" : "network";
+    console.log(`[gemini-titles] ${model}: attempt error ${failureKind}`);
     if (Date.now() >= deadlineMs) return { status: "deadline" };
-    return { status: "transient", retryAfterMs: 0 };
+    return { status: "transient", retryAfterMs: 0, failureKind };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -210,7 +232,7 @@ async function extractTitles(apiKey: string, youtubeUrl: string): Promise<string
     return null;
   }
   if (primary.status === "success") return primary.titles;
-  console.log(`[gemini-titles] primary ${PRIMARY_MODEL}: ${primary.status} — falling back`);
+  console.log(`[gemini-titles] primary ${PRIMARY_MODEL}: ${primary.status}${primary.status !== "success" && "httpStatus" in primary && primary.httpStatus !== undefined ? ` (HTTP ${primary.httpStatus})` : ""}${primary.status === "transient" && primary.failureKind ? ` (${primary.failureKind})` : ""} — falling back`);
   // Transient, permanent, or malformed on the primary: move on to fallback
   // (the primary is never retried — one attempt by design).
 
@@ -232,7 +254,7 @@ async function extractTitles(apiKey: string, youtubeUrl: string): Promise<string
       return null;
     }
     if (result.status === "success") return result.titles;
-    console.log(`[gemini-titles] fallback ${FALLBACK_MODEL} attempt ${attempt}: ${result.status}`);
+    console.log(`[gemini-titles] fallback ${FALLBACK_MODEL} attempt ${attempt}: ${result.status}${result.status !== "success" && "httpStatus" in result && result.httpStatus !== undefined ? ` (HTTP ${result.httpStatus})` : ""}${result.status === "transient" && result.failureKind ? ` (${result.failureKind})` : ""}${result.status === "transient" && result.retryAfterMs > 0 ? ` retry-after=${result.retryAfterMs}ms` : ""}`);
     // Permanent or malformed: fail immediately, no retries.
     if (result.status === "permanent" || result.status === "malformed") {
       console.log(`[gemini-titles] fallback ${result.status} — returning null`);
