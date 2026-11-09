@@ -182,6 +182,14 @@ export function useQueue(): QueueApi {
         void mirrorClaim(item.supabaseId);
       } else if (patch.status === 'failed') {
         void mirrorFail(item.supabaseId, item.error);
+      } else if (patch.supabaseId && item.status === 'processing') {
+        // Fresh enqueue path: mirrorInsert lands after the worker already
+        // marked the item 'processing' (the status patch fired while
+        // supabaseId was still null, so no claim ran). Claiming on the
+        // supabaseId patch closes that window — a locally-processing row
+        // must read 'processing' in Supabase, or the server can claim it
+        // at created_at + 90s and process the same video twice.
+        void mirrorClaim(item.supabaseId);
       }
     }
   }, [persist]);
