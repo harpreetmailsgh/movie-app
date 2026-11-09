@@ -153,6 +153,32 @@ async function attemptRequest(
   }
 }
 
+/** Canonical watch URL for a YouTube link, or the input unchanged when no
+ *  video id parses. Gemini fetches the fileUri verbatim, and Shorts /
+ *  youtu.be forms may not behave like watch form — normalize first. */
+function canonicalYouTubeUrl(url: string): string {
+  try {
+    const u = new URL(url.trim());
+    const host = u.hostname.toLowerCase();
+    const idPattern = /^[A-Za-z0-9_-]{11}$/;
+    const ok = (v: string | null): string | null =>
+      v && idPattern.test(v) ? v : null;
+    let id: string | null = null;
+    if (host === "www.youtube.com" || host === "youtube.com" || host === "m.youtube.com") {
+      if (u.pathname === "/watch") id = ok(u.searchParams.get("v"));
+      else {
+        const shorts = u.pathname.match(/^\/shorts\/([^/?#]+)/);
+        if (shorts) id = ok(shorts[1]);
+      }
+    } else if (host === "youtu.be") {
+      id = ok(u.pathname.split("/").filter(Boolean)[0] ?? null);
+    }
+    return id ? `https://www.youtube.com/watch?v=${id}` : url;
+  } catch {
+    return url;
+  }
+}
+
 function titlesFromParts(parts: unknown[]): string | null {
   const text = parts
     .map((p) => (typeof (p as { text?: unknown })?.text === "string"
@@ -179,14 +205,21 @@ async function extractTitles(apiKey: string, youtubeUrl: string): Promise<string
     PRIMARY_ATTEMPT_TIMEOUT_MS,
     deadlineMs,
   );
-  if (primary.status === "deadline") return null;
+  if (primary.status === "deadline") {
+    console.log("[gemini-titles] primary deadline — returning null");
+    return null;
+  }
   if (primary.status === "success") return primary.titles;
+  console.log(`[gemini-titles] primary ${PRIMARY_MODEL}: ${primary.status} — falling back`);
   // Transient, permanent, or malformed on the primary: move on to fallback
   // (the primary is never retried — one attempt by design).
 
   // Fallback model: up to 5 attempts with retries on transient errors.
   for (let attempt = 1; attempt <= FALLBACK_MAX_ATTEMPTS; attempt++) {
-    if (Date.now() >= deadlineMs) return null;
+    if (Date.now() >= deadlineMs) {
+      console.log("[gemini-titles] fallback deadline — returning null");
+      return null;
+    }
     const result = await attemptRequest(
       apiKey,
       youtubeUrl,
@@ -194,13 +227,23 @@ async function extractTitles(apiKey: string, youtubeUrl: string): Promise<string
       FALLBACK_ATTEMPT_TIMEOUT_MS,
       deadlineMs,
     );
-    if (result.status === "deadline") return null;
+    if (result.status === "deadline") {
+      console.log(`[gemini-titles] fallback ${FALLBACK_MODEL} attempt ${attempt}: deadline — returning null`);
+      return null;
+    }
     if (result.status === "success") return result.titles;
+    console.log(`[gemini-titles] fallback ${FALLBACK_MODEL} attempt ${attempt}: ${result.status}`);
     // Permanent or malformed: fail immediately, no retries.
-    if (result.status === "permanent" || result.status === "malformed") return null;
+    if (result.status === "permanent" || result.status === "malformed") {
+      console.log(`[gemini-titles] fallback ${result.status} — returning null`);
+      return null;
+    }
     // Transient: honor Retry-After over the scheduled delay, add jitter,
     // then try again (unless this was the last attempt).
-    if (attempt === FALLBACK_MAX_ATTEMPTS) return null;
+    if (attempt === FALLBACK_MAX_ATTEMPTS) {
+      console.log(`[gemini-titles] fallback exhausted ${FALLBACK_MAX_ATTEMPTS} attempts — returning null`);
+      return null;
+    }
     const scheduledDelayMs = FALLBACK_RETRY_DELAYS_MS[attempt - 1];
     const delayMs = Math.max(addJitter(scheduledDelayMs), result.retryAfterMs);
     // Never sleep past the deadline — cap the wait and let the loop-top
@@ -236,6 +279,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ titles: null });
   }
 
-  const titles = await extractTitles(apiKey, youtubeUrl);
+  // Normalize to canonical watch form before Gemini: Shorts / youtu.be
+  // forms may not fetch the same as watch form (see canonicalYouTubeUrl).
+  const titles = await extractTitles(apiKey, canonicalYouTubeUrl(youtubeUrl));
   return jsonResponse({ titles });
 });

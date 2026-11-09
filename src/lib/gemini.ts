@@ -28,6 +28,7 @@ function sleep(ms: number): Promise<void> {
 export async function fetchGeminiTitles(youtubeUrl: string): Promise<string | null> {
   try {
     if (!SUPABASE_URL) {
+      console.log('[gemini] no Supabase URL configured — returning null');
       return null;
     }
 
@@ -54,12 +55,19 @@ export async function fetchGeminiTitles(youtubeUrl: string): Promise<string | nu
             const titles = (data as { titles?: unknown }).titles;
 
             if (typeof titles === 'string' && titles.trim()) {
+              console.log(`[gemini] attempt ${attempt + 1}: ok, titles returned`);
               return titles.trim();
             }
+            console.log(`[gemini] attempt ${attempt + 1}: ok but empty titles`);
+          } else {
+            console.log(`[gemini] attempt ${attempt + 1}: ok but malformed body`);
           }
+        } else {
+          console.log(`[gemini] attempt ${attempt + 1}: HTTP ${response.status}`);
         }
-      } catch {
+      } catch (e) {
         // Timeout / network error: fall through to the retry below.
+        console.log(`[gemini] attempt ${attempt + 1}: error ${e instanceof Error ? e.name : 'unknown'}`);
       } finally {
         clearTimeout(timeoutId);
       }
@@ -71,6 +79,7 @@ export async function fetchGeminiTitles(youtubeUrl: string): Promise<string | nu
       }
     }
 
+    console.log(`[gemini] all ${MAX_ATTEMPTS} attempts failed — returning null`);
     return null;
   } catch {
     return null;

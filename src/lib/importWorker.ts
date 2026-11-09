@@ -3,7 +3,7 @@ import {
   fetchImdbRating, fetchKeylessMeta,
   TmdbMatch,
 } from '../lib/tmdb';
-import { parseYouTubeId, fetchYouTubeTitle } from '../lib/youtube';
+import { parseYouTubeId, fetchYouTubeTitle, canonicalYouTubeUrl } from '../lib/youtube';
 import { isTikTokUrl, fetchTikTokInfo } from '../lib/tiktok';
 import { fetchGeminiTitles } from '../lib/gemini';
 
@@ -162,7 +162,10 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
   if (durationSeconds !== null && durationSeconds > 300) {
     return { ok: false, results: [], error: 'Share a video up to 5 mins long.', videoTitle };
   }
-  const geminiText = await fetchGeminiTitles(target);
+  // Gemini gets the canonical watch URL, not the raw shared/pasted form
+  // (Shorts / youtu.be / ?si= links): Gemini fetches the URL verbatim,
+  // and the forms may not behave the same. Original URL stays as reelURL.
+  const geminiText = await fetchGeminiTitles(canonicalYouTubeUrl(target) ?? target);
   if (geminiText) {
     const matches = deps.tmdbKey
       ? await bestMatches(geminiText, deps.tmdbKey)

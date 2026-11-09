@@ -155,6 +155,14 @@ function parseYouTubeId(url: string): string | null {
   return null;
 }
 
+/** Canonical watch URL for a YouTube link, or null when no id parses.
+ *  Gemini gets this form (see processYouTubeRow): it fetches the URL
+ *  verbatim, and Shorts / youtu.be forms may not behave like watch form. */
+function canonicalYouTubeUrl(url: string): string | null {
+  const id = parseYouTubeId(url);
+  return id ? `https://www.youtube.com/watch?v=${id}` : null;
+}
+
 interface YouTubeVideoInfo {
   videoId: string;
   title: string;
@@ -516,8 +524,9 @@ async function processYouTubeRow(
   if (match) return [toMovieItem(match)];
 
   // oEmbed title matched nothing — ask Gemini which movie titles the video
-  // mentions or shows, then match each through TMDB.
-  const geminiText = await callGeminiTitles(gemini.supabaseUrl, gemini.serviceKey, url);
+  // mentions or shows, then match each through TMDB. Gemini gets the
+  // canonical watch URL (see canonicalYouTubeUrl), not the raw queued form.
+  const geminiText = await callGeminiTitles(gemini.supabaseUrl, gemini.serviceKey, canonicalYouTubeUrl(url) ?? url);
   if (!geminiText) {
     throw new Error("Could not fetch any movie in this video.");
   }

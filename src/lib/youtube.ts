@@ -27,6 +27,16 @@ export async function firstYoutubeResultId(query: string): Promise<string | null
   }
 }
 
+/** Canonical watch URL for a YouTube link (`https://www.youtube.com/watch?v=<id>`),
+ *  or null when no video id parses. Gemini's YouTube fetching sees the URL
+ *  verbatim, and Shorts / youtu.be forms may behave differently from watch
+ *  form — normalize before Gemini so every form is fetched the same way.
+ *  The original URL is kept for display/record purposes. */
+export function canonicalYouTubeUrl(url: string): string | null {
+  const id = parseYouTubeId(url);
+  return id ? `https://www.youtube.com/watch?v=${id}` : null;
+}
+
 /** Parse a YouTube video id from watch / Shorts / youtu.be URLs, or null. */
 export function parseYouTubeId(url: string): string | null {
   let u: URL;
