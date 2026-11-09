@@ -167,12 +167,12 @@ function canonicalYouTubeUrl(url: string): string | null {
  * Automatic-retry scheduling (backlog #98). Port of src/lib/retrySchedule.ts
  * — same rules, same constants: Gemini's daily quota resets at midnight
  * Pacific Time (3:00 AM Toronto); a 429 waits for that reset, a Retry-After
- * is honored (capped at 24h), anything else waits 5 min on the first
+ * is honored (capped at 24h), anything else waits 50 min on the first
  * re-queue and 15 min on the second.
  */
 const MAX_AUTO_RETRIES = 2;
 const MAX_RETRY_AFTER_MS = 24 * 60 * 60_000;
-const FIRST_RETRY_DELAY_MS = 5 * 60_000;
+const FIRST_RETRY_DELAY_MS = 50 * 60_000;
 const SECOND_RETRY_DELAY_MS = 15 * 60_000;
 
 /** UTC offset (ms) of a timezone at one instant, via Intl. Negative west
@@ -260,7 +260,7 @@ function computeRetryAt(
     return nextMidnightPacific(now);
   }
   // Any other transient blip / deadline: short backoff by re-queue count
-  // (5 min first, 15 min second).
+  // (50 min first, 15 min second).
   return now + (retryCount >= 1 ? SECOND_RETRY_DELAY_MS : FIRST_RETRY_DELAY_MS);
 }
 
