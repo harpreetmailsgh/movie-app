@@ -466,6 +466,29 @@ async function callGeminiTitles(
 }
 
 /**
+ * Collapse year-suffixed / bare candidate twins ("Johnny English 2003" +
+ * "Johnny English") to one entry before the diff loop, so each distinct
+ * movie is diffed once and can never appear twice (once verified, once
+ * unverified). Port of dedupeYearSuffixedCandidates in
+ * src/lib/importWorker.ts — see there for the full reasoning.
+ */
+function dedupeYearSuffixedCandidates(list: string[]): string[] {
+  const keyOf = (s: string) => s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+\d{4}\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const byKey = new Map<string, string>();
+  for (const c of list) {
+    const key = keyOf(c);
+    const prev = byKey.get(key);
+    if (prev === undefined || c.length < prev.length) byKey.set(key, c);
+  }
+  return [...byKey.values()];
+}
+
+/**
  * YouTube import: oEmbed title (caption-first step), then TMDB match, then
  * Gemini fallback. Mirrors fetchYouTube in src/lib/importWorker.ts, minus
  * the duration check (oEmbed has no duration) and the per-match enrichment
@@ -498,12 +521,12 @@ async function processYouTubeRow(
   const rawCandidates = candidates(geminiText)
     .filter((c) => !/^[A-Za-z]{2,12}:/.test(c))
     .slice(0, 10);
-  const effectiveCandidates = rawCandidates.length > 0
+  const effectiveCandidates = dedupeYearSuffixedCandidates(rawCandidates.length > 0
     ? rawCandidates
     // Gemini returned an unparseable blob (e.g. all titles on one long
     // line): save the raw non-empty lines as unverified rather than
     // marking the row done with zero results.
-    : geminiText.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).slice(0, 10);
+    : geminiText.split("\n").map((l) => l.trim()).filter((l) => l.length > 0).slice(0, 10));
   const norm = (s: string) => s.toLowerCase().replace(/\s*\(\d{4}\)\s*$/, "").trim();
   const usedMatches = new Set<TmdbMatch>();
   const items: MovieItem[] = [];
