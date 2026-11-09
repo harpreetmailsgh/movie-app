@@ -104,7 +104,7 @@ export default function ImportScreen() {
   const { items: queueItems, enqueue, updateItem, removeItem } = useQueue();
 
   /** Recent videos (backlog #72): replaces the "Recently added" section. */
-  const { videos: recentVideos, recordVideo } = useRecentVideos();
+  const { videos: recentVideos, recordVideo, clearVideos } = useRecentVideos();
   const [expandedVideoId, setExpandedVideoId] = useState<string | null>(null);
 
   // ---- Card 1: live search-as-you-type -------------------------------------
@@ -396,7 +396,15 @@ export default function ImportScreen() {
 
       {recentVideos.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.heading}>🕘&nbsp; Recent videos</Text>
+          <View style={styles.headingRow}>
+            <Text style={styles.heading}>🕘&nbsp; Recent videos</Text>
+            <Pressable
+              style={styles.clearButton}
+              onPress={() => { setExpandedVideoId(null); void clearVideos(); }}
+            >
+              <Text style={styles.clearButtonText}>Clear</Text>
+            </Pressable>
+          </View>
           <View style={styles.sectionCard}>
             {recentVideos.map((entry) => (
               <RecentVideoRow
@@ -457,9 +465,18 @@ const styles = StyleSheet.create({
   recentExpanded: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)' },
   retryButton: {
     backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 18,
-    paddingVertical: 9, alignSelf: 'flex-start', marginTop: 10, alignItems: 'center',
+    paddingVertical: 13, minHeight: 44, justifyContent: 'center',
+    alignSelf: 'flex-start', marginTop: 10, alignItems: 'center',
   },
   retryButtonText: { color: '#000', fontSize: 14, fontWeight: '700' },
+  // Clear deletes history, so it is a muted red TEXT button (not a white
+  // pill like Fetch/Retry, which would read as a main action). marginLeft
+  // auto pushes it right in the headingRow; 44pt target like Retry.
+  clearButton: {
+    marginLeft: 'auto', minHeight: 44, paddingHorizontal: 12,
+    paddingVertical: 13, alignItems: 'center', justifyContent: 'center',
+  },
+  clearButtonText: { color: '#ff453a', fontSize: 14, fontWeight: '700' },
   loader: { marginTop: 16 },
   result: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c1e',

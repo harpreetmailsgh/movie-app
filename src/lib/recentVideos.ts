@@ -90,6 +90,9 @@ async function saveVideos(entries: RecentVideoEntry[]): Promise<void> {
 export function useRecentVideos(): {
   videos: RecentVideoEntry[];
   recordVideo: (entry: Omit<RecentVideoEntry, 'id' | 'createdAt'>) => Promise<void>;
+  /** Removes the stored history and empties the list (local history only;
+   *  movies already in the Watchlist are untouched). */
+  clearVideos: () => Promise<void>;
 } {
   const [videos, setVideos] = useState<RecentVideoEntry[]>([]);
   // Ref mirror so rapid successive recordVideo calls build on the latest
@@ -141,5 +144,15 @@ export function useRecentVideos(): {
     await persist([full, ...videosRef.current].slice(0, MAX_ENTRIES));
   }, [persist]);
 
-  return { videos, recordVideo };
+  const clearVideos = useCallback(async (): Promise<void> => {
+    // Mirror the persist pattern (ref + state together, no stale closure),
+    // but remove the stored key instead of re-saving an empty list.
+    videosRef.current = [];
+    setVideos([]);
+    try {
+      await AsyncStorage.removeItem(RECENT_VIDEOS_KEY);
+    } catch { /* storage error — in-memory list is already empty */ }
+  }, []);
+
+  return { videos, recordVideo, clearVideos };
 }
