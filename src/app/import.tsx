@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator,
+  View, Text, TextInput, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator, Alert,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../lib/store';
@@ -33,6 +33,9 @@ function RecentVideoRow({ entry, expanded, onToggle, onRetry }: {
   const fetchedDate = new Date(entry.createdAt).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric',
   });
+  const fetchedTime = new Date(entry.createdAt).toLocaleTimeString(undefined, {
+    hour: 'numeric', minute: '2-digit',
+  });
   return (
     <View style={styles.recentRow}>
       <Pressable style={styles.recentHeader} onPress={onToggle}>
@@ -49,10 +52,8 @@ function RecentVideoRow({ entry, expanded, onToggle, onRetry }: {
           <Text style={styles.resultTitle} numberOfLines={2} ellipsizeMode="tail">
             {entry.videoTitle ?? entry.url}
           </Text>
-          <Text style={styles.resultDate}>{fetchedDate}</Text>
-          {entry.status === 'failed' && !!entry.error ? (
-            <Text style={styles.recentErrorSub} numberOfLines={2}>{entry.error}</Text>
-          ) : (
+          <Text style={styles.resultDate}>{fetchedDate} · {fetchedTime}</Text>
+          {entry.status !== 'failed' && (
             <Text style={styles.resultSub}>
               {entry.titles.length === 1 ? '1 title' : `${entry.titles.length} titles`}
             </Text>
@@ -303,6 +304,21 @@ export default function ImportScreen() {
     })();
   }, [queueItems, updateItem, removeItem, settings.tmdbKey, importReel, addMovie, recordVideo]);
 
+  const confirmClearVideos = () => {
+    Alert.alert(
+      'Clear recent videos?',
+      'This removes your recent videos history. Movies already in your Watchlist are untouched. This can’t be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => { setExpandedVideoId(null); void clearVideos(); },
+        },
+      ],
+    );
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={[styles.section, styles.firstSection]}>
@@ -430,7 +446,7 @@ export default function ImportScreen() {
           <Text style={styles.heading}>🕘&nbsp; Recent videos</Text>
           <Pressable
             style={styles.clearButton}
-            onPress={() => { setExpandedVideoId(null); void clearVideos(); }}
+            onPress={confirmClearVideos}
           >
             <Text style={styles.clearButtonText}>Clear</Text>
           </Pressable>
