@@ -20,7 +20,8 @@
       "deploymentTarget": "16.4",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "buildNumber": "2"
     },
     "name": "Save My Movie",
     "orientation": "portrait",
@@ -80,8 +81,5 @@
     "updates": {
       "url": "https://u.expo.dev/646085b5-a3c9-4755-8dec-963c6f72223c"
     }
-  },
-  "ios": {
-    "buildNumber": "2"
   }
 }
