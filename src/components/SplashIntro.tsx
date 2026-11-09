@@ -15,7 +15,7 @@ import { useFonts } from 'expo-font';
 /**
  * Animated launch intro — "Save My Movie" clapperboard.
  *
- * Spec: docs/splash-spec-save-my-movie.md (v4 + 2.0 s retime, 2026-11-08).
+ * Spec: docs/splash-spec-save-my-movie.md (v4 + 3.0 s retime, 2026-11-09).
  * Built-in `Animated` only — no reanimated, no other animation library.
  *
  * The Watchlist deck is mounted beneath this view from t = 0, fully
@@ -23,7 +23,7 @@ import { useFonts } from 'expo-font';
  *
  * Frame 1 is the static splash PNG itself (contain, black background),
  * so the handoff from the native splash has no flash or jump: the native
- * splash IS this image. At the clap onset (t = 0.50 s) the PNG hides and
+ * splash IS this image. At the clap onset (t = 0.75 s) the PNG hides and
  * the layered views beneath take over — the swap is hidden by the
  * motion starting. Layer geometry is the spec's static geometry, scaled
  * from the 1152 x 2048 image with the same contain-fit math, so the
@@ -35,23 +35,23 @@ import { useFonts } from 'expo-font';
  * invisible. The font loads via `useFonts`
  * before the animation starts, while the native splash is still
  * covering the screen (`hideAsync` is deferred until the font settles
- * or the 1.0 s load timeout fires), so the 2.0 s timeline never slips
+ * or the 1.0 s load timeout fires), so the 3.0 s timeline never slips
  * waiting for the font. If the font fails to load (or the timeout
  * fires), the layered text is hidden entirely — a system-font fallback
  * must never show against the gold PNG text. The PNG itself still
  * shows the gold name during the open hold, and the underline (a plain
  * View, not text) still renders.
  *
- * Timeline (total exactly 2.0 s, hard ceiling 2.0 s — never waits for data):
- *   0.00-0.50  open hold (500 ms), nothing moves
- *   0.50-0.70  clap (200 ms): stick -30 deg -> 0 deg, Easing.in, hard stop
- *   0.70       impact: board punch 1 -> 1.015 (50 ms) -> 1.0 (150 ms,
+ * Timeline (total exactly 3.0 s, hard ceiling 3.0 s — never waits for data):
+ *   0.00-0.75  open hold (750 ms), nothing moves
+ *   0.75-1.05  clap (300 ms): stick -30 deg -> 0 deg, Easing.in, hard stop
+ *   1.05       impact: board punch 1 -> 1.015 (50 ms) -> 1.0 (150 ms,
  *              Easing.out); text + underline fade out over 80 ms
- *   0.70-0.80  closed hold (100 ms)
- *   0.80-1.70  zoom (900 ms, Easing.in): M 1 -> 3.5x, board (+ stick)
+ *   1.05-1.20  closed hold (150 ms)
+ *   1.20-2.55  zoom (1350 ms, Easing.in): M 1 -> 3.5x, board (+ stick)
  *              1 -> 1.5x, both anchored on the M centre (50.0% width,
  *              55.8% height of the static image)
- *   1.70-2.00  reveal (300 ms, linear): whole intro opacity 1 -> 0,
+ *   2.55-3.00  reveal (450 ms, linear): whole intro opacity 1 -> 0,
  *              then unmounts. No crossfade, no ghosting.
  */
 
@@ -66,18 +66,18 @@ const M_CENTRE = { x: 576, y: 1143 };
 const TEXT_TOP = 1500;
 const UNDERLINE_TOP = 1630;
 
-const OPEN_HOLD_MS = 500;
-const CLAP_MS = 200;
-const IMPACT_MS = 700;
+const OPEN_HOLD_MS = 750;
+const CLAP_MS = 300;
+const IMPACT_MS = OPEN_HOLD_MS + CLAP_MS; // 1050
 const PUNCH_OUT_MS = 50;
 const PUNCH_BACK_MS = 150;
 const TEXT_FADE_MS = 80;
-const CLOSED_HOLD_MS = 100;
-const ZOOM_START_MS = IMPACT_MS + CLOSED_HOLD_MS; // 800
-const ZOOM_MS = 900;
-const REVEAL_START_MS = ZOOM_START_MS + ZOOM_MS; // 1700
-const REVEAL_MS = 300;
-const HARD_CEILING_MS = 2000;
+const CLOSED_HOLD_MS = 150;
+const ZOOM_START_MS = IMPACT_MS + CLOSED_HOLD_MS; // 1200
+const ZOOM_MS = 1350;
+const REVEAL_START_MS = ZOOM_START_MS + ZOOM_MS; // 2550
+const REVEAL_MS = 450;
+const HARD_CEILING_MS = 3000;
 // Bound on the font load: the native splash covers this wait, and a
 // hung load must never delay launch past this. On timeout the intro
 // starts anyway with the layered text hidden (see above).
@@ -232,8 +232,8 @@ export default function SplashIntro({ onDone }: { onDone: () => void }) {
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
       }, IMPACT_MS),
     );
-    // Hard ceiling: unmount by 2.0 s after the intro starts even if
-    // anything above stalls. The 2.0 s timeline never waits for data;
+    // Hard ceiling: unmount by 3.0 s after the intro starts even if
+    // anything above stalls. The 3.0 s timeline never waits for data;
     // the font wait happens before it starts, under the native splash.
     timersRef.current.push(setTimeout(finish, HARD_CEILING_MS));
 

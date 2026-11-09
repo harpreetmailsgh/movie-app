@@ -1,5 +1,40 @@
 # Splash screen spec — "Save My Movie" (for Dev-1)
 
+## Revision — 3.0 s retime (2026-11-09)
+Harpreet's call, superseding the 2.0 s total: the intro animation is
+now **3.00 s** total, still intro-only (excludes first-screen loading;
+the font gate stays a separate 1.0 s timeout under the native splash).
+New split: open hold 0.75 / clap 0.30 / closed hold 0.15 / zoom 1.35 /
+reveal 0.45 = 3.00 s. Punch (50 + 150 ms) and text fade (80 ms) at
+impact are unchanged. Worst case mount → unmount is now 1.0 s (font
+wait) + 3.0 s (intro) = 4.0 s.
+
+## White-corner investigation (2026-11-09) — no source found in the intro
+Harpreet saw a white artifact in the bottom-right corner of the splash
+on his phone (TestFlight build 2, iPhone 15 Pro Max 1179×2566).
+Measured, not guessed — every intro candidate was checked against the
+screen's bottom-right corner and **none can reach it**:
+- Static PNG: re-verified pixel-clean — 0 non-black px in the
+  bottom-right 250×250, bottom 100 px strip, and right 100 px strip;
+  full-image scan 558,182 non-black px, content bbox x196–956 y415–1639.
+- Stick / stripes (the only white asset in the intro): swept screen
+  extents x181–978, y652–1119 across the −30° → 0° clap; at full 1.5×
+  board zoom x6–1173, y843–975. The corner (1179, 2556) sits
+  ~1,400 px below the stick's lowest reach.
+- M zoom 3.5×: screen x−306–1485, y619–2177 — 379 px short of the
+  bottom edge. The M's 150 near-white pixels are alpha 1–2 (invisible
+  crop fringe), and its corners are transparent/amber.
+- Reveal: the deck beneath shows the Settings tab at bottom-right
+  (⚙️ + "Settings" label, inactive grey `#8e8e93` on the black bar);
+  the gloss pill sits behind the focused Watchlist tab (leftmost). The
+  only solid-white deck element (jump-back button) is top-left and only
+  appears after a tile/row jump — not on cold launch.
+- **No fix was made** — there is no source in the intro to fix.
+  Remaining candidate, unverified from the repo (no `ios/` dir, CNG):
+  the native splash storyboard the build generates. Deciding question
+  for Harpreet: does the white show **during the animation**, or only
+  **as the app finishes opening**?
+
 ## Revision — elegant gold name, v4 (2026-11-08)
 Harpreet's change: "Not factored but fancier, use better font,
 consult the ui designer." The fractured direction is **dropped**:
@@ -132,7 +167,7 @@ seamless — no flash or jump.
 4. The camera **zooms into the M** — the M grows clearly faster than
    the board, so the M fills the screen while the board falls away.
 5. The intro fades out fast and the clean Watchlist deck is there.
-   Total **2.0 s**. Nothing lingers after the reveal.
+   Total **3.0 s**. Nothing lingers after the reveal.
 
 ## Animation spec (Dev-1 implements this — no code was changed here)
 - **API: React Native's built-in `Animated` API only.** Verified in
@@ -161,7 +196,7 @@ seamless — no flash or jump.
   compare with `assets/splash.png` — no visible jump when the native
   splash hides. Fallback if the geometry can't be matched exactly:
   render `assets/splash.png` itself (contain, black bg) as frame 1 and
-  swap to the layered views at the clap onset (t = 0.50 s) — the swap
+  swap to the layered views at the clap onset (t = 0.75 s) — the swap
   is hidden by the motion starting.
 - **Hinge rotation:** the stick rotates about its left end (the hinge
   at the board's top-left corner). In RN, `rotate` spins about a view's
@@ -170,47 +205,47 @@ seamless — no flash or jump.
   land exactly on the board's strip (same x-range, same stripe phase) —
   verify visually on device.
 
-### Timeline (total exactly 2.0 s — the intro animation only, see the
-### boundary note below; hard ceiling 2.0 s from intro start — unmount
+### Timeline (total exactly 3.0 s — the intro animation only, see the
+### boundary note below; hard ceiling 3.0 s from intro start — unmount
 ### by then even if data isn't ready; the deck may show its own loading
 ### state, the intro must never wait for data)
 | t (s) | What happens |
 |---|---|
-| 0.00–0.50 | **OPEN HOLD (500 ms).** Static open frame, nothing moves. The mockup started clapping immediately (no hold) — the board never registered. |
-| 0.50–0.70 | **CLAP (200 ms).** Stick rotates 30° → 0°, `Easing.in` (accelerating — a clap speeds up into the hit, it doesn't glide), hard stop at 0°. The mockup's ~500 ms close read as a slow lid, not a clap. |
-| 0.70 | **IMPACT.** Board punch: scale 1 → 1.015 in 50 ms, back to 1.0 over 150 ms (`Easing.out`). Text + underline fade opacity 1 → 0 over 80 ms, starting at impact — they are gone before the zoom starts, so they can never balloon or crop (the mockup's text scaled up and clipped at both edges). |
-| 0.70–0.80 | **CLOSED HOLD (100 ms).** Closed board held just long enough for the eye to register the beat. |
-| 0.80–1.70 | **ZOOM (900 ms), `Easing.in` (accelerating push).** M scales 1 → 3.5×, board (+ stick) scales 1 → 1.5×, **both anchored on the M centre** (50.0% width, 55.8% height). The M grows faster than everything else, so at the end it is ≥ 1.4× screen width and dominates the frame while the board falls away. The mockup scaled everything together about the screen centre, so the stripes and text grew as fast as the M and the board's edges left the frame while the M was still small — that is the exact failure this fixes. |
-| 1.70–2.00 | **REVEAL (300 ms).** Whole intro opacity 1 → 0 (linear), deck revealed clean beneath. Intro **unmounts at 2.00 s**. No crossfade, no ghosting. |
+| 0.00–0.75 | **OPEN HOLD (750 ms).** Static open frame, nothing moves. The mockup started clapping immediately (no hold) — the board never registered. |
+| 0.75–1.05 | **CLAP (300 ms).** Stick rotates 30° → 0°, `Easing.in` (accelerating — a clap speeds up into the hit, it doesn't glide), hard stop at 0°. The mockup's ~500 ms close read as a slow lid, not a clap. |
+| 1.05 | **IMPACT.** Board punch: scale 1 → 1.015 in 50 ms, back to 1.0 over 150 ms (`Easing.out`). Text + underline fade opacity 1 → 0 over 80 ms, starting at impact — they are gone before the zoom starts, so they can never balloon or crop (the mockup's text scaled up and clipped at both edges). |
+| 1.05–1.20 | **CLOSED HOLD (150 ms).** Closed board held just long enough for the eye to register the beat. |
+| 1.20–2.55 | **ZOOM (1350 ms), `Easing.in` (accelerating push).** M scales 1 → 3.5×, board (+ stick) scales 1 → 1.5×, **both anchored on the M centre** (50.0% width, 55.8% height). The M grows faster than everything else, so at the end it is ≥ 1.4× screen width and dominates the frame while the board falls away. The mockup scaled everything together about the screen centre, so the stripes and text grew as fast as the M and the board's edges left the frame while the M was still small — that is the exact failure this fixes. |
+| 2.55–3.00 | **REVEAL (450 ms).** Whole intro opacity 1 → 0 (linear), deck revealed clean beneath. Intro **unmounts at 3.00 s**. No crossfade, no ghosting. |
 
-### What the 2.0 s covers — the boundary (in Harpreet's terms)
-The 2.0 s is the **intro animation only**, counted from intro start.
+### What the 3.0 s covers — the boundary (in Harpreet's terms)
+The 3.0 s is the **intro animation only**, counted from intro start.
 It does **not** include loading the first screen. The intro runs its
-2.0 s and unmounts; whatever the Watchlist deck needs to load
-afterwards happens **after** the reveal and is not counted in the 2 s.
+3.0 s and unmounts; whatever the Watchlist deck needs to load
+afterwards happens **after** the reveal and is not counted in the 3 s.
 The intro never waits for data, and the deck may show its own loading
 state after the reveal.
-- **The font gate is outside the 2.0 s:** before the intro starts,
+- **The font gate is outside the 3.0 s:** before the intro starts,
   the font load is bounded separately by a 1.0 s timeout while the
   native splash still covers the screen — the font wait is not part
-  of the 2.0 s. Worst case, mount → unmount is 1.0 s (font wait) +
-  2.0 s (intro) = 3.0 s. If the font fails or the timeout fires, the
+  of the 3.0 s. Worst case, mount → unmount is 1.0 s (font wait) +
+  3.0 s (intro) = 4.0 s. If the font fails or the timeout fires, the
   layered text stays hidden (the PNG still shows the gold name
-  during the open hold) and the intro still runs its 2.0 s.
+  during the open hold) and the intro still runs its 3.0 s.
 - **Dead-tail rule:** the mockup ran 4.17 s while the animation was done
   by ~2 s — frames `f_05`–`f_08` are four static deck shots
   (f_06–f_08 byte-identical, f_05 nearly so). The launch ends at the
   reveal. Nothing after it.
-- **Optional, not required:** a light impact haptic at t = 0.70
+- **Optional, not required:** a light impact haptic at t = 1.05
   (`expo-haptics` is already a dependency). One line, only if it
   doesn't complicate the timing. Never let it delay the clap.
 
 ## Critique of mockup v2 — per point (Planner's read → verdict)
 1. **Dead tail (animation done ~2 s, video 4.17 s) — AGREE.** Frames
    f_05–f_08 are static deck shots (f_06–f_08 byte-identical). Fixed by
-   the timeline above: intro unmounts at 2.0 s, hard ceiling 2.0 s.
-2. **Clap has no snap (~0.5 s close) — AGREE.** 200 ms accelerating
-   clap + hard stop + 100 ms closed hold + 1.5% board punch. The punch
+   the timeline above: intro unmounts at 3.0 s, hard ceiling 3.0 s.
+2. **Clap has no snap (~0.5 s close) — AGREE.** 300 ms accelerating
+   clap + hard stop + 150 ms closed hold + 1.5% board punch. The punch
    is the part the eye reads as impact; without it the snap doesn't
    land.
 3. **Zoom targets the whole board, not the M — AGREE.** Fixed by the
@@ -218,7 +253,7 @@ state after the reveal.
 4. **Text balloons and crops mid-zoom — AGREE.** Fixed: text +
    underline fade out during the closed hold, before the zoom starts.
 5. **Crossfade into the deck is muddy — AGREE.** Fixed: no crossfade.
-   Deck mounted beneath from t = 0; only the intro fades, 300 ms.
+   Deck mounted beneath from t = 0; only the intro fades, 450 ms.
 6. **Stick tip cut at the frame edge (open frame) — AGREE.** Fixed in
    the rebuilt static image: stick = board width (760 px), 30°, tip at
    ~(871, 419) — fully inside with margin on all sides. Never let the
@@ -229,8 +264,9 @@ state after the reveal.
    halo from a non-transparent crop. Kept the static image's 500 px M
    with the brightness-alpha crop (no square edge) instead.
 8. **Timing target (~1.6–1.8 s) — SUPERSEDED by the 2.0 s retime
-   (2026-11-08).** Open hold 0.50 + clap 0.20 + closed hold 0.10 +
-   zoom 0.90 + reveal 0.30 = 2.00 s exactly.
+   (2026-11-08), itself superseded by the 3.0 s retime (2026-11-09).**
+   Open hold 0.75 + clap 0.30 + closed hold 0.15 +
+   zoom 1.35 + reveal 0.45 = 3.00 s exactly.
 9. **Keep the amber underline; pure black background — AGREE.**
    Underline adopted into the static image (140 × 9 px, `#F5A623`) and
    fades with the text. Background is pure black `#000000` throughout —
@@ -247,19 +283,19 @@ state after the reveal.
     same rule: stick length = board width, hinge at the top-left corner,
     no overhang.
 12. **(Designer addition) The mockup has no open hold** — the clap
-    starts at t = 0, so the open board never registers. Fixed: 500 ms
+    starts at t = 0, so the open board never registers. Fixed: 750 ms
     open hold.
 
 ## Final ordered improvement list (what changes, highest first)
-1. Cut the dead tail — intro unmounts at the reveal (2.0 s); nothing after it.
-2. Snap the clap — 200 ms accelerating close, hard stop, 100 ms closed
+1. Cut the dead tail — intro unmounts at the reveal (3.0 s); nothing after it.
+2. Snap the clap — 300 ms accelerating close, hard stop, 150 ms closed
    hold, 1.5% board punch at impact.
 3. Anchor the zoom on the M — M 3.5× vs board 1.5×, both about the M
    centre; the M, not the stripes, fills the screen.
 4. Fade the text + underline out during the closed hold, before the
    zoom — they never scale, never crop.
 5. No crossfade over the deck — deck beneath from t = 0, intro fades
-   out alone in 300 ms.
+   out alone in 450 ms.
 6. Closed stick lands exactly on the strip (86 px strip = stick
    thickness, same pitch/phase) — one band, not two.
 7. Stick fully inside the frame — length = board width, 30° open, tip
@@ -268,7 +304,7 @@ state after the reveal.
 9. Keep the amber underline + rivets + stripes + board weight from the
    mockup; keep the larger 500 px M from the static image (mockup's
    small M + square halo rejected).
-10. Add the 500 ms open hold so the board registers before it claps.
+10. Add the 750 ms open hold so the board registers before it claps.
 
 ## Wiring (Dev-1's job — not done here)
 - `app.json` splash key is unchanged and already points at this file:
