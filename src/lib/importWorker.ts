@@ -173,7 +173,10 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
   // Gemini gets the canonical watch URL, not the raw shared/pasted form
   // (Shorts / youtu.be / ?si= links): Gemini fetches the URL verbatim,
   // and the forms may not behave the same. Original URL stays as reelURL.
-  const geminiText = await fetchGeminiTitles(canonicalYouTubeUrl(target) ?? target);
+  // fetchGeminiTitles returns one result object (single attempt, 45s) —
+  // the failure reason is threaded through in item 7; here only the
+  // titles text is consumed.
+  const geminiText = (await fetchGeminiTitles(canonicalYouTubeUrl(target) ?? target)).text;
   if (geminiText) {
     const matches = deps.tmdbKey
       ? await bestMatches(geminiText, deps.tmdbKey)
