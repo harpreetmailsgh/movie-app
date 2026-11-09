@@ -8,7 +8,7 @@ import { searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, T
 import { posterUrl } from '../lib/types';
 import ClapboardPoster from '../components/ClapboardPoster';
 import QueueList from '../components/QueueList';
-import IndeterminateBar from '../components/IndeterminateBar';
+import StageProgressBar from '../components/StageProgressBar';
 import { useQueue } from '../lib/queue';
 import { processQueueItem } from '../lib/importWorker';
 import { parseYouTubeId } from '../lib/youtube';
@@ -304,6 +304,9 @@ export default function ImportScreen() {
           importReel,
           addMovie,
           hasMovie,
+          // Progress ticks skip AsyncStorage (persist: false) — they fire
+          // every 250ms for up to 45s and only feed the in-memory bar.
+          onProgress: (f) => { void updateItem(next.id, { progress: f }, { persist: false }); },
         });
         // Rider (backlog #70): write the worker-fetched video title back so
         // QueueRow shows the title instead of the raw URL.
@@ -350,6 +353,7 @@ export default function ImportScreen() {
             retryCount: next.retryCount + 1,
             retryMessage,
             error: null,
+            progress: null,
             retryReason: result.failureReason,
             retryStatus: result.failureStatus,
           });
@@ -496,7 +500,9 @@ export default function ImportScreen() {
                 <ActivityIndicator size="small" color="#fff" />
                 <Text style={styles.progressText}>Finding the movies in this video…</Text>
               </View>
-              <IndeterminateBar />
+              <StageProgressBar
+                progress={queueItems.find((i) => i.status === 'processing')?.progress ?? 0}
+              />
             </View>
           )}
           <QueueList items={queueItems} />

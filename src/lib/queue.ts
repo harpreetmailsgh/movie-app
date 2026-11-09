@@ -24,6 +24,10 @@ export type QueueItem = {
   retryAt: number | null;
   retryCount: number;
   retryMessage: string | null;
+  /** 0–1 fraction of the fetch so far, null when no stage reported.
+   *  Transient: never persisted — progress ticks every 250ms for up to
+   *  45s, and writing each tick to AsyncStorage is pure churn. */
+  progress: number | null;
   createdAt: number;
 };
 
@@ -51,6 +55,10 @@ function normalizeItem(raw: unknown): QueueItem {
     retryAt: typeof r.retryAt === 'number' ? r.retryAt : null,
     retryCount: typeof r.retryCount === 'number' ? r.retryCount : 0,
     retryMessage: typeof r.retryMessage === 'string' ? r.retryMessage || null : null,
+    // A number clamps to 0..1; anything else (old saves lack the key) → null.
+    progress: typeof r.progress === 'number' && Number.isFinite(r.progress)
+      ? Math.min(1, Math.max(0, r.progress))
+      : null,
     createdAt: typeof r.createdAt === 'number' ? r.createdAt : Date.now(),
   };
 }
@@ -234,10 +242,14 @@ export interface QueueApi {
    * `retryReason` / `retryStatus` are mirror-only: they ride along when
    * the patch re-queues an item (so mirrorRetry can write them to the
    * server row) but are stripped before the patch hits the stored item.
+   * `persist: false` skips the AsyncStorage write (in-memory itemsRef +
+   * setItems still update) and skips all mirror traffic — used for
+   * progress ticks, which fire every 250ms for up to 45s.
    */
   updateItem: (
     id: string,
     patch: Partial<QueueItem> & { retryReason?: GeminiFailureReason; retryStatus?: number },
+    opts?: { persist?: boolean },
   ) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
 }
@@ -287,11 +299,20 @@ export function useQueue(): QueueApi {
   const updateItem = useCallback(async (
     id: string,
     patch: Partial<QueueItem> & { retryReason?: GeminiFailureReason; retryStatus?: number },
+    opts?: { persist?: boolean },
   ): Promise<void> => {
     const { retryReason, retryStatus, ...itemPatch } = patch;
-    await persist(itemsRef.current.map((item) =>
+    const next = itemsRef.current.map((item) =>
       item.id === id ? { ...item, ...itemPatch } : item
-    ));
+    );
+    if (opts?.persist === false) {
+      // Progress ticks only: in-memory update, no AsyncStorage write and
+      // no mirror traffic (no status change → no mirror should run).
+      itemsRef.current = next;
+      setItems(next);
+      return;
+    }
+    await persist(next);
     // Supabase mirror (fire-and-forget, never rejects into the UI).
     const item = itemsRef.current.find((i) => i.id === id);
     if (item?.supabaseId) {
@@ -330,6 +351,7 @@ export function useQueue(): QueueApi {
       retryAt: null,
       retryCount: 0,
       retryMessage: null,
+      progress: null,
       createdAt: Date.now(),
     };
     await persist([...itemsRef.current, item]);

@@ -43,6 +43,8 @@ export type WorkerDeps = {
    *  title is already in the library — e.g. a retry after the server
    *  already added it — while still reporting it in the results. */
   hasMovie?: (m: { title: string; year: number; mediaType: string; tmdbID: number }) => boolean;
+  /** Stage progress (0–1 fraction) for the determinate queue bar. */
+  onProgress?: (fraction: number) => void;
 };
 
 // Same iPhone Safari User-Agent pattern as fetchMp4Url in lib/frameOcr.ts.
@@ -124,12 +126,15 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
   if (!info) {
     return { ok: false, results: [], error: "Couldn't read that video (it may be private or removed)." };
   }
+  deps.onProgress?.(0.10);
   const videoTitle = info.title;
   const caption = `${info.title} — ${info.author}`;
   const match = deps.tmdbKey
     ? await bestMatch(info.title, deps.tmdbKey)
     : await bestMatchKeyless(info.title);
+  deps.onProgress?.(0.25);
   if (match) {
+    deps.onProgress?.(0.85);
     const e = await enrichMatch(match, deps.tmdbKey);
     // Already-have: report the title but don't add a duplicate (a retry
     // after the server already added it lands here).
@@ -156,9 +161,24 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
   // fetchGeminiTitles returns one result object (single attempt, 45s) —
   // the failure reason is threaded through in item 7; here only the
   // titles text is consumed.
-  const gemini = await fetchGeminiTitles(canonicalYouTubeUrl(target) ?? target);
+  // Gemini stage: the server call can take up to its 45s client timeout,
+  // so the bar creeps elapsed-based from 0.25 toward 0.80 (250ms ticks,
+  // capped at 0.80 — it only reaches 0.80 at the timeout itself).
+  // Cleared in a finally on settle, whatever the outcome.
+  const creepStart = Date.now();
+  const creepTimer = setInterval(() => {
+    const elapsedMs = Date.now() - creepStart;
+    deps.onProgress?.(Math.min(0.80, 0.25 + 0.55 * elapsedMs / 45_000));
+  }, 250);
+  let gemini: Awaited<ReturnType<typeof fetchGeminiTitles>>;
+  try {
+    gemini = await fetchGeminiTitles(canonicalYouTubeUrl(target) ?? target);
+  } finally {
+    clearInterval(creepTimer);
+  }
   const geminiText = gemini.text;
   if (geminiText) {
+    deps.onProgress?.(0.85);
     const matches = deps.tmdbKey
       ? await bestMatches(geminiText, deps.tmdbKey)
       : await bestMatches(geminiText);
@@ -230,11 +250,13 @@ async function fetchTikTok(target: string, deps: WorkerDeps): Promise<WorkerResu
   if (!info) {
     return { ok: false, results: [], error: "Couldn't read that video (it may be private or removed)." };
   }
+  deps.onProgress?.(0.10);
   const videoTitle = info.caption;
   const caption = `${info.caption} — ${info.author}`;
   const match = deps.tmdbKey
     ? await bestMatch(info.caption, deps.tmdbKey)
     : await bestMatchKeyless(info.caption);
+  deps.onProgress?.(0.25);
   if (match) {
     const e = await enrichMatch(match, deps.tmdbKey);
     deps.addMovie({
@@ -257,6 +279,8 @@ async function fetchTikTok(target: string, deps: WorkerDeps): Promise<WorkerResu
 
 /** Facebook/Instagram reel import via the store's importReel (caption → TMDB → add). */
 async function fetchReel(target: string, deps: WorkerDeps): Promise<WorkerResult> {
+  // The store does title + TMDB internally, so 0.25 is the entry stage.
+  deps.onProgress?.(0.25);
   const outcome = await deps.importReel(target);
   if (outcome.ok) {
     const unsorted = [

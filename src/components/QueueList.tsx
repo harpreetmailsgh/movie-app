@@ -3,7 +3,7 @@ import { View, Text, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import type { QueueItem } from '../lib/queue';
 import { parseYouTubeId } from '../lib/youtube';
 import ClapboardPoster from './ClapboardPoster';
-import IndeterminateBar from './IndeterminateBar';
+import StageProgressBar from './StageProgressBar';
 
 /** "Processing..." with animated dots cycling 1 → 2 → 3 → 1, plus a spinner. */
 function ProcessingStatus() {
@@ -53,7 +53,7 @@ function QueueRow({ item }: { item: QueueItem }) {
       {item.status === 'processing' && (
         <View style={styles.statusCol}>
           <ProcessingStatus />
-          <IndeterminateBar style={styles.progressBar} />
+          <StageProgressBar progress={item.progress ?? 0} style={styles.progressBar} />
         </View>
       )}
       {item.status === 'failed' && <Text style={styles.statusFailed}>Failed</Text>}
