@@ -537,7 +537,7 @@ const styles = StyleSheet.create({
     marginTop: 14, paddingTop: 14,
     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)',
   },
-  resultsHeader: { color: '#fff', fontSize: 16, fontWeight: '800', marginBottom: 10 },
+  resultsHeader: { color: '#34C759', fontSize: 16, fontWeight: '800', marginBottom: 10 },
   resultsRow: { color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 24 },
   errorCard: {
     marginTop: 14, paddingTop: 14,
