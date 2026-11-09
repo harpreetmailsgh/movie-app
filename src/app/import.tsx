@@ -13,7 +13,7 @@ import { processQueueItem } from '../lib/importWorker';
 import { parseYouTubeId } from '../lib/youtube';
 import { useRecentVideos } from '../lib/recentVideos';
 import type { RecentVideoEntry } from '../lib/recentVideos';
-import { describeGeminiFailure, GeminiDiagnostic } from '../lib/geminiDiagnostics';
+import { describeGeminiFailure } from '../lib/geminiDiagnostics';
 import type { GeminiFailureReason } from '../lib/gemini';
 
 const FIELD_BG = '#C7C7CC';
