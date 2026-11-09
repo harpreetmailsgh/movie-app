@@ -475,13 +475,22 @@ function toMovieItem(m: TmdbMatch): MovieItem {
 /**
  * Gemini fallback over HTTP: reuses the gemini-titles function instead of
  * duplicating its model/retry logic. gemini-titles caps itself at 30s, so a
- * 40s client-side timeout is a hard backstop.
+ * 40s client-side timeout is a hard backstop. Returns the reason alongside
+ * the titles so the caller can tell "no movies in this video" (no_movies)
+ * from "Gemini is down" (transient / deadline / permanent) — previously
+ * every failure collapsed to a bare null.
  */
+type GeminiTitlesResult = {
+  text: string | null;
+  reason: "ok" | "transient" | "permanent" | "no_movies" | "deadline" | "unknown";
+  httpStatus?: number;
+};
+
 async function callGeminiTitles(
   supabaseUrl: string,
   serviceKey: string,
   youtubeUrl: string,
-): Promise<string | null> {
+): Promise<GeminiTitlesResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 40_000);
   try {
@@ -495,12 +504,19 @@ async function callGeminiTitles(
       body: JSON.stringify({ youtubeUrl }),
       signal: controller.signal,
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { text: null, reason: "unknown", httpStatus: res.status };
     const data = await res.json();
     const titles = data?.titles;
-    return typeof titles === "string" && titles.trim() !== "" ? titles : null;
+    const reason = ["ok", "transient", "permanent", "no_movies", "deadline"].includes(data?.reason)
+      ? data.reason
+      : "unknown";
+    return {
+      text: typeof titles === "string" && titles.trim() !== "" ? titles : null,
+      reason,
+      ...(typeof data?.status === "number" ? { httpStatus: data.status } : {}),
+    };
   } catch {
-    return null;
+    return { text: null, reason: "transient" };
   } finally {
     clearTimeout(timer);
   }
@@ -530,9 +546,17 @@ async function processYouTubeRow(
   // oEmbed title matched nothing — ask Gemini which movie titles the video
   // mentions or shows, then match each through TMDB. Gemini gets the
   // canonical watch URL (see canonicalYouTubeUrl), not the raw queued form.
-  const geminiText = await callGeminiTitles(gemini.supabaseUrl, gemini.serviceKey, canonicalYouTubeUrl(url) ?? url);
+  const geminiResult = await callGeminiTitles(gemini.supabaseUrl, gemini.serviceKey, canonicalYouTubeUrl(url) ?? url);
+  const geminiText = geminiResult.text;
   if (!geminiText) {
-    throw new Error("Could not fetch any movie in this video.");
+    // Locked copy for the genuine "no movies" case. Any other failure
+    // keeps the locked sentence but appends the reason (dashboard-only
+    // row error, never user-facing copy) so the next outage is visible
+    // in the row instead of indistinguishable from no-movies.
+    const suffix = geminiResult.reason === "no_movies"
+      ? ""
+      : ` (gemini: ${geminiResult.reason}${geminiResult.httpStatus !== undefined ? `, HTTP ${geminiResult.httpStatus}` : ""})`;
+    throw new Error("Could not fetch any movie in this video." + suffix);
   }
   const matches = await bestMatches(geminiText, tmdbKey || undefined);
   // The same candidate list bestMatches ran internally: a Gemini title TMDB

@@ -23,6 +23,8 @@ export type WorkerResult = {
   /** Why the Gemini step failed, when it did — lets the UI tell "no
    *  movies in this video" from "the movie service is down". */
   failureReason?: GeminiFailureReason;
+  /** Last Gemini HTTP status the server saw, when reported. */
+  failureStatus?: number;
 };
 
 export type WorkerDeps = {
@@ -213,7 +215,7 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
   // (the distinct outage wording needs Harpreet's approval first) — but
   // the reason rides along so the UI + diagnostics can tell "no movies
   // in this video" (no_movies) from "the movie service is down".
-  return { ok: false, results: [], error: 'Could not fetch any movie in this video.', videoTitle, failureReason: gemini.reason };
+  return { ok: false, results: [], error: 'Could not fetch any movie in this video.', videoTitle, failureReason: gemini.reason, ...(gemini.httpStatus !== undefined ? { failureStatus: gemini.httpStatus } : {}) };
 }
 
 /** TikTok import: oEmbed caption (caption-first step), then TMDB/keyless match; no match → save caption as-is for review. */

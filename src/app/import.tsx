@@ -13,6 +13,8 @@ import { processQueueItem } from '../lib/importWorker';
 import { parseYouTubeId } from '../lib/youtube';
 import { useRecentVideos } from '../lib/recentVideos';
 import type { RecentVideoEntry } from '../lib/recentVideos';
+import { describeGeminiFailure, GeminiDiagnostic } from '../lib/geminiDiagnostics';
+import type { GeminiFailureReason } from '../lib/gemini';
 
 const FIELD_BG = '#C7C7CC';
 const SEARCH_DEBOUNCE_MS = 500;
@@ -70,6 +72,19 @@ function RecentVideoRow({ entry, expanded, onToggle, onRetry }: {
           {entry.status === 'failed' ? (
             <>
               {!!entry.error && <Text style={styles.errorText}>{entry.error}</Text>}
+              {/* Diagnostic line, not user-facing copy: shows WHY the
+               * lookup failed when the reason is known and it wasn't a
+               * genuine "no movies" video (quota/outage vs no-movies).
+               * The locked sentence above stays the error itself. */}
+              {!!entry.failureReason && entry.failureReason !== 'no_movies' && (
+                <Text style={styles.recentDiag}>
+                  Diagnostic: {describeGeminiFailure({
+                    reason: entry.failureReason,
+                    httpStatus: entry.failureStatus ?? null,
+                    at: entry.failureAt ?? entry.createdAt,
+                  })}
+                </Text>
+              )}
               <Pressable style={styles.retryButton} onPress={() => onRetry(entry.url)}>
                 <Text style={styles.retryButtonText}>Retry</Text>
               </Pressable>
@@ -111,6 +126,15 @@ export default function ImportScreen() {
   /** URL behind the current fetch error, so the error card's Retry button
    *  can re-enqueue it. Cleared on new link input and on success. */
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  /** Why the current fetch error happened (Gemini failure reason + status
+   *  + time), when known — drives the error card's Diagnostic line. The
+   *  card's sentence itself stays the locked copy; this only adds the
+   *  diagnostic detail. Cleared with the error. */
+  const [fetchFailure, setFetchFailure] = useState<{
+    reason: GeminiFailureReason;
+    httpStatus?: number;
+    at: number;
+  } | null>(null);
 
   /** Fetch queue: paste/share links enqueue here; the worker loop below processes them one at a time. */
   const { items: queueItems, enqueue, updateItem, removeItem } = useQueue();
@@ -208,6 +232,7 @@ export default function ImportScreen() {
     setFetchResults(null);
     setFetchError(null);
     setFailedUrl(null);
+    setFetchFailure(null);
   };
 
   /** Queue replaces the immediate-fetch path: Fetch tap enqueues the link. */
@@ -281,6 +306,7 @@ export default function ImportScreen() {
           setFetchResults(result.results.slice(0, 10));
           setFetchError(null);
           setFailedUrl(null);
+          setFetchFailure(null);
           await removeItem(next.id);
         } else {
           const error = result.error ?? 'Something went wrong.';
@@ -300,12 +326,23 @@ export default function ImportScreen() {
             titles: [],
             status: 'failed',
             error,
+            failureReason: result.failureReason ?? null,
+            failureStatus: result.failureStatus ?? null,
+            failureAt: Date.now(),
           });
           // Error card set before the row is removed — same no-gap ordering
-          // as the success path above.
+          // as the success path above. The sentence stays the locked copy;
+          // the reason rides in fetchFailure for the Diagnostic line.
           setFetchError(error);
           setFetchResults(null);
           setFailedUrl(next.url);
+          setFetchFailure(result.failureReason
+            ? {
+              reason: result.failureReason,
+              ...(result.failureStatus !== undefined ? { httpStatus: result.failureStatus } : {}),
+              at: Date.now(),
+            }
+            : null);
           await removeItem(next.id);
         }
       } finally {
@@ -441,6 +478,16 @@ export default function ImportScreen() {
           {fetchError && (
             <View style={styles.errorCard}>
               <Text style={styles.errorText}>{fetchError}</Text>
+              {/* Diagnostic line, not user-facing copy: shows WHY the
+               * lookup failed when the reason is known and it wasn't a
+               * genuine "no movies" video. The sentence above stays the
+               * locked copy; a distinct outage sentence needs Harpreet's
+               * approval first. */}
+              {!!fetchFailure && fetchFailure.reason !== 'no_movies' && (
+                <Text style={styles.errorDiag}>
+                  Diagnostic: {describeGeminiFailure(fetchFailure)}
+                </Text>
+              )}
               {!!failedUrl && (
                 <Pressable style={styles.retryButton} onPress={() => { void enqueue(failedUrl); }}>
                   <Text style={styles.retryButtonText}>Retry</Text>
@@ -523,6 +570,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)',
   },
   errorText: { color: '#ff453a', fontSize: 14, lineHeight: 21 },
+  // Muted diagnostic detail under an error (Queue card / Recent row):
+  // factual, clearly not product copy.
+  errorDiag: { color: 'rgba(255,255,255,0.55)', fontSize: 12, lineHeight: 18, marginTop: 6 },
+  recentDiag: { color: 'rgba(255,255,255,0.55)', fontSize: 12, lineHeight: 18, marginTop: 6 },
   recentRow: {
     paddingVertical: 10, marginTop: 4,
   },

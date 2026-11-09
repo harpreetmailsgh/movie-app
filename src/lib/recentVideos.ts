@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { GeminiFailureReason } from './gemini';
 
 export type RecentVideoStatus = 'success' | 'partial' | 'failed';
 
@@ -15,6 +16,14 @@ export type RecentVideoEntry = {
   status: RecentVideoStatus;
   /** Set when status is 'failed'. */
   error: string | null;
+  /** Why the Gemini step failed, when known — lets the UI + diagnostics
+   *  tell "no movies in this video" from "the movie service is down".
+   *  Null on old saves and on non-Gemini failures. */
+  failureReason?: GeminiFailureReason | null;
+  /** Last Gemini HTTP status the server saw, when reported. */
+  failureStatus?: number | null;
+  /** When the failure happened (ms since epoch). */
+  failureAt?: number | null;
   createdAt: number;
 };
 
@@ -42,6 +51,7 @@ function normalizeEntry(raw: unknown): RecentVideoEntry | null {
     r.status === 'success' || r.status === 'partial' || r.status === 'failed'
       ? r.status
       : r.error ? 'failed' : 'success';
+  const knownReasons = ['ok', 'transient', 'permanent', 'no_movies', 'deadline', 'unknown'];
   return {
     id: typeof r.id === 'string' && r.id
       ? r.id
@@ -53,6 +63,12 @@ function normalizeEntry(raw: unknown): RecentVideoEntry | null {
       : [],
     status,
     error: typeof r.error === 'string' ? r.error || null : null,
+    // Old saves lack these keys entirely — default to null.
+    failureReason: typeof r.failureReason === 'string' && knownReasons.includes(r.failureReason)
+      ? (r.failureReason as GeminiFailureReason)
+      : null,
+    failureStatus: typeof r.failureStatus === 'number' ? r.failureStatus : null,
+    failureAt: typeof r.failureAt === 'number' ? r.failureAt : null,
     createdAt: typeof r.createdAt === 'number' ? r.createdAt : Date.now(),
   };
 }
