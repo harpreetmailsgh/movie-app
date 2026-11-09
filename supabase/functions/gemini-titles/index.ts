@@ -258,7 +258,7 @@ async function extractTitles(apiKey: string, youtubeUrl: string): Promise<Extrac
     // it to a bare null.
     return { titles: primary.titles, reason: primary.titles ? "ok" : "no_movies" };
   }
-  console.log(`[gemini-titles] primary ${PRIMARY_MODEL}: ${primary.status}${primary.status !== "success" && "httpStatus" in primary && primary.httpStatus !== undefined ? ` (HTTP ${primary.httpStatus})` : ""}${primary.status === "transient" && primary.failureKind ? ` (${primary.failureKind})` : ""} — falling back`);
+  console.log(`[gemini-titles] primary ${PRIMARY_MODEL}: ${primary.status}${"httpStatus" in primary && primary.httpStatus !== undefined ? ` (HTTP ${primary.httpStatus})` : ""}${primary.status === "transient" && primary.failureKind ? ` (${primary.failureKind})` : ""} — falling back`);
   // Transient, permanent, or malformed on the primary: move on to fallback
   // (the primary is never retried — one attempt by design).
 
@@ -283,6 +283,7 @@ async function extractTitles(apiKey: string, youtubeUrl: string): Promise<Extrac
     if (result.status === "success") {
       return { titles: result.titles, reason: result.titles ? "ok" : "no_movies" };
     }
+    console.log(`[gemini-titles] fallback ${FALLBACK_MODEL} attempt ${attempt}: ${result.status}${"httpStatus" in result && result.httpStatus !== undefined ? ` (HTTP ${result.httpStatus})` : ""}${result.status === "transient" && result.failureKind ? ` (${result.failureKind})` : ""}${result.status === "transient" && result.retryAfterMs > 0 ? ` retry-after=${result.retryAfterMs}ms` : ""}`);
     if (result.status === "transient") {
       lastTransient = { retryAfterMs: result.retryAfterMs, httpStatus: result.httpStatus };
     }
