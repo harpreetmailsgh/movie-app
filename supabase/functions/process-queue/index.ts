@@ -705,6 +705,26 @@ async function run(): Promise<number> {
   const tmdbKey = Deno.env.get("TMDB_API_KEY") ?? "";
   const sb = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
+  // Stuck rows: a server run that crashes mid-row leaves it 'processing'
+  // forever — the claim select below only takes 'queued' rows, so it is
+  // never retried. Re-queue 'processing' rows untouched for over 10 min
+  // so a stuck row gets another chance. 10 min is far past any healthy
+  // run (a server row takes seconds; the local worker's worst case is
+  // ~3 min, and its claim refreshes updated_at, so a locally-processing
+  // row is never this stale). YouTube rows only — the server only
+  // processes those; a non-YouTube row must stay with the local worker.
+  const STALE_PROCESSING_MS = 10 * 60_000;
+  const staleCutoff = new Date(Date.now() - STALE_PROCESSING_MS).toISOString();
+  const { error: staleError } = await sb
+    .from("fetch_queue")
+    .update({ status: "queued" })
+    .eq("status", "processing")
+    .lt("updated_at", staleCutoff)
+    .or("url.like.%youtube.com%,url.like.%youtu.be%");
+  if (staleError) {
+    console.error(`process-queue: stale re-queue failed: ${staleError.message}`);
+  }
+
   // Claim rows the app's local worker hasn't finished within the grace
   // window. YouTube-only in v1; everything else stays with the local worker.
   const graceCutoff = new Date(Date.now() - CLAIM_GRACE_MS).toISOString();
