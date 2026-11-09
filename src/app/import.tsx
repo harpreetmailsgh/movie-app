@@ -98,7 +98,7 @@ export default function ImportScreen() {
   const { importReel, settings, addMovie } = useStore();
   // Deep link from the iOS share extension: movierecommender://import?sharedUrl=...
   const { sharedUrl } = useLocalSearchParams<{ sharedUrl?: string }>();
-  /** One link field for every platform — TikTok, YouTube, Facebook, Instagram.
+  /** One link field for YouTube — paste a YouTube link to add a movie.
    *  Submit auto-detects the platform and runs the matching import. */
   const [link, setLink] = useState('');
   const [query, setQuery] = useState('');
@@ -371,7 +371,7 @@ export default function ImportScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>Paste a link from YouTube, TikTok, Facebook or Instagram</Text>
+        <Text style={styles.heading}>Paste a link from YouTube</Text>
         <View style={styles.sectionCard}>
           <View style={styles.fetchRow}>
             <TextInput
@@ -398,7 +398,7 @@ export default function ImportScreen() {
               <Text style={styles.fetchButtonText}>Fetch</Text>
             </Pressable>
           </View>
-          <Text style={styles.body}>Paste a link from YouTube, TikTok, Facebook or Instagram to add a movie</Text>
+          <Text style={styles.body}>Paste a link from YouTube to add a movie</Text>
           {isProcessing && (
             <View style={styles.progressRow}>
               <ActivityIndicator size="small" color="#fff" />
