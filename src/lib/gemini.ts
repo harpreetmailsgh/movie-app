@@ -26,6 +26,8 @@
 // server-to-server caller (process-queue) already uses 40s; the client
 // is the only 30s caller. The server 30s deadline is unchanged.
 
+import { saveGeminiFailure, clearGeminiFailure } from './geminiDiagnostics';
+
 const SUPABASE_URL = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '');
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
@@ -62,6 +64,7 @@ export async function fetchGeminiTitles(youtubeUrl: string): Promise<GeminiTitle
   try {
     if (!SUPABASE_URL) {
       console.log('[gemini] no Supabase URL configured — returning null');
+      void saveGeminiFailure({ reason: 'unknown', at: Date.now() });
       return { text: null, reason: 'unknown' };
     }
 
@@ -96,16 +99,20 @@ export async function fetchGeminiTitles(youtubeUrl: string): Promise<GeminiTitle
           };
           if (result.text) {
             console.log('[gemini] ok, titles returned');
+            void clearGeminiFailure();
           } else {
             console.log(`[gemini] ok but empty titles (reason: ${result.reason})`);
+            void saveGeminiFailure({ reason: result.reason, httpStatus: result.httpStatus, retryAfterMs: result.retryAfterMs, at: Date.now() });
           }
           return result;
         }
         console.log('[gemini] ok but malformed body');
+        void saveGeminiFailure({ reason: 'unknown', at: Date.now() });
         return { text: null, reason: 'unknown' };
       }
 
       console.log(`[gemini] HTTP ${response.status}`);
+      void saveGeminiFailure({ reason: 'unknown', httpStatus: response.status, at: Date.now() });
       return { text: null, reason: 'unknown', httpStatus: response.status };
     } catch (e) {
       // Timeout (AbortError — the 45s budget burned in transit or on a
@@ -113,6 +120,7 @@ export async function fetchGeminiTitles(youtubeUrl: string): Promise<GeminiTitle
       // may still be working, so a fresh Retry tap is the only retry.
       const errorName = e instanceof Error ? e.name : 'unknown';
       console.log(`[gemini] error ${errorName}`);
+      void saveGeminiFailure({ reason: 'transient', errorName, at: Date.now() });
       return { text: null, reason: 'transient' };
     } finally {
       clearTimeout(timeoutId);

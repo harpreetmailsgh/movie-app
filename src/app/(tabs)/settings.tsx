@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Modal, Platform, Alert, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -11,6 +11,7 @@ import { useQueue } from '../../lib/queue';
 import { useAuth } from '../../lib/auth';
 import { getSupabase } from '../../lib/supabase';
 import { readShareLog } from '../../lib/shareLog';
+import { loadGeminiFailure, describeGeminiFailure, GeminiDiagnostic } from '../../lib/geminiDiagnostics';
 
 // Version always comes from the running update's own manifest (app.json),
 // so the About screen can never go stale behind a hardcoded string again.
@@ -242,6 +243,16 @@ export default function SettingsScreen() {
   const [restoring, setRestoring] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
+  // Last Gemini lookup failure, persisted on-device by the import path
+  // (src/lib/geminiDiagnostics.ts) — read on mount so the Diagnostics
+  // section can show why the last video lookup failed. Null = the last
+  // lookup succeeded (or none has run yet).
+  const [geminiFailure, setGeminiFailure] = useState<GeminiDiagnostic | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void loadGeminiFailure().then((d) => { if (!cancelled) setGeminiFailure(d); });
+    return () => { cancelled = true; };
+  }, []);
 
   const onRestoreFromBackup = () => {
     setRestoring(true);
@@ -356,6 +367,9 @@ export default function SettingsScreen() {
         {lastEmptyBreadcrumb && (
           <Text style={styles.dim}>Last library emptied: {lastEmptyBreadcrumb}</Text>
         )}
+        <Text style={styles.dim}>
+          Last movie lookup: {geminiFailure ? describeGeminiFailure(geminiFailure) : '—'}
+        </Text>
         <Pressable style={styles.feedbackRow} onPress={() => { void showShareLog(); }}>
           <Text style={styles.feedbackText}>Share-extension log</Text>
         </Pressable>
