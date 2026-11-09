@@ -375,7 +375,13 @@ async function bestMatches(text: string, apiKey?: string): Promise<TmdbMatch[]> 
       }
       if (!results || results.length === 0) await sleep(400);
     }
-    if (!results) continue;
+    if (!results) {
+      // Diagnostic only: a candidate that yields nothing after its retries
+      // is otherwise dropped silently, so the next transient miss (e.g. a
+      // 429/timeout on one title) leaves no trace. Behaviour-neutral.
+      console.warn(`process-queue: bestMatches: no result for candidate after retries: ${JSON.stringify(candidate)}`);
+      continue;
+    }
     let best: { match: TmdbMatch; total: number } | null = null;
     for (const r of results) {
       const s = score(r.title, candidate, apiKey ? r.popularity : 0);
