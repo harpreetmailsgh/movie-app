@@ -356,6 +356,29 @@ async function bestMatch(text: string, apiKey: string): Promise<TmdbMatch | null
 }
 
 /**
+ * Collapse year-suffixed / bare candidate twins ("Johnny English 2003" +
+ * "Johnny English") to one entry. Port of dedupeYearSuffixedCandidates in
+ * src/lib/tmdb.ts — see there for the full reasoning. The dedupe MUST run
+ * before any slice: candidates() emits both variants per line, so a raw
+ * .slice(0, 10) keeps only the first 5 distinct movies of a Top 10 list.
+ */
+function dedupeYearSuffixedCandidates(list: string[]): string[] {
+  const keyOf = (s: string) => s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+\d{4}\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const byKey = new Map<string, string>();
+  for (const c of list) {
+    const key = keyOf(c);
+    const prev = byKey.get(key);
+    if (prev === undefined || c.length < prev.length) byKey.set(key, c);
+  }
+  return [...byKey.values()];
+}
+
+/**
  * Every confident title match in the text — for videos that list multiple
  * titles ("1. Devs (2020)", "2. Fringe (2008)", ...). Runs each candidate
  * through the keyed search and keeps every result scoring ≥ 60,
@@ -367,7 +390,11 @@ async function bestMatches(text: string, apiKey?: string): Promise<TmdbMatch[]> 
   const found: TmdbMatch[] = [];
   const seen = new Set<string>();
   // "Label: value" lines are caption metadata, not titles — skip them.
-  const list = candidates(text).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)).slice(0, 10);
+  // Dedupe BEFORE slicing (see dedupeYearSuffixedCandidates): a raw
+  // .slice(0, 10) keeps only the first 5 distinct movies of a Top 10 list.
+  const list = dedupeYearSuffixedCandidates(
+    candidates(text).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)),
+  ).slice(0, 10);
   // Caption-level hint ("series"/"movie") breaks exact movie-vs-tv title ties.
   const tvHint = /\b(series|shows?|seasons?|episodes?)\b/i.test(text);
   const movieHint = /\bfilms?\b|\bmovies?\b/i.test(text);
@@ -480,29 +507,6 @@ async function callGeminiTitles(
 }
 
 /**
- * Collapse year-suffixed / bare candidate twins ("Johnny English 2003" +
- * "Johnny English") to one entry before the diff loop, so each distinct
- * movie is diffed once and can never appear twice (once verified, once
- * unverified). Port of dedupeYearSuffixedCandidates in
- * src/lib/importWorker.ts — see there for the full reasoning.
- */
-function dedupeYearSuffixedCandidates(list: string[]): string[] {
-  const keyOf = (s: string) => s
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+\d{4}\s*$/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  const byKey = new Map<string, string>();
-  for (const c of list) {
-    const key = keyOf(c);
-    const prev = byKey.get(key);
-    if (prev === undefined || c.length < prev.length) byKey.set(key, c);
-  }
-  return [...byKey.values()];
-}
-
-/**
  * YouTube import: oEmbed title (caption-first step), then TMDB match, then
  * Gemini fallback. Mirrors fetchYouTube in src/lib/importWorker.ts, minus
  * the duration check (oEmbed has no duration) and the per-match enrichment
@@ -533,9 +537,11 @@ async function processYouTubeRow(
   const matches = await bestMatches(geminiText, tmdbKey || undefined);
   // The same candidate list bestMatches ran internally: a Gemini title TMDB
   // couldn't match is saved unverified (title=raw, year 0, tmdbID 0).
-  const rawCandidates = candidates(geminiText)
-    .filter((c) => !/^[A-Za-z]{2,12}:/.test(c))
-    .slice(0, 10);
+  // Dedupe BEFORE slicing (see dedupeYearSuffixedCandidates): a raw
+  // .slice(0, 10) keeps only the first 5 distinct movies of a Top 10 list.
+  const rawCandidates = dedupeYearSuffixedCandidates(
+    candidates(geminiText).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)),
+  ).slice(0, 10);
   const effectiveCandidates = dedupeYearSuffixedCandidates(rawCandidates.length > 0
     ? rawCandidates
     // Gemini returned an unparseable blob (e.g. all titles on one long

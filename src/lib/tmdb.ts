@@ -194,6 +194,33 @@ export function candidates(text: string): string[] {
 }
 
 /**
+ * Collapse year-suffixed / bare candidate twins ("Johnny English 2003" +
+ * "Johnny English") to one entry. candidates() deliberately emits both
+ * variants per line, so slicing a raw candidate list to 10 keeps only the
+ * first 5 distinct movies of a Top 10 list — the dedupe MUST run before
+ * any slice. Key: normTitle-style form with any trailing year stripped.
+ * When twins collide, keep the bare spelling — it is the one a diff loop
+ * can match against a TMDB title. A title that legitimately ends in a
+ * year-number has no bare twin, so it is untouched. Shared with
+ * src/lib/importWorker.ts and the process-queue server mirror.
+ */
+export function dedupeYearSuffixedCandidates(list: string[]): string[] {
+  const keyOf = (s: string) => s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+\d{4}\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const byKey = new Map<string, string>();
+  for (const c of list) {
+    const key = keyOf(c);
+    const prev = byKey.get(key);
+    if (prev === undefined || c.length < prev.length) byKey.set(key, c);
+  }
+  return [...byKey.values()];
+}
+
+/**
  * Every confident title match in the text — for reels that list multiple
  * titles ("1. Devs (2020)", "2. Fringe (2008)", ...). Runs each candidate
  * through the keyed or keyless search and keeps every result scoring ≥ 60,
@@ -206,7 +233,12 @@ export async function bestMatches(text: string, apiKey?: string): Promise<TmdbMa
   const found: TmdbMatch[] = [];
   const seen = new Set<string>();
   // "Label: value" lines are caption metadata, not titles — skip them.
-  const list = candidates(text).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)).slice(0, 10);
+  // Dedupe BEFORE slicing: candidates() emits a year-suffixed AND a bare
+  // variant per line, so a raw .slice(0, 10) keeps only the first 5
+  // distinct movies of a Top 10 list (movies 6-10 never reach TMDB).
+  const list = dedupeYearSuffixedCandidates(
+    candidates(text).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)),
+  ).slice(0, 10);
   // Caption-level hint ("series"/"movie") breaks exact movie-vs-tv title ties.
   const tvHint = /\b(series|shows?|seasons?|episodes?)\b/i.test(text);
   const movieHint = /\bfilms?\b|\bmovies?\b/i.test(text);

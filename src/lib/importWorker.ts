@@ -1,11 +1,12 @@
 import {
   bestMatch, bestMatchKeyless, bestMatches, candidates,
+  dedupeYearSuffixedCandidates,
   fetchImdbRating, fetchKeylessMeta,
   TmdbMatch,
 } from '../lib/tmdb';
 import { parseYouTubeId, fetchYouTubeTitle, canonicalYouTubeUrl } from '../lib/youtube';
 import { isTikTokUrl, fetchTikTokInfo } from '../lib/tiktok';
-import { fetchGeminiTitles } from '../lib/gemini';
+import { fetchGeminiTitles, GeminiFailureReason } from '../lib/gemini';
 
 export type WorkerResultItem = {
   title: string;
@@ -19,6 +20,9 @@ export type WorkerResult = {
   error?: string;
   /** Fetched during processing (YouTube oEmbed title, TikTok caption). */
   videoTitle?: string | null;
+  /** Why the Gemini step failed, when it did — lets the UI tell "no
+   *  movies in this video" from "the movie service is down". */
+  failureReason?: GeminiFailureReason;
 };
 
 export type WorkerDeps = {
@@ -106,35 +110,6 @@ async function enrichMatch(match: TmdbMatch, tmdbKey?: string): Promise<{
   return { imdbRating, overview, genres, cast };
 }
 
-/**
- * Collapse year-suffixed / bare candidate twins ("Johnny English 2003" +
- * "Johnny English") to one entry before the diff loop, so each distinct
- * movie is diffed once and can never appear twice (once verified, once
- * unverified). candidates() deliberately emits both variants, and the
- * loop's norm() only strips a parenthesised year, so without this the
- * year-suffixed twin never equals its match title and is saved unverified.
- * Key: normTitle-style form with any trailing year stripped. When twins
- * collide, keep the bare spelling — it is the one the diff loop can match
- * against a TMDB title (keeping the suffixed twin would just swap which
- * twin falls through as unverified). A title that legitimately ends in a
- * year-number has no bare twin, so it is untouched.
- */
-function dedupeYearSuffixedCandidates(list: string[]): string[] {
-  const keyOf = (s: string) => s
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .replace(/\s+\d{4}\s*$/, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const byKey = new Map<string, string>();
-  for (const c of list) {
-    const key = keyOf(c);
-    const prev = byKey.get(key);
-    if (prev === undefined || c.length < prev.length) byKey.set(key, c);
-  }
-  return [...byKey.values()];
-}
-
 /** YouTube import: oEmbed title (caption-first step), then TMDB/keyless match, then Gemini fallback. */
 async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerResult> {
   if (!parseYouTubeId(target)) {
@@ -176,14 +151,21 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
   // fetchGeminiTitles returns one result object (single attempt, 45s) —
   // the failure reason is threaded through in item 7; here only the
   // titles text is consumed.
-  const geminiText = (await fetchGeminiTitles(canonicalYouTubeUrl(target) ?? target)).text;
+  const gemini = await fetchGeminiTitles(canonicalYouTubeUrl(target) ?? target);
+  const geminiText = gemini.text;
   if (geminiText) {
     const matches = deps.tmdbKey
       ? await bestMatches(geminiText, deps.tmdbKey)
       : await bestMatches(geminiText);
     // Same candidate list bestMatches ran internally: a Gemini title TMDB
     // couldn't match is saved unverified (the TikTok no-match pattern).
-    const rawCandidates = candidates(geminiText).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)).slice(0, 10);
+    // Dedupe BEFORE slicing: candidates() emits a year-suffixed AND a bare
+    // variant per line, so a raw .slice(0, 10) keeps only the first 5
+    // distinct movies of a Top 10 list (movies 6-10 never reach the diff
+    // loop, let alone TMDB).
+    const rawCandidates = dedupeYearSuffixedCandidates(
+      candidates(geminiText).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)),
+    ).slice(0, 10);
     const effectiveCandidates = dedupeYearSuffixedCandidates(rawCandidates.length > 0 ? rawCandidates
       // Gemini returned an unparseable blob (e.g. all titles on one long
       // line): save the raw non-empty lines as unverified rather than
@@ -227,7 +209,11 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
     ];
     return { ok: true, results: sortedResults, videoTitle };
   }
-  return { ok: false, results: [], error: 'Could not fetch any movie in this video.', videoTitle };
+  // Locked copy stays the user-facing sentence for every Gemini failure
+  // (the distinct outage wording needs Harpreet's approval first) — but
+  // the reason rides along so the UI + diagnostics can tell "no movies
+  // in this video" (no_movies) from "the movie service is down".
+  return { ok: false, results: [], error: 'Could not fetch any movie in this video.', videoTitle, failureReason: gemini.reason };
 }
 
 /** TikTok import: oEmbed caption (caption-first step), then TMDB/keyless match; no match → save caption as-is for review. */
