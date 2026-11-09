@@ -3,6 +3,7 @@ import { View, Text, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import type { QueueItem } from '../lib/queue';
 import { parseYouTubeId } from '../lib/youtube';
 import ClapboardPoster from './ClapboardPoster';
+import IndeterminateBar from './IndeterminateBar';
 
 /** "Processing..." with animated dots cycling 1 → 2 → 3 → 1, plus a spinner. */
 function ProcessingStatus() {
@@ -44,7 +45,12 @@ function QueueRow({ item }: { item: QueueItem }) {
         )}
       </View>
       {item.status === 'queued' && <Text style={styles.statusQueued}>Queued</Text>}
-      {item.status === 'processing' && <ProcessingStatus />}
+      {item.status === 'processing' && (
+        <View style={styles.statusCol}>
+          <ProcessingStatus />
+          <IndeterminateBar style={styles.progressBar} />
+        </View>
+      )}
       {item.status === 'failed' && <Text style={styles.statusFailed}>Failed</Text>}
     </View>
   );
@@ -80,6 +86,10 @@ const styles = StyleSheet.create({
   resultTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
   resultError: { color: '#ff453a', fontSize: 12, marginTop: 4, lineHeight: 16 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  // Processing status + the thin bar directly under it. The bar is
+  // right-aligned under the status text (same width as the status).
+  statusCol: { alignItems: 'flex-end' },
+  progressBar: { width: 96, marginTop: 6 },
   statusQueued: { color: '#fff', fontSize: 14 },
   statusProcessing: { color: '#fff', fontSize: 14 },
   statusFailed: { color: '#ff453a', fontSize: 14 },

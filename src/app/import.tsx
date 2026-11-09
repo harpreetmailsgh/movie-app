@@ -8,6 +8,7 @@ import { searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, T
 import { posterUrl } from '../lib/types';
 import ClapboardPoster from '../components/ClapboardPoster';
 import QueueList from '../components/QueueList';
+import IndeterminateBar from '../components/IndeterminateBar';
 import { useQueue } from '../lib/queue';
 import { processQueueItem } from '../lib/importWorker';
 import { parseYouTubeId } from '../lib/youtube';
@@ -446,9 +447,12 @@ export default function ImportScreen() {
           </View>
           <Text style={styles.body}>Paste a link from YouTube to add a movie</Text>
           {isProcessing && (
-            <View style={styles.progressRow}>
-              <ActivityIndicator size="small" color="#fff" />
-              <Text style={styles.progressText}>Finding the movies in this video…</Text>
+            <View style={styles.progressWrap}>
+              <View style={styles.progressRow}>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={styles.progressText}>Finding the movies in this video…</Text>
+              </View>
+              <IndeterminateBar />
             </View>
           )}
           <QueueList items={queueItems} />
@@ -552,7 +556,8 @@ const styles = StyleSheet.create({
   },
   fetchButtonDisabled: { opacity: 0.35 },
   fetchButtonText: { color: '#000', fontSize: 15, fontWeight: '700' },
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 10 },
+  progressWrap: { marginTop: 4, marginBottom: 10 },
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   progressText: { color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 21 },
   unverifiedRow: { marginTop: 10 },
   unverifiedTitle: { color: '#fff', fontSize: 14, fontWeight: '700', lineHeight: 22 },
