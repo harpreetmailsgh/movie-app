@@ -284,6 +284,15 @@ export default function ImportScreen() {
           await removeItem(next.id);
         } else {
           const error = result.error ?? 'Something went wrong.';
+          // Mirror the failure BEFORE removing the item: updateItem with
+          // status 'failed' runs mirrorFail, so the server row reads
+          // 'failed' (with the error) instead of 'done'. removeItem
+          // alone used to mirror 'done' unconditionally, which made
+          // mirrorFail unreachable and the server could never rescue
+          // the row. The local 'failed' item is dropped on load anyway
+          // (loadQueue filters it), so the status only lives long
+          // enough to mirror.
+          await updateItem(next.id, { status: 'failed', error });
           // Record first, then auto-dismiss — mirrors the success path.
           await recordVideo({
             url: next.url,

@@ -220,8 +220,13 @@ export function useQueue(): QueueApi {
   const removeItem = useCallback(async (id: string): Promise<void> => {
     const item = itemsRef.current.find((i) => i.id === id);
     await persist(itemsRef.current.filter((i) => i.id !== id));
-    // Supabase mirror (fire-and-forget): mark the row done.
-    if (item?.supabaseId) {
+    // Supabase mirror (fire-and-forget): mark the row done — UNLESS it
+    // already failed. A failed item's mirrorFail ran when its status was
+    // set to 'failed' (see updateItem); mirroring 'done' here would
+    // overwrite that failure and the server row would masquerade as done,
+    // so the server could never rescue it. mirrorFail was unreachable
+    // before this guard: every failure path ends in removeItem.
+    if (item?.supabaseId && item.status !== 'failed') {
       void mirrorDone(item.supabaseId);
     }
   }, [persist]);
