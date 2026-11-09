@@ -25,7 +25,7 @@ export type QueueItem = {
   retryCount: number;
   retryMessage: string | null;
   /** 0–1 fraction of the fetch so far, null when no stage reported.
-   *  Transient: never persisted — progress ticks every 250ms for up to
+   *  Transient: progress ticks are never persisted — ticks fire every 250ms for up to
    *  45s, and writing each tick to AsyncStorage is pure churn. */
   progress: number | null;
   createdAt: number;

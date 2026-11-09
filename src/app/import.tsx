@@ -298,7 +298,7 @@ export default function ImportScreen() {
     queueProcessingRef.current = true;
     (async () => {
       try {
-        await updateItem(next.id, { status: 'processing' });
+        await updateItem(next.id, { status: 'processing', progress: null });
         const result = await processQueueItem(next.url, {
           tmdbKey: settings.tmdbKey,
           importReel,
