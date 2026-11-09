@@ -80,8 +80,12 @@ async function saveVideos(entries: RecentVideoEntry[]): Promise<void> {
 
 /**
  * AsyncStorage-backed "Recent videos" import history. Newest first, capped
- * at 10 entries; `recordVideo` prepends and trims. Dev-2's Add-screen UI
- * consumes `videos` and calls `recordVideo` once per processed video.
+ * at 10 entries; `recordVideo` prepends and trims — except when an entry
+ * for the same URL already exists (e.g. a Retry of a failed video), in
+ * which case it replaces that entry IN PLACE (same slot, same id) so the
+ * failed entry flips to its new status instead of leaving a stale
+ * duplicate behind. Dev-2's Add-screen UI consumes `videos` and calls
+ * `recordVideo` once per processed video.
  */
 export function useRecentVideos(): {
   videos: RecentVideoEntry[];
@@ -112,6 +116,23 @@ export function useRecentVideos(): {
   const recordVideo = useCallback(async (
     entry: Omit<RecentVideoEntry, 'id' | 'createdAt'>
   ): Promise<void> => {
+    // A re-run of a URL already in the list (Retry button) updates that
+    // entry in place — same slot, same id (so an expanded row stays
+    // expanded on its new result) — instead of prepending a second entry
+    // and leaving the stale failed one behind.
+    const existingIndex = videosRef.current.findIndex((e) => e.url === entry.url);
+    if (existingIndex >= 0) {
+      const existing = videosRef.current[existingIndex];
+      const updated: RecentVideoEntry = {
+        ...entry,
+        id: existing.id,
+        createdAt: existing.createdAt,
+      };
+      const next = [...videosRef.current];
+      next[existingIndex] = updated;
+      await persist(next);
+      return;
+    }
     const full: RecentVideoEntry = {
       ...entry,
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
