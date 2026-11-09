@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, StyleSheet, View, ViewStyle } from 'react-native';
 
 const BAR_WIDTH = 56;
@@ -13,7 +13,9 @@ const DURATION_MS = 1100;
  */
 export default function IndeterminateBar({ style }: { style?: ViewStyle }) {
   const [trackWidth, setTrackWidth] = useState(0);
-  const progress = useRef(new Animated.Value(0)).current;
+  // State initializer (not a ref): the animated value must survive
+  // re-renders, and reading .current during render trips the hooks lint.
+  const [progress] = useState(() => new Animated.Value(0));
   useEffect(() => {
     const loop = Animated.loop(
       Animated.timing(progress, { toValue: 1, duration: DURATION_MS, useNativeDriver: true }),
