@@ -102,6 +102,35 @@ async function enrichMatch(match: TmdbMatch, tmdbKey?: string): Promise<{
   return { imdbRating, overview, genres, cast };
 }
 
+/**
+ * Collapse year-suffixed / bare candidate twins ("Johnny English 2003" +
+ * "Johnny English") to one entry before the diff loop, so each distinct
+ * movie is diffed once and can never appear twice (once verified, once
+ * unverified). candidates() deliberately emits both variants, and the
+ * loop's norm() only strips a parenthesised year, so without this the
+ * year-suffixed twin never equals its match title and is saved unverified.
+ * Key: normTitle-style form with any trailing year stripped. When twins
+ * collide, keep the bare spelling — it is the one the diff loop can match
+ * against a TMDB title (keeping the suffixed twin would just swap which
+ * twin falls through as unverified). A title that legitimately ends in a
+ * year-number has no bare twin, so it is untouched.
+ */
+function dedupeYearSuffixedCandidates(list: string[]): string[] {
+  const keyOf = (s: string) => s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+\d{4}\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const byKey = new Map<string, string>();
+  for (const c of list) {
+    const key = keyOf(c);
+    const prev = byKey.get(key);
+    if (prev === undefined || c.length < prev.length) byKey.set(key, c);
+  }
+  return [...byKey.values()];
+}
+
 /** YouTube import: oEmbed title (caption-first step), then TMDB/keyless match, then Gemini fallback. */
 async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerResult> {
   if (!parseYouTubeId(target)) {
@@ -141,11 +170,11 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
     // Same candidate list bestMatches ran internally: a Gemini title TMDB
     // couldn't match is saved unverified (the TikTok no-match pattern).
     const rawCandidates = candidates(geminiText).filter((c) => !/^[A-Za-z]{2,12}:/.test(c)).slice(0, 10);
-    const effectiveCandidates = rawCandidates.length > 0 ? rawCandidates
+    const effectiveCandidates = dedupeYearSuffixedCandidates(rawCandidates.length > 0 ? rawCandidates
       // Gemini returned an unparseable blob (e.g. all titles on one long
       // line): save the raw non-empty lines as unverified rather than
       // clearing the queue item with zero results.
-      : geminiText.split('\n').map((l) => l.trim()).filter((l) => l.length > 0).slice(0, 10);
+      : geminiText.split('\n').map((l) => l.trim()).filter((l) => l.length > 0).slice(0, 10));
     const norm = (s: string) => s.toLowerCase().replace(/\s*\(\d{4}\)\s*$/, '').trim();
     const usedMatches = new Set<TmdbMatch>();
     const results: WorkerResultItem[] = [];
