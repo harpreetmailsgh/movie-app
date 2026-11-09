@@ -8,7 +8,7 @@
 //
 // Resilience strategy: the primary model (gemini-flash-latest) gets ONE
 // fast-fail attempt (10s timeout) because its serving endpoint currently
-// hangs. The fallback model (gemini-3.6-flash) gets up to 5 attempts with
+// hangs. The fallback model (gemini-3.5-flash-lite) gets up to 5 attempts with
 // retries on transient errors (1s -> 2s -> 4s -> 6s, plus jitter). A hard
 // 30s deadline caps the whole function from entry.
 
@@ -21,7 +21,7 @@ const GEMINI_API_BASE =
   "https://generativelanguage.googleapis.com/v1beta/models";
 
 const PRIMARY_MODEL = "gemini-flash-latest";
-const FALLBACK_MODEL = "gemini-3.6-flash";
+const FALLBACK_MODEL = "gemini-3.5-flash-lite";
 
 const PROMPT =
   "List every movie title mentioned, shown, or discussed in this video. " +
