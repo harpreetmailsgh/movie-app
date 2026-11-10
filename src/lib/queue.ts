@@ -3,7 +3,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSupabase } from './supabase';
 import { getQueueIdentity } from './push';
 import { formatRetryMessage } from './retrySchedule';
+import { saveMirrorFailure, clearMirrorFailure } from './mirrorDiagnostics';
 import type { GeminiFailureReason } from './gemini';
+
+/** Result a finished fetch mirrors to the server row (backlog #102):
+ *  `titles` is what the user saw added; `added` is the count the server's
+ *  push step reads from `result.added` — movies actually added to the
+ *  Watchlist for that video (titles the library already had are reported
+ *  in `titles` but not counted in `added`). */
+export type FetchResult = {
+  titles: string[];
+  added: number;
+};
 
 export type QueueItemStatus = 'queued' | 'processing' | 'failed';
 
@@ -86,9 +97,20 @@ async function saveQueue(items: QueueItem[]): Promise<void> {
 
 // ---------------------------------------------------------------------------
 // Supabase fetch_queue mirror (backlog #71, push-notification support).
-// All helpers are fire-and-forget: they catch everything and never reject
-// into the UI. Mirroring only happens when a user identity is known.
+// All helpers catch everything and never reject into the UI. Mirroring only
+// happens when a user identity is known. Every update helper checks the
+// AFFECTED ROWS, not just `error`: a PostgREST update that matches zero
+// rows returns HTTP 200 `[]` with `error: null`, so checking `error` alone
+// is blind to a mirror that never landed (backlog #102).
 // ---------------------------------------------------------------------------
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => { setTimeout(resolve, ms); });
+
+/** True only when the update actually changed a row. */
+function updateLanded(data: unknown, error: unknown): boolean {
+  return !error && Array.isArray(data) && data.length > 0;
+}
 
 /** Insert a new row; resolves with the row id or null. */
 async function mirrorInsert(
@@ -113,37 +135,190 @@ async function mirrorInsert(
 }
 
 /** Atomic claim: flip to 'processing' only if the row is still 'queued'. */
-async function mirrorClaim(supabaseId: string): Promise<void> {
+async function mirrorClaim(supabaseId: string): Promise<boolean> {
   try {
     const sb = getSupabase();
-    if (!sb) return;
-    await sb
+    if (!sb) return false;
+    const { data, error } = await sb
       .from('fetch_queue')
       .update({ status: 'processing' })
       .eq('id', supabaseId)
-      .eq('status', 'queued');
-  } catch { /* mirror is best-effort */ }
+      .eq('status', 'queued')
+      .select('id');
+    // Zero rows is benign here, not a failure: the row was already claimed
+    // (by the server, or by the fresh-enqueue claim) — the local worker
+    // still owns the fetch, so no Diagnostics entry is written.
+    return updateLanded(data, error);
+  } catch { return false; }
 }
 
 /** Mirror a failure: row status 'failed' plus the error message. */
-async function mirrorFail(supabaseId: string, error: string | null): Promise<void> {
+async function mirrorFail(supabaseId: string, error: string | null): Promise<boolean> {
   try {
     const sb = getSupabase();
-    if (!sb) return;
-    await sb
+    if (!sb) return false;
+    const { data, error: updateError } = await sb
       .from('fetch_queue')
       .update({ status: 'failed', error })
-      .eq('id', supabaseId);
-  } catch { /* mirror is best-effort */ }
+      .eq('id', supabaseId)
+      .select('id');
+    const ok = updateLanded(data, updateError);
+    if (!ok) {
+      // PostgrestError is a plain object, not an Error instance — read
+      // .message directly.
+      const detail = updateError && typeof (updateError as { message?: unknown }).message === 'string'
+        ? (updateError as { message: string }).message
+        : 'no rows updated';
+      await saveMirrorFailure({
+        operation: 'fail',
+        supabaseId,
+        detail,
+        at: Date.now(),
+      });
+    }
+    return ok;
+  } catch {
+    await saveMirrorFailure({ operation: 'fail', supabaseId, detail: 'network error', at: Date.now() });
+    return false;
+  }
 }
 
-/** Mirror completion: row status 'done'. */
-async function mirrorDone(supabaseId: string): Promise<void> {
+/** Per-attempt timeout for a done-mirror POST: a hung request must not
+ *  stall the queue worker past the bounded retry budget. */
+const MIRROR_TIMEOUT_MS = 15_000;
+
+type MirrorAttempt = { ok: boolean; detail: string };
+
+/** One done-mirror attempt: true only when the row was actually updated
+ *  to 'done' with the result. The detail names the failure for
+ *  Diagnostics ('no rows updated' | 'timed out' | 'network error' |
+ *  the server message). */
+async function attemptMirrorDone(supabaseId: string, result: FetchResult): Promise<MirrorAttempt> {
+  const sb = getSupabase();
+  if (!sb) return { ok: false, detail: 'server unavailable' };
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), MIRROR_TIMEOUT_MS);
   try {
-    const sb = getSupabase();
-    if (!sb) return;
-    await sb.from('fetch_queue').update({ status: 'done' }).eq('id', supabaseId);
-  } catch { /* mirror is best-effort */ }
+    const { data, error } = await sb
+      .from('fetch_queue')
+      .update({ status: 'done', result: { titles: result.titles, added: result.added } })
+      .eq('id', supabaseId)
+      .select('id')
+      .abortSignal(controller.signal);
+    if (error) return { ok: false, detail: error.message || 'server error' };
+    if (!Array.isArray(data) || data.length === 0) {
+      return { ok: false, detail: 'no rows updated' };
+    }
+    return { ok: true, detail: '' };
+  } catch (e) {
+    const timedOut = e instanceof Error && e.name === 'AbortError';
+    return { ok: false, detail: timedOut ? 'timed out' : 'network error' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Verified done-mirror (backlog #102): up to 3 attempts with short
+ * backoff (~2s, ~5s between attempts). The pending-mirror record is the
+ * fallback after the 3rd attempt fails — a further gap is unnecessary.
+ */
+const DONE_MIRROR_ATTEMPTS = 3;
+const DONE_MIRROR_RETRY_DELAYS_MS = [2000, 5000];
+
+async function mirrorDoneWithRetry(supabaseId: string, result: FetchResult): Promise<MirrorAttempt> {
+  let last: MirrorAttempt = { ok: false, detail: 'server unavailable' };
+  for (let attempt = 0; attempt < DONE_MIRROR_ATTEMPTS; attempt++) {
+    if (attempt > 0) await sleep(DONE_MIRROR_RETRY_DELAYS_MS[attempt - 1]);
+    last = await attemptMirrorDone(supabaseId, result);
+    if (last.ok) return last;
+  }
+  return last;
+}
+
+// ---------------------------------------------------------------------------
+// Pending done-mirrors (backlog #102): when the verified done-mirror fails
+// all 3 attempts, the fact that a row still needs its 'done' + result is
+// kept in one small AsyncStorage key and flushed on the next launch, so a
+// one-off blip — or the app being closed mid-retry — can never strand a
+// row 'processing' for the server's 10-min stale rule again.
+// ---------------------------------------------------------------------------
+
+export type PendingDoneMirror = {
+  supabaseId: string;
+  titles: string[];
+  added: number;
+  at: number;
+};
+
+const PENDING_DONE_MIRRORS_KEY = 'movieapp.pendingDoneMirrors.v1';
+const MAX_PENDING_DONE_MIRRORS = 20;
+
+function normalizePendingMirror(raw: unknown): PendingDoneMirror | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Partial<PendingDoneMirror>;
+  if (typeof r.supabaseId !== 'string' || !r.supabaseId) return null;
+  if (typeof r.at !== 'number') return null;
+  return {
+    supabaseId: r.supabaseId,
+    titles: Array.isArray(r.titles) ? r.titles.filter((t): t is string => typeof t === 'string') : [],
+    added: typeof r.added === 'number' ? r.added : 0,
+    at: r.at,
+  };
+}
+
+async function loadPendingDoneMirrors(): Promise<PendingDoneMirror[]> {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_DONE_MIRRORS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizePendingMirror).filter((p): p is PendingDoneMirror => p !== null);
+  } catch {
+    return [];
+  }
+}
+
+async function savePendingDoneMirrors(list: PendingDoneMirror[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(PENDING_DONE_MIRRORS_KEY, JSON.stringify(list));
+  } catch { /* storage full etc. — the in-memory retry already ran */ }
+}
+
+async function addPendingDoneMirror(entry: PendingDoneMirror): Promise<void> {
+  const list = (await loadPendingDoneMirrors())
+    .filter((p) => p.supabaseId !== entry.supabaseId);
+  list.push(entry);
+  // Cap the list: a device that never reaches the server must not grow
+  // this key without bound — oldest stranded rows drop first.
+  await savePendingDoneMirrors(list.slice(-MAX_PENDING_DONE_MIRRORS));
+}
+
+async function dropPendingDoneMirror(supabaseId: string): Promise<void> {
+  const list = (await loadPendingDoneMirrors())
+    .filter((p) => p.supabaseId !== supabaseId);
+  await savePendingDoneMirrors(list);
+}
+
+/**
+ * Launch-time flush (called from the root layout once the session is
+ * known): one attempt per stranded row. A success clears the row and the
+ * Diagnostics entry; a failure stays pending silently — the original
+ * failure is already in Diagnostics from the worker run that stranded
+ * it, and the next launch tries again.
+ */
+export async function flushPendingDoneMirrors(): Promise<void> {
+  const pending = await loadPendingDoneMirrors();
+  for (const entry of pending) {
+    const attempt = await attemptMirrorDone(entry.supabaseId, {
+      titles: entry.titles,
+      added: entry.added,
+    });
+    if (attempt.ok) {
+      await dropPendingDoneMirror(entry.supabaseId);
+      await clearMirrorFailure();
+    }
+  }
 }
 
 /**
@@ -156,10 +331,10 @@ async function mirrorDone(supabaseId: string): Promise<void> {
 async function mirrorRetry(
   supabaseId: string,
   opts: { retryAtISO: string; retryCount: number; reason: string; status?: number },
-): Promise<void> {
+): Promise<boolean> {
   try {
     const sb = getSupabase();
-    if (!sb) return;
+    if (!sb) return false;
     let count = opts.retryCount;
     try {
       const { data } = await sb
@@ -170,7 +345,7 @@ async function mirrorRetry(
       const serverCount = (data as { retry_count?: unknown } | null)?.retry_count;
       if (typeof serverCount === 'number') count = Math.max(count, serverCount);
     } catch { /* read failed — fall back to the local count */ }
-    await sb
+    const { data, error } = await sb
       .from('fetch_queue')
       .update({
         status: 'queued',
@@ -179,8 +354,27 @@ async function mirrorRetry(
         retry_reason: opts.reason,
         retry_status: opts.status ?? null,
       })
-      .eq('id', supabaseId);
-  } catch { /* mirror is best-effort */ }
+      .eq('id', supabaseId)
+      .select('id');
+    const ok = updateLanded(data, error);
+    if (!ok) {
+      // PostgrestError is a plain object, not an Error instance — read
+      // .message directly.
+      const detail = error && typeof (error as { message?: unknown }).message === 'string'
+        ? (error as { message: string }).message
+        : 'no rows updated';
+      await saveMirrorFailure({
+        operation: 'retry',
+        supabaseId,
+        detail,
+        at: Date.now(),
+      });
+    }
+    return ok;
+  } catch {
+    await saveMirrorFailure({ operation: 'retry', supabaseId, detail: 'network error', at: Date.now() });
+    return false;
+  }
 }
 
 /**
@@ -252,6 +446,16 @@ export interface QueueApi {
     opts?: { persist?: boolean },
   ) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
+  /**
+   * Verified completion (backlog #102): mirrors 'done' + the fetch result
+   * to the server row and waits for the ack (bounded retries, then a
+   * persisted pending record + a Diagnostics entry) BEFORE the local item
+   * is removed — so the server's next-minute push step can read
+   * `result.added` and the push lands within about a minute. Only for a
+   * genuinely successful fetch: failed items mirror 'failed' via
+   * updateItem and re-queued items stay queued — neither ever reaches here.
+   */
+  completeItem: (id: string, result: FetchResult) => Promise<void>;
 }
 
 /**
@@ -368,18 +572,47 @@ export function useQueue(): QueueApi {
   }, [persist, updateItem]);
 
   const removeItem = useCallback(async (id: string): Promise<void> => {
-    const item = itemsRef.current.find((i) => i.id === id);
     await persist(itemsRef.current.filter((i) => i.id !== id));
-    // Supabase mirror (fire-and-forget): mark the row done — UNLESS it
-    // already failed. A failed item's mirrorFail ran when its status was
-    // set to 'failed' (see updateItem); mirroring 'done' here would
-    // overwrite that failure and the server row would masquerade as done,
-    // so the server could never rescue it. mirrorFail was unreachable
-    // before this guard: every failure path ends in removeItem.
-    if (item?.supabaseId && item.status !== 'failed') {
-      void mirrorDone(item.supabaseId);
-    }
+    // No mirror traffic here, by design: the failure path mirrored
+    // 'failed' via updateItem before removal, and the success path mirrors
+    // 'done' via completeItem before removal. Mirroring 'done' here used
+    // to be fire-and-forget AFTER the local record was already gone, so a
+    // single failed POST stranded the server row 'processing' with nothing
+    // left to retry it (backlog #102).
   }, [persist]);
 
-  return { items, enqueue, updateItem, removeItem };
+  const completeItem = useCallback(async (id: string, result: FetchResult): Promise<void> => {
+    const item = itemsRef.current.find((i) => i.id === id);
+    // Mirror 'done' + result FIRST and wait for the ack; only then drop
+    // the local item. A failed item must never be mirrored 'done' — the
+    // guard below preserves the round-96 rule (mirrorFail ran when the
+    // item was marked 'failed', before removeItem).
+    if (item?.supabaseId && item.status !== 'failed') {
+      const attempt = await mirrorDoneWithRetry(item.supabaseId, result);
+      if (attempt.ok) {
+        // A later success clears the failure line, so Diagnostics never
+        // describes a stale failure.
+        await clearMirrorFailure();
+      } else {
+        // All 3 attempts failed: keep a pending record for the
+        // launch-time flush, and log it — a future miss must be visible
+        // instead of silent.
+        await addPendingDoneMirror({
+          supabaseId: item.supabaseId,
+          titles: result.titles,
+          added: result.added,
+          at: Date.now(),
+        });
+        await saveMirrorFailure({
+          operation: 'done',
+          supabaseId: item.supabaseId,
+          detail: attempt.detail,
+          at: Date.now(),
+        });
+      }
+    }
+    await persist(itemsRef.current.filter((i) => i.id !== id));
+  }, [persist]);
+
+  return { items, enqueue, updateItem, removeItem, completeItem };
 }

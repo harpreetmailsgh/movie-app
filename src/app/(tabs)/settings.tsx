@@ -12,6 +12,7 @@ import { useAuth } from '../../lib/auth';
 import { getSupabase } from '../../lib/supabase';
 import { readShareLog } from '../../lib/shareLog';
 import { loadGeminiFailure, describeGeminiFailure, GeminiDiagnostic } from '../../lib/geminiDiagnostics';
+import { loadMirrorFailure, describeMirrorFailure, MirrorDiagnostic } from '../../lib/mirrorDiagnostics';
 
 // Version always comes from the running update's own manifest (app.json),
 // so the About screen can never go stale behind a hardcoded string again.
@@ -248,9 +249,15 @@ export default function SettingsScreen() {
   // section can show why the last video lookup failed. Null = the last
   // lookup succeeded (or none has run yet).
   const [geminiFailure, setGeminiFailure] = useState<GeminiDiagnostic | null>(null);
+  // Last Supabase fetch_queue mirror failure, persisted on-device by the
+  // queue mirror (src/lib/mirrorDiagnostics.ts) — read on mount so the
+  // Diagnostics section can show why the last server update missed.
+  // Null = the last mirror landed (or none has run yet).
+  const [mirrorFailure, setMirrorFailure] = useState<MirrorDiagnostic | null>(null);
   useEffect(() => {
     let cancelled = false;
     void loadGeminiFailure().then((d) => { if (!cancelled) setGeminiFailure(d); });
+    void loadMirrorFailure().then((d) => { if (!cancelled) setMirrorFailure(d); });
     return () => { cancelled = true; };
   }, []);
 
@@ -369,6 +376,9 @@ export default function SettingsScreen() {
         )}
         <Text style={styles.dim}>
           Last movie lookup: {geminiFailure ? describeGeminiFailure(geminiFailure) : '—'}
+        </Text>
+        <Text style={styles.dim}>
+          Last server update: {mirrorFailure ? describeMirrorFailure(mirrorFailure) : '—'}
         </Text>
         <Pressable style={styles.feedbackRow} onPress={() => { void showShareLog(); }}>
           <Text style={styles.feedbackText}>Share-extension log</Text>

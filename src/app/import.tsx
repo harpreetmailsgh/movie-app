@@ -139,7 +139,7 @@ export default function ImportScreen() {
   } | null>(null);
 
   /** Fetch queue: paste/share links enqueue here; the worker loop below processes them one at a time. */
-  const { items: queueItems, enqueue, updateItem, removeItem } = useQueue();
+  const { items: queueItems, enqueue, updateItem, removeItem, completeItem } = useQueue();
   /** Any item currently processing — drives the "Finding the movies…" line. */
   const isProcessing = queueItems.some((i) => i.status === 'processing');
 
@@ -329,7 +329,18 @@ export default function ImportScreen() {
           setFetchError(null);
           setFailedUrl(null);
           setFetchFailure(null);
-          await removeItem(next.id);
+          // Verified completion (backlog #102): mirror 'done' + the added
+          // count to the server row and wait for the ack BEFORE the local
+          // item goes away — the server's next-minute push step reads
+          // result.added, so the push lands within about a minute instead
+          // of the 10-min stale rescue. completeItem keeps a pending
+          // record + a Diagnostics entry when the mirror can't land, so a
+          // one-off failure can never strand the row silently again.
+          // Failed and re-queued items never reach this branch.
+          await completeItem(next.id, {
+            titles: result.results.slice(0, 10).map((r) => r.title),
+            added: result.added ?? 0,
+          });
         } else if (
           (result.failureReason === 'transient' || result.failureReason === 'deadline') &&
           next.retryCount < 2
@@ -398,7 +409,7 @@ export default function ImportScreen() {
         queueProcessingRef.current = false;
       }
     })();
-  }, [queueItems, retryTick, updateItem, removeItem, settings.tmdbKey, importReel, addMovie, hasMovie, recordVideo]);
+  }, [queueItems, retryTick, updateItem, removeItem, completeItem, settings.tmdbKey, importReel, addMovie, hasMovie, recordVideo]);
 
   const confirmClearVideos = () => {
     Alert.alert(

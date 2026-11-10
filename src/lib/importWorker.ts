@@ -18,6 +18,11 @@ export type WorkerResult = {
   ok: boolean;
   results: WorkerResultItem[];
   error?: string;
+  /** Movies actually added to the Watchlist by this fetch (present on
+   *  ok:true). The queue mirrors it as `result.added`, which the server's
+   *  push step counts — titles the library already had are reported in
+   *  `results` but NOT counted here. */
+  added?: number;
   /** Fetched during processing (YouTube oEmbed title, TikTok caption). */
   videoTitle?: string | null;
   /** Why the Gemini step failed, when it did — lets the UI tell "no
@@ -137,8 +142,10 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
     deps.onProgress?.(0.85);
     const e = await enrichMatch(match, deps.tmdbKey);
     // Already-have: report the title but don't add a duplicate (a retry
-    // after the server already added it lands here).
-    if (!deps.hasMovie?.({ title: match.title, year: match.year, mediaType: match.mediaType, tmdbID: match.tmdbID })) {
+    // after the server already added it lands here) — and don't count it
+    // in `added`, so the push step counts only movies actually added.
+    const alreadyHave = deps.hasMovie?.({ title: match.title, year: match.year, mediaType: match.mediaType, tmdbID: match.tmdbID }) ?? false;
+    if (!alreadyHave) {
       deps.addMovie({
         title: match.title, year: match.year, mediaType: match.mediaType, genres: e.genres,
         overview: e.overview, posterPath: match.posterPath, reelURL: target,
@@ -147,7 +154,7 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
         needsReview: false,
       });
     }
-    return { ok: true, results: [{ title: match.title, unverified: false }], videoTitle };
+    return { ok: true, results: [{ title: match.title, unverified: false }], videoTitle, added: alreadyHave ? 0 : 1 };
   }
   // oEmbed title matched nothing — fall back to Gemini: ask which movie
   // titles the video mentions or shows, then match each through TMDB.
@@ -199,6 +206,9 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
     const norm = (s: string) => s.toLowerCase().replace(/\s*\(\d{4}\)\s*$/, '').trim();
     const usedMatches = new Set<TmdbMatch>();
     const results: WorkerResultItem[] = [];
+    // Movies actually added (addMovie calls only — an already-have title
+    // is reported in `results` but not counted in `added`).
+    let added = 0;
     for (const candidate of effectiveCandidates) {
       const match = matches.find((m) => !usedMatches.has(m) && norm(m.title) === norm(candidate));
       if (match) {
@@ -212,6 +222,7 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
             originalLanguage: match.originalLanguage, cast: e.cast,
             needsReview: false,
           });
+          added += 1;
         }
         results.push({ title: match.title, unverified: false });
       } else {
@@ -222,6 +233,7 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
             caption, notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
             originalLanguage: '', cast: [], needsReview: true,
           });
+          added += 1;
         }
         results.push({ title: candidate, unverified: true, caption });
       }
@@ -232,7 +244,7 @@ async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerRes
       ...results.filter((r) => !r.unverified),
       ...results.filter((r) => r.unverified),
     ];
-    return { ok: true, results: sortedResults, videoTitle };
+    return { ok: true, results: sortedResults, videoTitle, added };
   }
   // Locked copy stays the user-facing sentence for every Gemini failure
   // (the distinct outage wording needs Harpreet's approval first) — but
@@ -266,7 +278,7 @@ async function fetchTikTok(target: string, deps: WorkerDeps): Promise<WorkerResu
       originalLanguage: match.originalLanguage, cast: e.cast,
       needsReview: false,
     });
-    return { ok: true, results: [{ title: match.title, unverified: false }], videoTitle };
+    return { ok: true, results: [{ title: match.title, unverified: false }], videoTitle, added: 1 };
   }
   deps.addMovie({
     title: info.caption, year: 0, mediaType: 'movie', genres: [],
@@ -274,7 +286,7 @@ async function fetchTikTok(target: string, deps: WorkerDeps): Promise<WorkerResu
     caption, notes: '', status: 'watchlist', tmdbID: 0, imdbRating: 0,
     originalLanguage: '', cast: [], needsReview: true,
   });
-  return { ok: true, results: [{ title: info.caption, unverified: true, caption }], videoTitle };
+  return { ok: true, results: [{ title: info.caption, unverified: true, caption }], videoTitle, added: 1 };
 }
 
 /** Facebook/Instagram reel import via the store's importReel (caption → TMDB → add). */
@@ -296,6 +308,9 @@ async function fetchReel(target: string, deps: WorkerDeps): Promise<WorkerResult
         ...unsorted.filter((r) => !r.unverified),
         ...unsorted.filter((r) => r.unverified),
       ],
+      // Only titles actually added count: already-have titles were
+      // reported, not added; saved-for-review titles were added.
+      added: outcome.added.length + outcome.savedForReview.length,
     };
   }
   // Mirrors the store importReel messages shown inline on the Add screen.

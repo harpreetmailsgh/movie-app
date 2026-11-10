@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StoreProvider, useStore } from '../lib/store';
 import { AuthProvider, useAuth } from '../lib/auth';
 import { getPushToken, getQueueIdentity, registerPushToken, setupPushListeners, setQueueIdentity } from '../lib/push';
+import { flushPendingDoneMirrors } from '../lib/queue';
 import PrivacySheet from '../components/PrivacySheet';
 import SplashIntro from '../components/SplashIntro';
 
@@ -78,6 +79,13 @@ function PushSetup() {
     const { pushToken } = getQueueIdentity();
     setQueueIdentity({ userId, pushToken });
     void registerPushToken(userId, pushToken);
+    // Backlog #102: finish any done-mirror a previous run couldn't land
+    // (pending record in AsyncStorage) now the session is known, so a
+    // one-off mirror failure can't strand a server row for 10 minutes
+    // again. No-op when nothing is pending; a failure here stays pending
+    // silently (the original failure is already in Diagnostics) and the
+    // next launch tries again.
+    void flushPendingDoneMirrors();
   }, [userId]);
 
   return null;

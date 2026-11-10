@@ -19,7 +19,8 @@
       "bundleIdentifier": "com.harpreetmails.moviedeck",
       "deploymentTarget": "16.4",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleDisplayName": "Save My Movie"
       },
       "buildNumber": "7"
     },
