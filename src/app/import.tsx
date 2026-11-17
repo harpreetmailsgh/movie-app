@@ -21,6 +21,12 @@ import { computeRetryAt, formatRetryMessage } from '../lib/retrySchedule';
 const FIELD_BG = '#C7C7CC';
 const SEARCH_DEBOUNCE_MS = 500;
 
+/** Rejection line for non-YouTube links — Harpreet's exact wording,
+ *  verbatim everywhere it shows. Acceptance test is
+ *  parseYouTubeId(url) !== null: any YouTube link (Shorts or regular
+ *  video) is accepted; everything else is rejected with this line. */
+const REJECT_NON_YOUTUBE = 'Only YouTube videos supported';
+
 /** One "Recent videos" row (backlog #72): thumbnail, title, subtitle,
  *  status glyph; tap expands an accordion with the video's titles. */
 function RecentVideoRow({ entry, expanded, onToggle, onRetry }: {
@@ -116,7 +122,8 @@ export default function ImportScreen() {
   // Deep link from the iOS share extension: movierecommender://import?sharedUrl=...
   const { sharedUrl } = useLocalSearchParams<{ sharedUrl?: string }>();
   /** One link field for YouTube — paste a YouTube link to add a movie.
-   *  Submit auto-detects the platform and runs the matching import. */
+   *  Only YouTube links are accepted (any watch / Shorts / youtu.be link
+   *  with a video id); anything else is rejected before it is queued. */
   const [link, setLink] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TmdbMatch[]>([]);
@@ -237,10 +244,21 @@ export default function ImportScreen() {
     setFetchFailure(null);
   };
 
-  /** Queue replaces the immediate-fetch path: Fetch tap enqueues the link. */
+  /** Queue replaces the immediate-fetch path: Fetch tap enqueues the link.
+   *  YouTube-only gate: a link with no parseable video id is rejected in
+   *  the error card — no queue row, no Recent entry, no Retry (failedUrl
+   *  stays null), and the field is cleared, as on a successful fetch. */
   const submitLink = () => {
     const trimmed = link.trim();
     if (!trimmed) return;
+    if (!parseYouTubeId(trimmed)) {
+      setFetchResults(null);
+      setFetchError(REJECT_NON_YOUTUBE);
+      setFailedUrl(null);
+      setFetchFailure(null);
+      setLink('');
+      return;
+    }
     void enqueue(trimmed);
     setLink('');
   };
@@ -259,6 +277,19 @@ export default function ImportScreen() {
     if (sharedHandled.current || !sharedUrl) return;
     sharedHandled.current = true;
     const incoming = String(sharedUrl);
+    // YouTube-only gate, same as the Fetch tap: a shared non-YouTube
+    // link shows the rejection in the error card instead of enqueueing.
+    // Deferred a microtask so the effect body itself sets no state
+    // (react-hooks/set-state-in-effect).
+    if (!parseYouTubeId(incoming)) {
+      queueMicrotask(() => {
+        setFetchResults(null);
+        setFetchError(REJECT_NON_YOUTUBE);
+        setFailedUrl(null);
+        setFetchFailure(null);
+      });
+      return;
+    }
     // Share-extension URLs go through the fetch queue now — no auto-run.
     // Don't seed the text field: the queue shows the item, and leaving the
     // URL in the field would let one Fetch tap enqueue it a second time.
@@ -341,6 +372,19 @@ export default function ImportScreen() {
             titles: result.results.slice(0, 10).map((r) => r.title),
             added: result.added ?? 0,
           });
+        } else if (result.rejected) {
+          // Rejected non-YouTube link from the worker gate (a stale
+          // pre-existing queue row — fresh links never reach here, the
+          // Add-screen gate stops them). Nothing is recorded: no failed
+          // Recent entry, no updateItem({status:'failed'}) so no
+          // mirrorFail to the server, and no Retry — failedUrl stays
+          // null, which hides the error card's Retry button. The item
+          // is simply removed.
+          setFetchError(result.error ?? REJECT_NON_YOUTUBE);
+          setFetchResults(null);
+          setFailedUrl(null);
+          setFetchFailure(null);
+          await removeItem(next.id);
         } else if (
           (result.failureReason === 'transient' || result.failureReason === 'deadline') &&
           next.retryCount < 2

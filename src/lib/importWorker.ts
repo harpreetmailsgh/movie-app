@@ -33,6 +33,11 @@ export type WorkerResult = {
   /** Retry-After Gemini asked for (ms), when reported — lets the UI
    *  schedule the automatic retry instead of guessing a delay. */
   failureRetryAfterMs?: number;
+  /** Rejected non-YouTube link (worker gate): the UI must show the
+   *  message and drop the item WITHOUT recording a failed Recent entry
+   *  or mirroring a failure to the server — a rejection is not a fetch
+   *  failure, and a Retry button on it would only fail again. */
+  rejected?: boolean;
 };
 
 export type WorkerDeps = {
@@ -125,7 +130,7 @@ async function enrichMatch(match: TmdbMatch, tmdbKey?: string): Promise<{
 /** YouTube import: oEmbed title (caption-first step), then TMDB/keyless match, then Gemini fallback. */
 async function fetchYouTube(target: string, deps: WorkerDeps): Promise<WorkerResult> {
   if (!parseYouTubeId(target)) {
-    return { ok: false, results: [], error: "That doesn't look like a YouTube link — use a watch, Shorts, or youtu.be link." };
+    return { ok: false, results: [], error: 'Only YouTube videos supported', rejected: true };
   }
   const info = await fetchYouTubeTitle(target);
   if (!info) {
@@ -327,6 +332,13 @@ async function runQueueItem(url: string, deps: WorkerDeps): Promise<WorkerResult
   const target = url.trim();
   if (!target) {
     return { ok: false, results: [], error: 'That doesn’t look like a link — paste the full reel URL.' };
+  }
+  // YouTube-only gate (defence in depth behind the Add-screen gate):
+  // a link with no parseable video id is rejected with no failureReason,
+  // so the backlog #98 auto-retry never fires for it. TikTok / reel
+  // branches below are unreachable for new links; they stay dormant.
+  if (!parseYouTubeId(target)) {
+    return { ok: false, results: [], error: 'Only YouTube videos supported', rejected: true };
   }
   // Same routing as the Add screen's routeLink: TikTok first, then YouTube
   // by hostname, everything else through the reel (Facebook/Instagram)
