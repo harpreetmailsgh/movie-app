@@ -7,6 +7,7 @@ import { useStore } from '../lib/store';
 import { searchTitles, searchTitlesKeyless, fetchImdbRating, fetchKeylessMeta, TmdbMatch } from '../lib/tmdb';
 import { posterUrl } from '../lib/types';
 import ClapboardPoster from '../components/ClapboardPoster';
+import SheetGrabber from '../components/SheetGrabber';
 import QueueList from '../components/QueueList';
 import StageProgressBar from '../components/StageProgressBar';
 import { useQueue } from '../lib/queue';
@@ -472,6 +473,7 @@ export default function ImportScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <SheetGrabber />
       <View style={[styles.section, styles.firstSection]}>
         <Text style={styles.heading}>Search by title</Text>
         <View style={styles.sectionCard}>

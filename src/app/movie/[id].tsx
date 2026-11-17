@@ -7,6 +7,7 @@ import { posterUrl, tmdbUrl } from '../../lib/types';
 import { resolveTrailerForTitle } from '../../lib/tmdb';
 import { firstYoutubeResultId } from '../../lib/youtube';
 import ClapboardPoster from '../../components/ClapboardPoster';
+import SheetGrabber from '../../components/SheetGrabber';
 import MovieProgressBar from '../../components/MovieProgressBar';
 
 export default function MovieDetailScreen() {
@@ -87,6 +88,7 @@ export default function MovieDetailScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <SheetGrabber />
       {uri ? (
         <Image source={{ uri }} style={styles.poster} resizeMode="cover" />
       ) : movie.needsReview && movie.status === 'watchlist' ? (
