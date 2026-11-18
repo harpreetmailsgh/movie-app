@@ -15,7 +15,9 @@
       },
       "channel": "production"
     },
-    "production": {}
+    "production": {
+      "channel": "production"
+    }
   },
   "cli": {
     "version": ">= 16.0.0"
