@@ -14,12 +14,12 @@ import FilterBar, { filtersActive } from '../../components/FilterBar';
 import MovieProgressBar from '../../components/MovieProgressBar';
 import GuideOverlay, { GuideOverlayHandle, GuideMark } from '../../components/GuideOverlay';
 
-// Coach-mark arrows for Seen's first-time guide: ← → Next, ↓ Trash
-// (no up mark — swipe-up is a no-op there). Rendered by GuideOverlay;
-// hidden once this tab's guide flag flips.
+// Coach-mark arrows for Seen's first-time guide: ← → Next, ↑ Watchlist, ↓ Trash.
+// Rendered by GuideOverlay; hidden once this tab's guide flag flips.
 const SEEN_GUIDE_MARKS: GuideMark[] = [
   { dir: 'left', label: 'Next', color: '#ff9f0a' },
   { dir: 'right', label: 'Next', color: '#ff9f0a' },
+  { dir: 'up', label: 'Watchlist', color: '#30d158' },
   { dir: 'down', label: 'Trash', color: '#ff453a' },
 ];
 
@@ -109,8 +109,8 @@ export default function SeenScreen() {
       // Next: cycle the card to the back of the deck.
       cycleToBack(movie.id);
     } else if (dir === 'up') {
-      // Already seen — no-op (Watchlist-identical mapping).
-      moveMovie(movie.id, 'seen');
+      // Seen → back to Watchlist.
+      moveMovie(movie.id, 'watchlist');
     } else if (dir === 'down') {
       deleteMovie(movie.id);
     }
@@ -184,6 +184,9 @@ export default function SeenScreen() {
                 onInfoTap={(m) => router.push(`/movie/${m.id}`)}
                 animation={settings.cardAnimation}
                 deckStyle={settings.deckStyle}
+                stampOverrides={{
+                  up: { text: '＋ Watchlist', color: '#30d158', textColor: '#000', dragIcon: 'add' },
+                }}
               />
               {originView !== null && (
                 <Pressable
